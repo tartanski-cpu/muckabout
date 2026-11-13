@@ -41,9 +41,9 @@ jobs:
     permissions:
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    # No `environment: github-pages` here on purpose: that environment's branch rule rejected deploys from the
+    # working branch before the job could start. If this job fails instead, allow the branch under
+    # Settings → Environments → github-pages → Deployment branches, or make `main` the default branch.
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4

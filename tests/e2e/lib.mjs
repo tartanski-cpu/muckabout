@@ -11,12 +11,13 @@ export async function harness() {
   const failures = [];
   const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) failures.push(msg); return ok; };
   // context: pass the same one for pages that must share a BroadcastChannel (the two-player test)
-  async function open(path, { wait = '__game', viewport = { width: 1280, height: 760 }, context = null } = {}) {
+  async function open(path, { wait = '__game', viewport = { width: 1280, height: 760 }, context = null, init = null } = {}) {
     const page = context ? await context.newPage() : await browser.newPage({ viewport });
     if (context) await page.setViewportSize(viewport);
     const errs = [];
     page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
     page.on('pageerror', (e) => errs.push('pageerror: ' + e));
+    if (init) await init(page); // e.g. install a WebXR emulator before the app looks for navigator.xr
     await page.goto(base + path);
     await page.waitForFunction((w) => window[w] && (window[w].ready !== false), wait, { timeout: 60000 });
     page.errs = errs;
