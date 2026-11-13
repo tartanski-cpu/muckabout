@@ -18,7 +18,7 @@ On a Quest, open the GitHub Pages URL in the Quest Browser and press *Enter VR*.
 
 ## Deploy
 
-`.github/workflows/ci.yml` builds and tests every push, and deploys `dist/` to GitHub Pages on pushes to `main`. One-time setup: repo **Settings → Pages → Source: GitHub Actions**.
+`.github/workflows/ci.yml` builds and tests every push, and deploys `dist/` to GitHub Pages on pushes to the default branch. One-time setup: repo **Settings → Pages → Source: GitHub Actions**.
 
 ## Controls (POC loader)
 
