@@ -10,8 +10,10 @@ export async function harness() {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
   const failures = [];
   const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!ok) failures.push(msg); return ok; };
-  async function open(path, { wait = '__game', viewport = { width: 1280, height: 760 } } = {}) {
-    const page = await browser.newPage({ viewport });
+  // context: pass the same one for pages that must share a BroadcastChannel (the two-player test)
+  async function open(path, { wait = '__game', viewport = { width: 1280, height: 760 }, context = null } = {}) {
+    const page = context ? await context.newPage() : await browser.newPage({ viewport });
+    if (context) await page.setViewportSize(viewport);
     const errs = [];
     page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
     page.on('pageerror', (e) => errs.push('pageerror: ' + e));

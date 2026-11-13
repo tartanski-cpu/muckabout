@@ -109,6 +109,7 @@ export class Water {
     }
   }
 
+  pack0() { return { nx: this.nx, nz: this.nz, cell: this.cell, ox: this.ox, oz: this.oz, depth: this.d.slice(), bed: this.b.slice(), vx: this.vx.slice(), vz: this.vz.slice() }; }
   /** Snapshot for the main thread (every 6th tick ≈ 10 Hz); null otherwise. */
   pack() {
     if (this.tick % 6 !== 1) return null;

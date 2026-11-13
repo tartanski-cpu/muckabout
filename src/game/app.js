@@ -38,7 +38,8 @@ export class Game {
     this.hud = new WristHud(this.perf);
     this.rng = makeRng(o.seed ?? 1337);
 
-    this.terrain = await new TerrainClient({ map: o.map, mode: o.worker ? 'worker' : 'inline', water: !!o.water }).init();
+    this.remote = !!o.remote; // co-op client: the host simulates, we draw
+    this.terrain = await new TerrainClient({ map: o.map, mode: o.remote ? 'remote' : o.worker ? 'worker' : 'inline', water: !!o.water }).init();
     this.env = makeEnvironment(this.scene, this.terrain);
     this.ground = new Ground(renderer, this.terrain, this.env); this.scene.add(this.ground.group);
     this.chips = new Chips(this.terrain); this.scene.add(this.chips.group);
@@ -84,7 +85,7 @@ export class Game {
     perf.end('vehicles');
     perf.begin('tools');
     this.syncContainers();
-    for (const r of this.rigs) r.step(dt, this.clods);
+    if (!this.remote) for (const r of this.rigs) r.step(dt, this.clods);
     perf.end('tools');
     perf.begin('clods');
     this.clods.update(dt);

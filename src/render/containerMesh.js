@@ -13,7 +13,7 @@ export class ContainerMesh {
     this.mesh.frustumCulled = false; this.mesh.visible = false;
   }
   update() {
-    const f = this.field; if (!f.dirty) return; f.dirty = false;
+    const f = this.field; if (!f.dirty) return; f.dirty = false; f.rev = (f.rev || 0) + 1; // rev: what the co-op host watches to know a container changed
     const pos = this.geo.attributes.position, col = this.geo.attributes.color; let any = false;
     for (let k = 0; k < f.fill.length; k++) {
       const h = f.fill[k]; if (h > 0.004) any = true;

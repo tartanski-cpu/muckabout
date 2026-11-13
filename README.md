@@ -1,65 +1,93 @@
 # muckshift
 
-A WebXR earthmoving sandbox for standalone Meta Quest: drive machines from inside the cab and move dirt on fully deformable ground.
+A WebXR earthmoving sandbox for standalone Meta Quest: drive machines from inside the cab with physical levers and wheels, on fully deformable ground. Spec and milestones: [docs/mvp-spec.md](docs/mvp-spec.md).
 
-The full MVP spec and milestone plan are in [docs/mvp-spec.md](docs/mvp-spec.md). **Current state: M0** — repo, build, deploy and perf harness, running the original proof-of-concept wheel loader.
+**State: M0–M6 are implemented and pass their automated tests on a desktop. Nothing has been run on a headset yet.** What to check on the Quest is listed in [docs/quest-test-checklist.md](docs/quest-test-checklist.md); known gaps are at the end of this file.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173, desktop debug controls
+npm run dev        # http://localhost:5173
 npm run build      # static site in dist/
-npm test           # unit tests (vitest)
-npm run test:e2e   # scripted headless run of the built game (needs `npm run build` first)
+npm test           # unit tests (vitest): terrain, river, machines, net codec
+npm run test:e2e   # scripted headless browser runs (needs `npm run build` first; screenshots in shots/)
 ```
 
 On a Quest, open the GitHub Pages URL in the Quest Browser and press *Enter VR*. For local iteration, WebXR needs HTTPS or localhost: with the headset on USB, `adb reverse tcp:5173 tcp:5173` and open `http://localhost:5173` in the headset.
 
-## Deploy
+`.github/workflows/ci.yml` builds and tests every push and deploys `dist/` to GitHub Pages from the repository's default branch (Settings → Pages → Source: GitHub Actions).
 
-`.github/workflows/ci.yml` builds and tests every push, and deploys `dist/` to GitHub Pages on pushes to the default branch. One-time setup: repo **Settings → Pages → Source: GitHub Actions**.
+Pages and switches:
 
-## Controls (POC loader)
+| URL | What |
+|---|---|
+| `/` | the game: full map, river, four machines |
+| `/?stress=1` | the same with scripted drivers on all four machines and the clod budget held full |
+| `/?map=test` | small 40 m test patch (no river) |
+| `/?worker=0` | terrain on the main thread instead of the worker (what the tests fast-forward) |
+| `/?host=1` · `/?join=12345` | two-player co-op; add `&net=bc` to link two tabs of one browser without the internet |
+| `/?scene=stress` | terrain-only stress scene (ghost buckets) |
+| `/poc.html` | the original proof of concept |
 
-| | Quest | Desktop (debug) |
-|---|---|---|
-| Drive / steer | left stick, or grab the steering wheel | `W` `S` / `A` `D` |
-| Boom / bucket | right stick, or grab the joystick | `I` `K` / `J` `L` |
-| Horn · recentre seat · reset | `A` · `B` · `Y` | `H` · – · `R` |
-| Perf HUD on/off | `X` (HUD is on the left wrist) | `P` |
-| Stress test on/off | click left stick | `T` |
-| Chase camera | – | `V`, drag to look |
+## Playing
 
-## Perf HUD and stress test
+You start on foot in the yard. Walk with the left stick, snap-turn with the right. Grab a machine's yellow handrail to climb in.
 
-The wrist panel shows fps, frame time (average and worst over the last second) and per-subsystem CPU milliseconds as *average / worst*, with bars scaled to the 13.9 ms frame at 72 Hz. Below that: live clods, active terrain cells, draw calls and triangles.
+Everything in the cab is physical: reach, squeeze the grip, move your hand. The glove snaps to the handle while you hold it. Buttons and rockers are poked (or trigger while touching).
 
-The stress test fountains soil out of the heap to hold the clod count at its 1,500 budget while the slump solver chews on the whole heap. It conserves volume, so it can be left running.
+- **Pedals:** feet aren't tracked, so while a hand is on any control its trigger is a pedal: right = accelerator, left = brake (decelerator on the dozer). There's a placard in each cab.
+- **To move off:** turn the key (grab it and twist clockwise, or grab and let go), poke the park brake off, push the shuttle lever to F, squeeze the right trigger.
+- **Buttons:** `Y` get out · `B` recentre seat · `A` horn · `X` perf HUD (left wrist) · right stick click (seated) horizon lock · left stick click (on foot) stress test.
+- **Stick assist** rocker on the dash (off by default) lets the thumbsticks drive.
 
-Each milestone ends with a stress run on the headset: enter VR, click the left stick, read the wrist.
+| Machine | Controls |
+|---|---|
+| Wheel loader | steering wheel · loader joystick (back: raise, left: curl) · R/N/F shuttle · hand throttle · park brake · key |
+| Dumper | steering wheel · shuttle · hand throttle · tipper lever (back: raise) · park brake · key |
+| Bulldozer | two track levers (spring to neutral) · blade joystick (back: raise, sideways: tilt) · hand throttle · left trigger decelerator · key |
+| Backhoe | front: wheel, shuttle, loader joystick · swivel-seat rocker → rear: two hoe joysticks (ISO: left = swing/dipper, right = boom/bucket), two stabiliser levers |
 
-## Sound
+The job is on the clipboard in every cab: cut a road down the terraces, build a crossing (mud for bulk, gravel on top; mud alone washes out), get the dumper and loader across, haul 20 m³ of sand back to the hopper.
 
-Placeholder, fully synthesised (`src/audio/`):
+**Desktop debug keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
 
-- **Engine**: a six-cylinder diesel voice in an AudioWorklet. Each firing excites a bank of exhaust resonances, with injector clatter on top; it revs with the throttle and lugs (louder, brighter, slower) under hydraulic or digging load.
-- **Hydraulics**: a valve *clunk* when the boom or bucket lever leaves or returns to neutral, a ringing *clank* (plus a haptic thump) when a cylinder hits its end stop, a relief-valve squeal while a lever is held against the stop, and pump whine that follows engine speed.
+**Two players:** one presses *Host a game* on the start page and reads out the five-digit room number; the other types it and presses *Join*. The host's headset runs the world; the other player sees it about 0.15 s behind. First into a seat owns that machine.
 
-## Layout
+## How it is built
 
 ```
-index.html              page shell
-src/main.js             entry point
-src/poc/loader.js       the proof of concept (feel and tuning reference, not the architecture)
-src/harness/perf.js     per-subsystem frame timers (no DOM, usable in workers and tests)
-src/harness/wristHud.js wrist / desktop perf panel
-src/audio/              diesel worklet, machine sounds, hydraulic clunk/clank event detection
-tests/                  vitest unit tests
-tests/e2e/poc.mjs       scripted headless test using the fast-forward __game.sim() hook
-docs/mvp-spec.md        MVP spec and milestones
+machines/*.json          one file per machine: masses, geometry, hydraulics, tools, containers, cab control layout
+src/terrain/             core.js (layered heightfield, relaxation, cut/deposit/compact), water.js (river + erosion),
+                         containers.js, clods.js, tool.js, maps.js, worker.js, client.js (worker / inline / remote)
+src/vehicles/            physics.js (Rapier world), machine.js (generic machine from a definition)
+src/xr/                  input.js, interaction.js, hands.js, player.js, controls/ (lever, joystick, wheel, key, …)
+src/render/              ground.js (height-texture displaced tiles), chips.js, water.js, clodMesh.js, containerMesh.js
+src/audio/               diesel AudioWorklet, per-machine positional voices, hydraulic clunk/clank detection
+src/net/                 transport.js (PeerJS / BroadcastChannel), terrainDelta.js, snapshot.js, session.js, avatar.js
+src/game/                app.js (loop, perf, audit), autopilot.js (scripted drivers), hopper.js, checklist.js
+src/scenes/              play.js (the game), stress.js (four-machine stress), ghostStress.js (terrain-only stress)
+src/harness/             perf timers and the wrist HUD
+src/poc/                 the original proof of concept
+docs/terrain-design.md   data layouts, worker protocol, budget plan
 ```
 
-## Debug hooks
+Key decisions:
 
-`window.__game` exposes the test surface: `sim(n, fn)` fast-forwards `n` fixed 1/72 s steps, `pause(bool)` freezes the realtime loop, `volume()` audits every place soil can be (ground, bucket, truck bed, airborne, lost at the edge), `setStress(bool)`, and `perf.snapshot()`.
+- **Ground** is a layered heightfield owned by a worker; material is only ever particles while airborne. Volume is audited end to end (ground + containers + clods + lost + compacted + washed) and the tests hold it constant.
+- **Machines** are Rapier rigid bodies; the ground is not a Rapier collider. Wheels and track contact points sample our terrain and apply spring and tyre forces. Articulated machines are two bodies and a motorised hinge. Booms, buckets, blades and beds are kinematic parts posed by hydraulic functions, with colliders that ride their body.
+- **XR kit** follows the design of SWVR's controls (see file headers); it is a port, not a copy, because SWVR's files are tied to its vessel state.
+- **Co-op** is host-authoritative: terrain deltas (changed cells, 1 cm, run-length), machine states at 20 Hz, cosmetic clods on the client.
+
+`window.__game` is the test surface: `sim(n, fn)` fast-forward (inline terrain only), `audit()`, `machine(id)`, `autopilot`, `play` (player, input with fake hands, checklist, hopper, net).
+
+## Known gaps and deviations from the spec
+
+- **Not run on a Quest.** Frame rate, control reach and placement, hand fit and comfort are untested. Desktop numbers for the stress scene: terrain worker ≈ 0.6 ms a tick, main-thread sim ≈ 2 ms a frame, ~75–150 draw calls, ~230k triangles.
+- **Co-op over the internet is untested.** The session logic is tested between two browser tabs; the PeerJS link (public broker, default STUN/TURN) cannot be reached from the build machine. A client's own machine is not predicted locally, so it responds about 0.15 s late.
+- **Workboat World / SWVR code** could not be copied as-is (Workboat World is Godot; SWVR's controls depend on its vessel state). The interaction rules, grab maths, haptic values, locomotion numbers and network model are ported from SWVR. The avatar is a simple head, body and gloves.
+- **Booms, buckets, blades, beds** are kinematic parts, not Rapier joints with motors. Only the articulation hinge is a real joint.
+- **`diesel.dsp`** was not in the handover; the engine is a new AudioWorklet synth, and all sound is placeholder.
+- A held control lets go if your real hand strays more than 45 cm (the spec asks for a tolerance; SWVR never lets go by distance). Change `REACH.breakAway` in `src/xr/interaction.js`.
+- Not built: teleport locomotion, the WebGPU compute spike, particle slosh inside the bucket, control-ownership hand-off messages beyond "seat taken".
+- The hoe bucket only cuts when its floor is more than ~7° off vertical, so stabbing straight down does nothing until you start to curl.

@@ -37,10 +37,10 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     for (const d of def.controls || []) {
       const c = makeControl(d); m.nodes[d.parent].add(c.root); m.controls[d.name] = c;
       if (d.type === 'joystick') { m.joyFns.add(d.x[0]); m.joyFns.add(d.y[0]); }
-      if (d.type === 'handrail') c.onGrab = () => { if (player.machine !== m) sit(m); };
+      if (d.type === 'handrail') c.onGrab = () => { if (player.machine !== m) S.sit(m); };
       if (d.out === 'recentre') c.onChange = () => { if (c.value) player.recentre(); };
       if (d.out === 'horn') c.onChange = () => { if (c.value) { bus.start(); m.voice.horn(); } };
-      if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) stand(); };
+      if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) S.stand(); };
     }
     inter.add(Object.values(m.controls));
     const placard = def.placard ? [{ parent: m.nodes[def.placard.parent], text: m.def.drive.type === 'tracks' ? 'L TRIGGER: DECELERATOR' : 'R TRIGGER: GO   L TRIGGER: BRAKE', width: 0.3, pos: def.placard.pos, rot: def.placard.rot || [0, 0, 0] }] : [];
@@ -61,7 +61,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     }
   }
   S.stress = null;
-  S.setStress = (v) => { if (v && !S.stress) { for (const m of machines) m.override = {}; S.stress = startStress(game); } else if (!v && S.stress) { S.stress.stop(); S.stress = null; } game.hud.note = v ? 'STRESS: scripted machines + clod fountain' : ''; };
+  S.setStress = (v) => { if (game.remote) return; if (v && !S.stress) { for (const m of machines) m.override = {}; S.stress = startStress(game); } else if (!v && S.stress) { S.stress.stop(); S.stress = null; } game.hud.note = v ? 'STRESS: scripted machines + clod fountain' : ''; };
 
   // dash display: one canvas, shown in whichever cab the player is in
   const dashC = document.createElement('canvas'); dashC.width = 256; dashC.height = 128;
@@ -73,6 +73,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
     c.fillText(`${(Math.abs(m.speed) * 3.6).toFixed(0).padStart(2)} km/h  ${m.gear > 0 ? 'F' : m.gear < 0 ? 'R' : 'N'}${m.inp.park > 0.5 ? '  (P)' : ''}`, 12, 30);
     c.fillText(e.running ? `${e.rpm.toFixed(0)} rpm` : e.crank > 0 ? 'cranking…' : 'ENGINE OFF', 12, 58);
+    if (S.net) { c.fillStyle = S.net.lost ? '#ff7a5a' : '#9fd4ff'; c.font = 'bold 16px monospace'; c.fillText(S.net.lost ? 'LINK LOST' : `ROOM ${S.net.code}`, 150, 58); c.fillStyle = '#ffd25a'; }
     const load = m.payload(), cap = m.rigs.reduce((s, r) => s + r.field.capacity, 0);
     if (cap) { c.fillStyle = '#2b3a40'; c.fillRect(12, 70, 232, 12); c.fillStyle = '#c98a3a'; c.fillRect(12, 70, 232 * clamp(load / cap, 0, 1), 12);
       c.fillStyle = '#9fe08a'; c.font = 'bold 18px monospace'; c.fillText(`LOAD ${load.toFixed(2)} m³`, 12, 108); }
@@ -80,6 +81,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   }
 
   function sit(m) {
+    if (m.driver && m.driver !== 'local') { input.hands.left.pulse(0.8, 80); input.hands.right.pulse(0.8, 80); return; } // the other player is in it
     inter.releaseAll(input.hands); player.sit(m); S.look.yaw = 0; S.look.pitch = -0.15;
     const d = m.def.display || { parent: m.seatDef.node, pos: [m.seatDef.eye[0] + 0.42, m.seatDef.eye[1] - 0.74, m.seatDef.eye[2] - 0.9], rot: [-0.5, -0.25, 0] };
     m.nodes[d.parent].add(dash); dash.position.fromArray(d.pos); dash.rotation.fromArray(d.rot); dash.visible = true; drawDash(m);
@@ -105,6 +107,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       if (left.tracked && left.holding) { if (tracks) inp.decel = left.trigger; else inp.brake = left.trigger; }
       if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && keys.size)) assist(m, left, right);
     }
+    if (m.driver && m.driver !== 'local' && m.remoteInp) Object.assign(inp, m.remoteInp); // co-op: the other player is driving this one
     Object.assign(inp, m.override);
   }
   const setCtl = (m, name, v) => { const c = m.controls[name]; if (c && !c.held && c.value !== v) c.set(v); };
@@ -129,10 +132,12 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   }
 
   game.updaters.push((dt) => {
+    if (game.remote) { if (player.machine) readControls(player.machine); return; } // co-op client: the host simulates; we only read our own controls
     for (const m of machines) readControls(m);
     phys.step(dt);
     for (const m of machines) {
       if (!game.fast) for (const ev of m.events) m.voice.play(ev);
+      if (S.net && S.net.peers.size && m.events.length) { m.netEvents ??= []; if (m.netEvents.length < 20) m.netEvents.push(...m.events.filter((e) => e.type === 'clunk' || e.type === 'clank')); }
       if (player.machine === m) { const amp = Math.min(1, m.digRate * 0.5) + m.bump; if (amp > 0.03) for (const s of ['left', 'right']) if (input.hands[s].holding) input.hands[s].pulse(amp, 30); }
     }
   });
@@ -144,8 +149,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     inter.update(input.hands, fdt);
     const { left, right } = input.hands;
     if (left.primaryPressed) game.hud.toggle();
-    if (left.secondaryPressed && player.seated) stand();
+    if (left.secondaryPressed && player.seated) S.stand();
     if (right.secondaryPressed) player.recentre();
+    if (right.stickPressed && player.seated && !right.holding) { player.horizonLock = player.horizonLock ? 0 : 0.8; game.hud.note = player.horizonLock ? 'HORIZON LOCK ON (right stick click)' : ''; right.pulse(0.5, 40); } // comfort: damp cab roll and pitch
     if (right.primaryPressed && player.machine) { bus.start(); player.machine.voice.horn(); }
     player.update(fdt, input.hands);
     desktopCamera();
@@ -155,6 +161,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (bus.ctx) {
       game.camera.getWorldPosition(_p); game.camera.getWorldDirection(_f); _u.set(0, 1, 0).applyQuaternion(game.camera.getWorldQuaternion(_q));
       bus.setListener(_p, _f, _u);
+      if (map.riverZ) { const rx = clamp(_p.x, terrain.ox, terrain.ox + terrain.nx * terrain.cell); bus.river({ x: rx, y: 0, z: map.riverZ(rx) }); }
       for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } m.voice.drive(s, m.position); }
     }
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
@@ -177,11 +184,12 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   addEventListener('keydown', (e) => {
     if (e.repeat) return; keys.add(e.code); bus.start();
     const m = player.machine, n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
-    if (n >= 0 && machines[n]) sit(machines[n]);
-    else if (e.code === 'KeyQ') { if (m) stand(); }
+    if (n >= 0 && machines[n]) S.sit(machines[n]);
+    else if (e.code === 'KeyQ') { if (m) S.stand(); }
     else if (e.code === 'KeyV') S.chase = !S.chase;
     else if (e.code === 'KeyF') game.hud.toggle();
     else if (e.code === 'KeyX') S.setStress(!S.stress);
+    else if (e.code === 'KeyO') { player.horizonLock = player.horizonLock ? 0 : 0.8; }
     else if (m && e.code === 'Enter') setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyP') setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyT') setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));
@@ -214,7 +222,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('X')} perf HUD · on foot, click the left stick for the stress test.<br>`
+      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock · on foot, click the left stick for the stress test.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · drag to look<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;

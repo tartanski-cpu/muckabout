@@ -369,11 +369,31 @@ export class Machine {
     this.bump *= 0.8;
   }
 
+  // ------------------------------------------------------------------ co-op replication
+  /** Compact state the host sends: body poses, function positions, engine and sound figures. */
+  netState() {
+    const b = []; for (const body of this.bodyList) { const p = body.obj.position, q = body.obj.quaternion; b.push(p.x, p.y, p.z, q.x, q.y, q.z, q.w); }
+    const f = this.fnList.map((x) => x.pos), w = this.wheels.map((x) => x.steer), e = this.engine;
+    return { b, f, w, e: [e.rpm, e.load, e.running ? 1 : 0, e.crank > 0 ? 1 : 0, this.gear, this.speed, this.feel.demand, this.feel.relief, Math.min(1, this.digRate), Math.min(1, this.spillRate)] };
+  }
+  /** Client side: pose this machine from (interpolated) host state instead of simulating it. */
+  applyNet(s, dt) {
+    this.puppet = true;
+    this.bodyList.forEach((body, i) => { body.obj.position.set(s.b[i * 7], s.b[i * 7 + 1], s.b[i * 7 + 2]); body.obj.quaternion.set(s.b[i * 7 + 3], s.b[i * 7 + 4], s.b[i * 7 + 5], s.b[i * 7 + 6]); });
+    this.fnList.forEach((f, i) => { f.pos = s.f[i]; });
+    const e = this.engine; e.rpm = s.e[0]; e.load = s.e[1]; e.running = s.e[2] > 0.5; e.crank = s.e[3] > 0.5 ? 0.5 : 0; this.gear = Math.round(s.e[4]); this.speed = s.e[5];
+    this.net = { demand: s.e[6], relief: s.e[7], dig: s.e[8], spill: s.e[9] };
+    this.poseNodes();
+    this.wheels.forEach((w, i) => { w.steer = s.w[i]; w.spin += this.speed * dt / w.r; w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); });
+    this.root.updateMatrixWorld(true);
+  }
+
   /** Volume held in this machine's containers (m³). */
   payload(name) { return name ? this.containers[name].field.volume() : this.rigs.reduce((s, r) => s + r.field.volume(), 0); }
   /** What the sound and haptics need. */
   audioState() {
-    return { running: this.engine.running, cranking: !this.engine.running && this.engine.crank > 0, rpm: this.engine.rpm, load: this.engine.load, demand: this.feel.demand, relief: this.feel.relief, dig: Math.min(1, this.digRate), spill: Math.min(1, this.spillRate),
+    const n = this.puppet ? this.net : null;
+    return { running: this.engine.running, cranking: !this.engine.running && this.engine.crank > 0, rpm: this.engine.rpm, load: this.engine.load, demand: n ? n.demand : this.feel.demand, relief: n ? n.relief : this.feel.relief, dig: n ? n.dig : Math.min(1, this.digRate), spill: n ? n.spill : Math.min(1, this.spillRate),
       tracks: this.def.drive.type === 'tracks' ? Math.abs(this.speed) : 0, reverse: this.gear < 0 && this.engine.running };
   }
 }

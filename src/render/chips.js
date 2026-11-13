@@ -19,8 +19,8 @@ export class Chips {
     this.lists = new Map(); this.dirty = new Set(); this.near = []; this.nearKey = ''; this.rebuild = true;
     terrain.onChunks((chunks) => { for (const c of chunks) if (this.lists.has(c.id)) this.dirty.add(c.id); });
   }
-  _build(id) { // per chip type: packed [x,y,z,scale,rot,r,g,b]
-    const t = this.t, ci = id % this.cnx, cj = (id / this.cnx) | 0, out = [null, [], [], []];
+  _build(id) { // per chip type: instance matrices and colours, ready to be copied straight into the instanced buffers
+    const t = this.t, ci = id % this.cnx, cj = (id / this.cnx) | 0, tmp = [null, [], [], []];
     for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) {
       const gi = ci * CHUNK + i, gj = cj * CHUNK + j, c = gj * t.nx + gi, m = t.info[c * 4]; if (!m) continue;
       const worked = t.info[c * 4 + 1] > 0, r = hash2(gi, gj, m);
@@ -28,35 +28,37 @@ export class Chips {
       if (m === TOPSOIL && !worked) { dens = 0.11; col = GRASS_COLOR; } else if (m === TOPSOIL) { type = 2; dens = 0.12; }
       if (!type || r > dens) continue;
       const a = hash2(gi, gj, 7), b = hash2(gi, gj, 13), k = 0.7 + 0.5 * a;
-      out[type].push(t.ox + (gi + a - 0.5) * t.cell, t.h[c] + (type === 3 ? 0 : 0.015), t.oz + (gj + b - 0.5) * t.cell, 0.7 + b * 0.9, a * 6.283, col[0] * k, col[1] * k, col[2] * k);
+      tmp[type].push(t.ox + (gi + a - 0.5) * t.cell, t.h[c] + (type === 3 ? 0 : 0.015), t.oz + (gj + b - 0.5) * t.cell, 0.7 + b * 0.9, a * 6.283, col[0] * k, col[1] * k, col[2] * k);
     }
-    return out;
+    return tmp.map((l, type) => {
+      if (!l) return null;
+      const n = l.length / 8, mat = new Float32Array(n * 16), col = new Float32Array(n * 3);
+      for (let q = 0; q < n; q++) {
+        const o = q * 8; _o.position.set(l[o], l[o + 1], l[o + 2]); _o.scale.setScalar(l[o + 3]); _o.rotation.set(type === 3 ? 0 : l[o + 4], l[o + 4], 0); _o.updateMatrix();
+        mat.set(_o.matrix.elements, q * 16); col[q * 3] = l[o + 5]; col[q * 3 + 1] = l[o + 6]; col[q * 3 + 2] = l[o + 7];
+      }
+      return { n, mat, col };
+    });
   }
-  /** Call once per frame. Rebuilds at most `budget` chunk lists. */
-  update(camPos, budget = 2) {
+  /** Call once per frame. Rebuilds at most one chunk's list a frame and refills the instance buffers at most ~8 times a second. */
+  update(camPos) {
     const t = this.t, ci = Math.floor((camPos.x - t.ox) / t.cell / CHUNK), cj = Math.floor((camPos.z - t.oz) / t.cell / CHUNK);
-    const key = ci + ',' + cj;
+    const key = ci + ',' + cj; this.frame = (this.frame || 0) + 1;
     if (key !== this.nearKey) {
       this.nearKey = key; this.near.length = 0; const rc = Math.ceil(RANGE / (CHUNK * t.cell));
       for (let b = cj - rc; b <= cj + rc; b++) for (let a = ci - rc; a <= ci + rc; a++) if (a >= 0 && b >= 0 && a < this.cnx && b < this.cnz) this.near.push(b * this.cnx + a);
       for (const id of [...this.lists.keys()]) if (!this.near.includes(id)) this.lists.delete(id);
       this.rebuild = true;
     }
-    for (const id of this.near) {
-      if (budget <= 0) break;
-      if (!this.lists.has(id) || this.dirty.has(id)) { this.lists.set(id, this._build(id)); this.dirty.delete(id); this.rebuild = true; budget--; }
-    }
-    if (!this.rebuild) return;
+    for (const id of this.near) if (!this.lists.has(id) || this.dirty.has(id)) { this.lists.set(id, this._build(id)); this.dirty.delete(id); this.rebuild = true; break; }
+    if (!this.rebuild || this.frame % 9) return;
     this.rebuild = false;
     for (let type = 1; type <= 3; type++) {
-      const mesh = this.meshes[type], col = mesh.instanceColor.array; let n = 0;
+      const mesh = this.meshes[type], M = mesh.instanceMatrix.array, C = mesh.instanceColor.array; let n = 0;
       for (const id of this.near) {
-        const l = this.lists.get(id)?.[type]; if (!l) continue;
-        for (let q = 0; q < l.length && n < CAP; q += 8, n++) {
-          _o.position.set(l[q], l[q + 1], l[q + 2]); _o.scale.setScalar(l[q + 3]); _o.rotation.set(type === 3 ? 0 : l[q + 4], l[q + 4], 0);
-          _o.updateMatrix(); mesh.setMatrixAt(n, _o.matrix);
-          col[n * 3] = l[q + 5]; col[n * 3 + 1] = l[q + 6]; col[n * 3 + 2] = l[q + 7];
-        }
+        const l = this.lists.get(id)?.[type]; if (!l || !l.n) continue;
+        const take = Math.min(l.n, CAP - n); if (take <= 0) break;
+        M.set(take === l.n ? l.mat : l.mat.subarray(0, take * 16), n * 16); C.set(take === l.n ? l.col : l.col.subarray(0, take * 3), n * 3); n += take;
       }
       mesh.count = n; mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true;
     }

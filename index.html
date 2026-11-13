@@ -12,6 +12,7 @@
   #help b { color: #ffd25a; } #help h1 { font-size: 16px; margin: 0 0 6px; letter-spacing: .04em; }
   #help .k { display: inline-block; min-width: 1.4em; padding: 0 4px; border-radius: 4px; background: #2b3a40; text-align: center; font-family: monospace; }
   #help a { color: #9fd4ff; } #toggle { cursor: pointer; float: right; opacity: .7; }
+  #coop { margin-top: 8px; padding-top: 8px; border-top: 1px solid #3a4a50; } #coop button, #coop input { font: inherit; padding: 2px 8px; border-radius: 6px; border: 1px solid #ffd25a; background: #2b3a40; color: #f3ead8; }
   #status { position: fixed; left: 12px; bottom: 12px; color: #10161a; font: 12px monospace; background: rgba(255,255,255,.6); padding: 4px 8px; border-radius: 6px; }
 </style>
 </head>
@@ -20,6 +21,7 @@
   <span id="toggle" onclick="this.parentNode.style.display='none'">✕</span>
   <h1>MUCKSHIFT</h1>
   <div id="helpBody">Loading…</div>
+  <div id="coop"><b>Two players:</b> <button id="hostBtn">Host a game</button> or <input id="joinCode" size="5" maxlength="5" inputmode="numeric" placeholder="room"> <button id="joinBtn">Join</button> <span id="netStatus"></span></div>
 </div>
 <div id="status"></div>
 <script type="module" src="/src/main.js"></script>

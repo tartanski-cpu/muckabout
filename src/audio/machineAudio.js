@@ -28,6 +28,19 @@ export class AudioBus {
     ac.audioWorklet?.addModule(processorUrl()).then(() => { this.workletReady = true; }).catch((e) => console.warn('diesel worklet failed to load', e));
   }
   get running() { return !!this.ctx && this.ctx.state === 'running'; }
+  /** River ambience: a soft wash placed at the nearest point of the river. Call every frame with that point. */
+  river(pos) {
+    const ac = this.ctx; if (!ac) return;
+    if (!this._river) {
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100;
+      const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 180;
+      const g = ac.createGain(); g.gain.value = 0.22;
+      const p = ac.createPanner(); p.panningModel = 'equalpower'; p.distanceModel = 'inverse'; p.refDistance = 5; p.rolloffFactor = 1.4; p.maxDistance = 150;
+      this.loopNoise().connect(hp); hp.connect(lp); lp.connect(g); g.connect(p); p.connect(this.master); this._river = p;
+    }
+    const p = this._river, t = ac.currentTime;
+    if (p.positionX) { p.positionX.setTargetAtTime(pos.x, t, 0.1); p.positionY.setTargetAtTime(pos.y, t, 0.1); p.positionZ.setTargetAtTime(pos.z, t, 0.1); } else p.setPosition(pos.x, pos.y, pos.z);
+  }
   loopNoise() { const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true; s.start(); return s; }
   /** Listener pose from camera world position and forward/up vectors. */
   setListener(p, f, u) {

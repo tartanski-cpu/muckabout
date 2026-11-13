@@ -3,6 +3,7 @@
 import { TerrainCore, CHUNK } from './core.js';
 import { MAPS } from './maps.js';
 import { MATERIALS, ROCK } from './materials.js';
+import { applyTerrainDelta, decodeWater } from '../net/terrainDelta.js';
 
 export class TerrainClient {
   /** @param {{map:string, mode?:'inline'|'worker', water?:boolean}} o */
@@ -19,6 +20,12 @@ export class TerrainClient {
   }
 
   async init() {
+    if (this.mode === 'remote') { // co-op client: the host owns the terrain; build the same starting map, then only apply its deltas
+      const core = new TerrainCore(this.cfg); this.map.build(core);
+      if (this.wantWater) { const w = await import('./water.js'); const wat = w.attachWater(core, this.map); core.collectDirty(); core.markAllDirty(); this._apply({ n: 0, results: [], chunks: core.collectDirty(), water: wat ? { ...wat.pack0() } : null, stats: this.stats }); }
+      else this._apply({ n: 0, results: [], chunks: core.collectDirty(), water: null, stats: this.stats });
+      return this;
+    }
     if (this.mode === 'worker') {
       this.worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
       await new Promise((res) => {
@@ -50,6 +57,7 @@ export class TerrainClient {
 
   /** Advance the terrain one fixed step. */
   tick() {
+    if (this.mode === 'remote') { this.cmds.length = 0; this.queuedDep = 0; return; }
     const cmds = this.cmds; this.cmds = [];
     const n = ++this.tickNo;
     if (this.queuedDep > 0) { this.sentDep.set(n, this.queuedDep); this.queuedDep = 0; }
@@ -89,12 +97,22 @@ export class TerrainClient {
     if (m.chunks.length) for (const l of this.listeners) l(m.chunks);
     if (m.water) { this.water = m.water; for (const l of this.waterListeners) l(m.water); }
   }
+  /** Co-op client: apply a terrain delta / water message from the host. */
+  applyRemote(bytes) { const chunks = applyTerrainDelta(this, bytes); if (chunks.length) for (const l of this.listeners) l(chunks); }
+  applyRemoteWater(bytes) {
+    const w = this.water; if (!w) return;
+    decodeWater(bytes, w);
+    const k = Math.round(w.cell / this.cell), j0 = Math.round((w.oz - this.oz) / w.cell), h = this.h, nx = this.nx; // bed from our own copy of the ground
+    for (let j = 0; j < w.nz; j++) for (let i = 0; i < w.nx; i++) { const t = (j0 + j) * k * nx + i * k; w.bed[j * w.nx + i] = (h[t] + h[t + 1] + h[t + nx] + h[t + nx + 1]) * 0.25; }
+    for (const l of this.waterListeners) l(w);
+  }
   /** Take (and clear) the latest result for a cut id. */
   takeResult(id) { const r = this.results.get(id); if (r) this.results.delete(id); return r; }
   onChunks(fn) { this.listeners.push(fn); }
   onWater(fn) { this.waterListeners.push(fn); }
 
   audit() {
+    if (this.mode === 'remote') return Promise.resolve({ ground: 0, byMat: [], lost: 0, compacted: 0, washed: 0, total: 0 });
     if (this.mode !== 'worker') return Promise.resolve(this.core.audit());
     return new Promise((res) => { const id = ++this._auditId; this._audits.set(id, res); this.worker.postMessage({ t: 'audit', id }); });
   }
