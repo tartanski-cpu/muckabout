@@ -2,4 +2,5 @@
 import loader from './loader.json';
 import dumper from './dumper.json';
 import dozer from './dozer.json';
-export const DEFS = { loader, dumper, dozer };
+import backhoe from './backhoe.json';
+export const DEFS = { loader, dumper, dozer, backhoe };

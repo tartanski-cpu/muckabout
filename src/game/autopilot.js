@@ -100,3 +100,21 @@ export function dozerCycle({ a, b, depth = -0.2 }) {
     (m) => { setFn(m, 'lift', 0.3); return driveTo(m, a[0], a[1], { speed: 2.6, reverse: true }) < 1.5; },
   ];
 }
+
+/** Backhoe: legs down, then dig a trench behind the machine in thin bites, swinging each bucketful out to the side. */
+export function backhoeCycle({ swing = 1.1, bite = 0.35 } = {}) {
+  const teeth = (m) => { m.nodes.hbucket.localToWorld(_p.set(0, 0, 0.75)); return _p.y - m.terrain.heightAt(_p.x, _p.z); };
+  const pose = (m, target) => { let ok = true; for (const k in target) ok = setFn(m, k, target[k]) && ok; return ok; };
+  const still = (m) => { for (const k of ['slew', 'hoeBoom', 'dipper', 'hoeBucket']) m.override[k] = 0; };
+  return [
+    startUp,
+    (m) => { m.override.park = 1; m.override.swivel = 1; const a = setFn(m, 'stabL', 1.15, 0.02), b = setFn(m, 'stabR', 1.15, 0.02); return a && b; },
+    (m) => pose(m, { hoeBoom: 0.5, dipper: 1.0, hoeBucket: 0.6, slew: 0 }),                       // reach out, teeth down
+    (m, t) => { still(m); m.override.hoeBoom = -1; if (teeth(m) < -bite || m.fn.hoeBoom.pos <= m.fn.hoeBoom.min + 0.01 || t > 6) { m.override.hoeBoom = 0; return true; } return false; },
+    (m) => pose(m, { dipper: 2.2, hoeBucket: 1.2 }),                                               // crowd in, curling
+    (m) => pose(m, { hoeBoom: 0.9, hoeBucket: 2.3 }),                                              // lift, cupped
+    (m) => pose(m, { slew: swing }),
+    (m) => pose(m, { hoeBucket: 0.0, dipper: 1.6 }),                                               // tip
+    (m) => pose(m, { slew: 0, hoeBucket: 0.6 }),
+  ];
+}

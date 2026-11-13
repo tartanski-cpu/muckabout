@@ -150,3 +150,39 @@ describe('bulldozer', () => {
     expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-4);
   }, 60000);
 });
+
+describe('backhoe loader', () => {
+  it('drives on its front-steer wheels', async () => {
+    const r = await rig('backhoe', { x: 10, z: 8 });
+    r.step(120); expect(r.m.wheels.every((w) => w.grounded)).toBe(true);
+    start(r.m); r.step(80);
+    const h0 = r.m.heading; r.m.inp.shuttle = 1; r.m.inp.accel = 0.6; r.m.inp.steer = 1; r.step(240);
+    let dh = r.m.heading - h0; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    expect(dh).toBeLessThan(-0.6); expect(r.m.speed).toBeGreaterThan(2);
+    expect(r.m.bodyList[0].obj.matrixWorld.elements[5]).toBeGreaterThan(0.98);
+  });
+  it('swivels the seat, plants its stabilisers and digs a trench', async () => {
+    const { Script, backhoeCycle } = await import('../src/game/autopilot.js');
+    const r = await rig('backhoe', { x: 10, z: 6 }), m = r.m, T = (await import('three'));
+    r.step(120); const v0 = await r.total(), z0 = m.position.z;
+    const s = new Script(m, backhoeCycle(), { loop: true });
+    const drive = () => { s.step(1 / 60); Object.assign(m.inp, m.override); };
+    let n = 0; while (s.i < 2 && n++ < 2000) r.step(1, drive);
+    while (s.i === 1 && n++ < 3000) r.step(1, drive);
+    expect(m.fn.swivel.pos).toBeGreaterThan(3.1);                                   // seat faces the rear controls
+    const fwd = new T.Vector3(0, 0, -1).applyQuaternion(m.seat.getWorldQuaternion(new T.Quaternion()));
+    expect(fwd.z).toBeGreaterThan(0.99);
+    expect(m.wheels[0].N + m.wheels[1].N).toBeLessThan(1000);                       // rear wheels are off the ground…
+    expect(m.contacts[0].N + m.contacts[1].N).toBeGreaterThan(20000);               // …the legs carry the back end
+    let peak = 0; while (s.cycles < 9 && n++ < 60 * 400) { r.step(1, drive); peak = Math.max(peak, m.payload('hoe')); }
+    expect(s.cycles).toBe(9); expect(peak).toBeGreaterThan(0.2);
+    m.override = {}; for (const k in m.inp) if (m.fn[k]) m.inp[k] = 0; r.step(240);
+    let depth = 0; for (let d = 2.5; d < 6; d += 0.25) depth = Math.max(depth, -r.terrain.heightAt(10, z0 + d) + r.terrain.heightAt(6, z0 + d));
+    let heap = 0; for (let d = 1; d < 5; d += 0.25) for (let x = 11; x < 15; x += 0.25) heap = Math.max(heap, r.terrain.heightAt(x, z0 + d) - r.terrain.heightAt(6, z0 + d));
+    console.log('backhoe trench depth', depth.toFixed(2), 'spoil heap', heap.toFixed(2), 'drift', (m.position.z - z0).toFixed(2), 'steps', n);
+    expect(depth).toBeGreaterThan(0.5); expect(heap).toBeGreaterThan(0.25);
+    expect(Math.abs(m.position.z - z0)).toBeLessThan(0.6);
+    expect(m.bodyList[0].obj.matrixWorld.elements[5]).toBeGreaterThan(0.97);
+    expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-4);
+  }, 60000);
+});

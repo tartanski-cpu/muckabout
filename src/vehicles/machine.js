@@ -196,7 +196,7 @@ export class Machine {
     for (const f of this.fnList) {
       const cmd = clamp(inp[f.input ?? f.name] || 0, -1, 1) * (f.sign ?? 1);
       f.cmd = cmd;
-      let rate = f.rate * flow;
+      let rate = f.manual ? f.rate : f.rate * flow; // a seat swivels by hand; everything else needs oil flow
       if (f.loadSlows && cmd * f.loadSlows > 0) rate /= 1 + this.digRate * 1.5; // forcing the tool into the ground is slower
       f.pos = clamp(f.pos + cmd * rate * dt, f.min, f.max);
     }
@@ -320,7 +320,7 @@ export class Machine {
     for (const t of this.tools) {
       if (t.rate <= 1e-4) continue;
       const sp = Math.hypot(t.vel.x, t.vel.z); if (sp < 0.05) continue;
-      const F = Math.min(t.rate * this.mass * 2.2, this.mass * 7);
+      const F = Math.min(t.rate * this.mass * 2.2, t.def.maxForce ?? this.mass * 7);
       t.body.rb.addForce({ x: -t.vel.x / sp * F, y: 0, z: -t.vel.z / sp * F }, true);
     }
     // soft fence at the edge of the map
@@ -349,7 +349,8 @@ export class Machine {
     let dig = 0;
     for (const t of this.tools) {
       const c = t.container, m = t.node.matrixWorld;
-      _up.set(m.elements[4], m.elements[5], m.elements[6]).normalize();
+      // a container only takes soil while it is the right way up
+      const ce = c ? c.obj.matrixWorld.elements : m.elements; _up.set(ce[4], ce[5], ce[6]).normalize();
       const cap = c && _up.y > 0.2 ? c.field.free() : 0;
       t.node.getWorldPosition(_p);
       if (t.has) t.vel.copy(_p).sub(t.prev).divideScalar(dt); t.prev.copy(_p); t.has = true;

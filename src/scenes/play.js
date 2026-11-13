@@ -78,7 +78,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     for (const c of Object.values(m.controls)) {
       const d = c.def;
       if (d.type === 'joystick') { inp[d.x[0]] += c.value.x * d.x[1]; inp[d.y[0]] += c.value.y * d.y[1]; }
-      else if (d.out && d.type !== 'button' && d.type !== 'handrail') inp[d.out] = c.value * (d.sign ?? 1);
+      else if (d.out && d.type !== 'button' && d.type !== 'handrail') inp[d.out] = d.map ? d.map[0] + c.value * (d.map[1] - d.map[0]) : c.value * (d.sign ?? 1);
     }
     inp.accel = 0; inp.brake = 0; inp.decel = 0;
     if (player.machine === m) {
@@ -95,7 +95,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   /** Thumbstick assist (dash toggle, off by default) and the desktop keyboard: both drive without the levers. */
   function assist(m, left, right) {
     const inp = m.inp, vr = game.renderer.xr.isPresenting;
-    let fwd = k('KeyW') - k('KeyS'), turn = k('KeyD') - k('KeyA');
+    const rear = m.fn.swivel && m.fn.swivel.pos > 1.5; // backhoe facing its rear controls: the keys work the hoe instead of driving
+    let fwd = rear ? 0 : k('KeyW') - k('KeyS'), turn = rear ? 0 : k('KeyD') - k('KeyA');
     if (vr && left.tracked && !left.holding) { const [x, y] = stickOf(left); fwd += y; turn += x; }
     fwd = clamp(fwd, -1, 1); turn = clamp(turn, -1, 1);
     if (m.def.drive.type === 'tracks') {
@@ -106,7 +107,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       if (turn || !m.controls.steer?.held) { inp.steer = turn; setCtl(m, 'steer', turn); }
       inp.brake = Math.max(inp.brake, k('Space'));
     }
-    for (const [fn, pos, neg] of m.def.keys || []) { const v = k(pos) - k(neg); if (v) inp[fn] = v; }
+    for (const [fn, pos, neg] of (rear ? m.def.keysRear : m.def.keys) || []) { const v = k(pos) - k(neg); if (v) inp[fn] = v; }
     if (vr && right.tracked && !right.holding && m.def.assistStick) { const [x, y] = stickOf(right), a = m.def.assistStick; if (x) inp[a.x[0]] = x * a.x[1]; if (y) inp[a.y[0]] = y * a.y[1]; }
   }
 
