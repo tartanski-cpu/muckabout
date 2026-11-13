@@ -39,6 +39,13 @@ The stress test fountains soil out of the heap to hold the clod count at its 1,5
 
 Each milestone ends with a stress run on the headset: enter VR, click the left stick, read the wrist.
 
+## Sound
+
+Placeholder, fully synthesised (`src/audio/`):
+
+- **Engine**: a six-cylinder diesel voice in an AudioWorklet. Each firing excites a bank of exhaust resonances, with injector clatter on top; it revs with the throttle and lugs (louder, brighter, slower) under hydraulic or digging load.
+- **Hydraulics**: a valve *clunk* when the boom or bucket lever leaves or returns to neutral, a ringing *clank* (plus a haptic thump) when a cylinder hits its end stop, a relief-valve squeal while a lever is held against the stop, and pump whine that follows engine speed.
+
 ## Layout
 
 ```
@@ -47,6 +54,7 @@ src/main.js             entry point
 src/poc/loader.js       the proof of concept (feel and tuning reference, not the architecture)
 src/harness/perf.js     per-subsystem frame timers (no DOM, usable in workers and tests)
 src/harness/wristHud.js wrist / desktop perf panel
+src/audio/              diesel worklet, machine sounds, hydraulic clunk/clank event detection
 tests/                  vitest unit tests
 tests/e2e/poc.mjs       scripted headless test using the fast-forward __game.sim() hook
 docs/mvp-spec.md        MVP spec and milestones

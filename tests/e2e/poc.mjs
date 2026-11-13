@@ -41,7 +41,7 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
 mkdirSync('shots', { recursive: true });
 const server = await preview({ preview: { port: 4179, strictPort: false }, logLevel: 'warn' });
 const url = server.resolvedUrls.local[0];
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 760 } });
   const errs = [];
@@ -85,6 +85,17 @@ try {
   check(v2.airborne === 0, 'all clods landed after stress');
   const drift2 = Math.abs(v2.total - v0.total) / v0.total;
   check(drift2 < 1e-3, `volume conserved after stress: ${v2.total.toFixed(3)} m³ (${(drift2 * 100).toExponential(1)} %)`);
+
+  // Hydraulic feel events fired during the cycle, and the engine voice renders real sound.
+  const feel = await page.evaluate(() => __game.feel.counts);
+  check(feel.clunk >= 4 && feel.clank >= 2, `hydraulic clunks and clanks fired (${feel.clunk} clunks, ${feel.clank} clanks)`);
+  const idle = await page.evaluate(() => __game.renderEngine({ seconds: 1, rpm: 800, load: 0 }));
+  const work = await page.evaluate(() => __game.renderEngine({ seconds: 1, rpm: 2000, load: 0.8 }));
+  check(idle.finite && work.finite && idle.rms > 0.02 && work.peak <= 1, `engine voice renders (idle rms ${idle.rms.toFixed(3)}, working rms ${work.rms.toFixed(3)}, peak ${work.peak.toFixed(2)})`);
+  check(work.rms > idle.rms * 1.2, 'engine is louder under load');
+  await page.evaluate(() => { __game.startAudio(); __game.audio.clank(1); __game.audio.clunk(1); });
+  await page.waitForTimeout(500);
+  check(await page.evaluate(() => !!__game.audio.engine), 'live audio graph started with the diesel worklet');
 
   // Perf HUD is live.
   await page.evaluate(() => __game.pause(false));

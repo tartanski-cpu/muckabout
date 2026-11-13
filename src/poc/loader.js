@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { PerfMonitor } from '../harness/perf.js';
 import { WristHud } from '../harness/wristHud.js';
+import { MachineAudio, renderEngine } from '../audio/machineAudio.js';
+import { HydraulicFeel } from '../audio/hydraulicFeel.js';
 
 const perf = new PerfMonitor(['input', 'vehicle', 'dig', 'clods', 'relax', 'upload', 'render']);
 const wristHud = new WristHud(perf);
@@ -655,45 +657,26 @@ function haptic(intensity, ms) {
   }
 }
 
-// ------------------------------------------------------------------ audio (procedural)
-let AC = null, eng = null;
-function startAudio() {
-  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
-  try {
-    AC = new (window.AudioContext || window.webkitAudioContext)();
-    const master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
-    const o1 = AC.createOscillator(); o1.type = 'sawtooth';
-    const o2 = AC.createOscillator(); o2.type = 'square';
-    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
-    const g = AC.createGain(); g.gain.value = 0.18;
-    o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(master); o1.start(); o2.start();
-    const hy = AC.createOscillator(); hy.type = 'triangle'; const hg = AC.createGain(); hg.gain.value = 0;
-    hy.connect(hg); hg.connect(master); hy.start();
-    const nb = AC.createBuffer(1, AC.sampleRate, AC.sampleRate), nd = nb.getChannelData(0);
-    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
-    const ns = AC.createBufferSource(); ns.buffer = nb; ns.loop = true;
-    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 0.6;
-    const ng = AC.createGain(); ng.gain.value = 0;
-    ns.connect(bp); bp.connect(ng); ng.connect(master); ns.start();
-    eng = { o1, o2, lp, hy, hg, ng, master };
-  } catch (e) { AC = null; }
+// ------------------------------------------------------------------ audio + hydraulic feel (src/audio/)
+const audio = new MachineAudio({ cylinders: 6, idleRpm: 800, maxRpm: 2200 });
+const feel = new HydraulicFeel();
+const hydFns = [
+  { name: 'boom', cmd: 0, pos: 0, min: ALPHA_MIN, max: ALPHA_MAX },
+  { name: 'bucket', cmd: 0, pos: 0, min: BETA_MIN, max: BETA_MAX },
+];
+let fastForward = false;
+function startAudio() { audio.start(); }
+function horn() { audio.start(); audio.horn(); }
+function hydraulicFeel(dt, inp) { // valve clunks and end-stop clanks: sound + a thump in the hands
+  hydFns[0].cmd = inp.boom; hydFns[0].pos = veh.alpha;
+  hydFns[1].cmd = inp.bucket; hydFns[1].pos = veh.beta;
+  for (const e of feel.update(dt, hydFns)) {
+    bump = Math.max(bump, e.type === 'clank' ? 0.3 + 0.4 * e.strength : 0.12 * e.strength);
+    if (!fastForward) audio.play(e);
+  }
 }
-function updateAudio(inp) {
-  if (!eng) return;
-  const rpm = 0.25 + Math.abs(inp.throttle) * 0.45 + (Math.abs(inp.boom) + Math.abs(inp.bucket)) * 0.2 + Math.min(digRate, 1) * 0.25;
-  const t = AC.currentTime;
-  eng.o1.frequency.setTargetAtTime(28 + rpm * 70, t, 0.15);
-  eng.o2.frequency.setTargetAtTime(56 + rpm * 140, t, 0.15);
-  eng.lp.frequency.setTargetAtTime(250 + rpm * 700, t, 0.15);
-  const hyd = Math.max(Math.abs(inp.boom), Math.abs(inp.bucket));
-  eng.hy.frequency.setTargetAtTime(320 + hyd * 160 + Math.min(digRate, 1) * 80, t, 0.1);
-  eng.hg.gain.setTargetAtTime(hyd * 0.04, t, 0.08);
-  eng.ng.gain.setTargetAtTime(Math.min(1, digRate * 0.9 + spillRate * 0.5) * 0.5, t, 0.06);
-}
-function horn() {
-  startAudio(); if (!AC) return;
-  const t = AC.currentTime, g = AC.createGain(); g.gain.value = 0.12; g.connect(eng.master);
-  for (const f of [330, 415]) { const o = AC.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(g); o.start(t); o.stop(t + 0.45); }
+function updateAudio(dt, inp) {
+  audio.update(dt, { throttle: Math.abs(inp.throttle), demand: feel.demand, relief: feel.relief, dig: Math.min(digRate, 1), spill: Math.min(spillRate, 1) });
 }
 
 // ------------------------------------------------------------------ HUD
@@ -744,6 +727,7 @@ function step(dt, inp) {
     const v = veh.v; Object.assign(veh, prev); veh.v = -v * 0.15; bump = Math.max(bump, Math.min(1, Math.abs(v) * 0.4 + 0.3));
     applyTransforms();
   }
+  hydraulicFeel(dt, inp);
   perf.end('vehicle');
   perf.begin('dig');
   const moved = digBucket(dt);
@@ -791,7 +775,7 @@ function loop() {
   perf.end('upload');
   // feel
   haptic(Math.min(1, digRate * 0.5) + bump, 30); bump *= 0.8;
-  updateAudio(inp);
+  updateAudio(dt, inp);
   hudT += dt; if (hudT > 0.25) { hudT = 0; drawHud(fps); if (overlay) overlay.textContent = `${fps} fps · bucket ${fill.toFixed(2)} m³ · truck ${bedVol.toFixed(1)} m³ · clods ${pCount}`; }
   // desktop camera
   if (!renderer.xr.isPresenting) {
@@ -819,5 +803,5 @@ renderer.setAnimationLoop(loop);
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
 });
-window.__game = { sim(n, f) { for (let i = 0; i < n; i++) { const inp = { throttle: 0, boom: 0, bucket: 0 }; f && f(inp, simTime); simTime += 1 / 72; step(1 / 72, inp); } flushTerrain(); perf.discard(); }, veh, get fill() { return fill; }, get bedVol() { return bedVol; }, get pCount() { return pCount; }, H, AREA, get lostVol() { return lostVol; }, setChase: (v) => { chase = v; }, setLook: (y, p) => { lookYaw = y; lookPitch = p; },
-  volume, perf, wristHud, setStress, pause: (v) => { paused = v; } };
+window.__game = { sim(n, f) { fastForward = true; for (let i = 0; i < n; i++) { const inp = { throttle: 0, boom: 0, bucket: 0 }; f && f(inp, simTime); simTime += 1 / 72; step(1 / 72, inp); } flushTerrain(); perf.discard(); fastForward = false; }, veh, get fill() { return fill; }, get bedVol() { return bedVol; }, get pCount() { return pCount; }, H, AREA, get lostVol() { return lostVol; }, setChase: (v) => { chase = v; }, setLook: (y, p) => { lookYaw = y; lookPitch = p; },
+  volume, perf, wristHud, audio, feel, renderEngine, startAudio, setStress, pause: (v) => { paused = v; } };
