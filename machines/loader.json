@@ -9,7 +9,7 @@
   "functions": [{"name": "boom", "min": -0.715, "max": 0.95, "rate": 0.75, "init": -0.4, "loadSlows": -1}, {"name": "bucket", "min": -1.15, "max": 0.62, "rate": 1.5, "init": 0.3}],
   "nodes": [{"name": "boom", "parent": "front", "pos": [0, 2.25, -1.85], "axis": "x", "angle": [["boom", 1]]}, {"name": "bucket", "parent": "boom", "pos": [0, 0, -3.2], "axis": "x", "angle": [["bucket", 1], ["boom", -1]]}],
   "nodeColliders": [{"node": "bucket", "size": [2.4, 0.9, 1.3], "pos": [0, 0.15, -0.5]}],
-  "contacts": [{"node": "bucket", "pos": [-1.2, -0.3, -1.15], "k": 500000}, {"node": "bucket", "pos": [1.2, -0.3, -1.15], "k": 500000}, {"node": "bucket", "pos": [-1.2, -0.3, 0.15], "k": 500000}, {"node": "bucket", "pos": [1.2, -0.3, 0.15], "k": 500000}, {"node": "rear", "pos": [0, 0.45, 1.9]}, {"node": "rear", "pos": [0, 0.45, -1.0]}, {"node": "front", "pos": [0, 0.45, -2.0]}],
+  "contacts": [{"node": "bucket", "pos": [-1.2, -0.2, -1.15], "k": 500000}, {"node": "bucket", "pos": [1.2, -0.2, -1.15], "k": 500000}, {"node": "bucket", "pos": [-1.2, -0.2, 0.15], "k": 500000}, {"node": "bucket", "pos": [1.2, -0.2, 0.15], "k": 500000}, {"node": "rear", "pos": [0, 0.45, 1.9]}, {"node": "rear", "pos": [0, 0.45, -1.0]}, {"node": "front", "pos": [0, 0.45, -2.0]}],
   "tools": [{"name": "bucket", "node": "bucket", "container": "bucket", "ahead": 0.35, "corners": [[-1.2, -0.275, 0.15], [1.2, -0.275, 0.15], [-1.2, -0.275, -1.15], [1.2, -0.275, -1.15]]}],
   "containers": [{"name": "bucket", "node": "bucket", "pos": [0, -0.275, -0.5], "nx": 12, "nz": 6, "cs": 0.2, "capacity": 2.2, "walls": {"zn": 0, "zp": 1.1, "xn": 0.7, "xp": 0.7}}],
   "seat": {"node": "rear", "eye": [0, 2.86, -0.3]},

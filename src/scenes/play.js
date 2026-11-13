@@ -11,6 +11,7 @@ import { Player } from '../xr/player.js';
 import { makeControl, labelPlate } from '../xr/controls/index.js';
 import { AudioBus, MachineVoice, renderEngine } from '../audio/machineAudio.js';
 import { clamp } from '../util/rng.js';
+import * as autopilot from '../game/autopilot.js';
 
 const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -22,7 +23,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   const S = { phys, input, inter, hands, player, bus, machines, keys, chase: false, look: { yaw: 0, pitch: -0.15 }, renderEngine };
 
   for (const kind of kinds) {
-    const def = DEFS[kind], [x, z, yaw] = map.spawn[kind] || [0, 0, 0];
+    const def = DEFS[kind]; if (!map.spawn[kind]) continue;
+    const [x, z, yaw] = map.spawn[kind];
     const m = phys.add(new Machine(def, phys, terrain, { id: kind, x, z, yaw }));
     scene.add(m.root);
     for (const c of Object.values(m.containers)) game.addContainer(c.rig, c.obj);
@@ -37,10 +39,11 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) stand(); };
     }
     inter.add(Object.values(m.controls));
+    m.controlRoots = Object.values(m.controls).map((c) => c.root);
     if (def.placard) { const pl = labelPlate('R TRIGGER: GO   L TRIGGER: BRAKE', 0.3); pl.position.fromArray(def.placard.pos); if (def.placard.rot) pl.rotation.fromArray(def.placard.rot); m.nodes[def.placard.parent].add(pl); }
     machines.push(m);
   }
-  game.machines = machines; game.play = S;
+  game.machines = machines; game.play = S; game.autopilot = autopilot;
   game.machine = (id) => machines.find((m) => m.id === id);
 
   // dash display: one canvas, shown in whichever cab the player is in
@@ -75,7 +78,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     for (const c of Object.values(m.controls)) {
       const d = c.def;
       if (d.type === 'joystick') { inp[d.x[0]] += c.value.x * d.x[1]; inp[d.y[0]] += c.value.y * d.y[1]; }
-      else if (d.out && d.type !== 'button' && d.type !== 'handrail') inp[d.out] = c.value;
+      else if (d.out && d.type !== 'button' && d.type !== 'handrail') inp[d.out] = c.value * (d.sign ?? 1);
     }
     inp.accel = 0; inp.brake = 0; inp.decel = 0;
     if (player.machine === m) {
@@ -137,6 +140,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } m.voice.drive(s, m.position); }
     }
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
+    // cab controls and their labels are many small draw calls: only draw them for machines within reach
+    if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
   });
 

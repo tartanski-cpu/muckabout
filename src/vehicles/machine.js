@@ -6,6 +6,7 @@
 //   tools     cutting edges and containers riding on nodes
 // The same Object3D tree is used for simulation transforms and for drawing.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CutTool, ContainerRig } from '../terrain/tool.js';
 import { ContainerField } from '../terrain/containers.js';
 import { MATERIALS, NMAT } from '../terrain/materials.js';
@@ -18,22 +19,31 @@ const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n =
 const _na = [0, 1, 0];
 const AX = { x: V().set(1, 0, 0), y: V().set(0, 1, 0), z: V().set(0, 0, 1) };
 
-const MATS = {};
-function mat(name) {
-  if (MATS[name]) return MATS[name];
-  const c = { yellow: 0xf0b21a, dark: 0x3a3a3c, tyre: 0x1f1f20, hub: 0xd9a015, steel: 0x6d6e70, seat: 0x2b2b2b, red: 0xc9381e, orange: 0xd9541e, green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a }[name] ?? 0xff00ff;
-  if (name === 'glass') return (MATS.glass = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false }));
-  return (MATS[name] = new THREE.MeshLambertMaterial({ color: c, flatShading: name === 'tyre' }));
-}
-function wheelMesh(r, w) {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 14).rotateZ(Math.PI / 2), mat('tyre')));
-  g.add(new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, w + 0.02, 10).rotateZ(Math.PI / 2), mat('hub')));
-  for (let n = 0; n < 7; n++) { // lugs so you can see it turning
-    const a = (n / 7) * Math.PI * 2, lug = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.09, 0.16), mat('tyre'));
-    lug.position.set(0, Math.cos(a) * r, Math.sin(a) * r); lug.rotation.x = -a; g.add(lug);
-  }
+// Draw calls are the main cost on a Quest (each is drawn once per eye), so a machine's boxes are merged into one
+// vertex-coloured mesh per moving part instead of one mesh per box.
+const COLORS = { yellow: 0xf0b21a, dark: 0x3a3a3c, tyre: 0x1f1f20, hub: 0xd9a015, steel: 0x6d6e70, seat: 0x2b2b2b, red: 0xc9381e, orange: 0xd9541e, green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a };
+const PAINT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
+const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
+/** Geometry placed at pos/rot and painted one colour, ready for merging. */
+function part(geo, color, pos, rot) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  _mm.makeRotationFromEuler(_me.set(rot ? rot[0] : 0, rot ? rot[1] : 0, rot ? rot[2] : 0)).setPosition(pos[0], pos[1], pos[2]); g.applyMatrix4(_mm);
+  _mc.setHex(COLORS[color] ?? 0xff00ff);
+  const n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = _mc.r; col[i * 3 + 1] = _mc.g; col[i * 3 + 2] = _mc.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv');
   return g;
+}
+let wheelGeoCache = new Map();
+function wheelMesh(r, w) {
+  const key = r + '/' + w; let geo = wheelGeoCache.get(key);
+  if (!geo) {
+    const parts = [part(new THREE.CylinderGeometry(r, r, w, 14).rotateZ(Math.PI / 2), 'tyre', [0, 0, 0]), part(new THREE.CylinderGeometry(r * 0.55, r * 0.55, w + 0.02, 10).rotateZ(Math.PI / 2), 'hub', [0, 0, 0])];
+    for (let n = 0; n < 7; n++) { const a = (n / 7) * Math.PI * 2; parts.push(part(new THREE.BoxGeometry(w + 0.04, 0.09, 0.16), 'tyre', [0, Math.cos(a) * r, Math.sin(a) * r], [-a, 0, 0])); } // lugs so you can see it turning
+    geo = mergeGeometries(parts); wheelGeoCache.set(key, geo);
+  }
+  return new THREE.Mesh(geo, PAINT);
 }
 
 export class Machine {
@@ -114,14 +124,15 @@ export class Machine {
       const nd = this.nodeList.find((n) => n.def.name === c.node), body = nd ? nd.body : this.bodies[c.node];
       this.contacts.push({ def: c, node: this.nodes[c.node], body, pos: new THREE.Vector3().fromArray(c.pos), local: V(), k: c.k ?? this.mass * G / 0.08, mu: c.mu ?? 0.5, N: 0 });
     }
-    // ---- visuals
+    // ---- visuals: one merged mesh per parent node (plus one for its glass)
+    const byParent = new Map();
     for (const v of def.visuals || []) {
-      let g;
-      if (v.box) g = new THREE.BoxGeometry(...v.box);
-      else if (v.cyl) g = new THREE.CylinderGeometry(v.cyl[0], v.cyl[1], v.cyl[2], v.cyl[3] ?? 8);
-      const m = new THREE.Mesh(g, mat(v.mat || 'yellow')); m.position.fromArray(v.pos); if (v.rot) m.rotation.fromArray(v.rot);
-      this.nodes[v.parent].add(m);
+      const glass = v.mat === 'glass', key = v.parent + (glass ? '|glass' : '');
+      const geo = v.box ? new THREE.BoxGeometry(...v.box) : new THREE.CylinderGeometry(v.cyl[0], v.cyl[1], v.cyl[2], v.cyl[3] ?? 8);
+      if (!byParent.has(key)) byParent.set(key, { parent: v.parent, glass, parts: [] });
+      byParent.get(key).parts.push(part(geo, v.mat || 'yellow', v.pos, v.rot));
     }
+    for (const g of byParent.values()) this.nodes[g.parent].add(new THREE.Mesh(mergeGeometries(g.parts), g.glass ? GLASS : PAINT));
     // ---- tools and containers
     this.containers = {}; this.rigs = [];
     for (const c of def.containers || []) {
@@ -129,7 +140,8 @@ export class Machine {
       this.nodes[c.node].add(obj);
       const field = new ContainerField({ name: `${this.id}.${c.name}`, nx: c.nx, nz: c.nz, cs: c.cs, capacity: c.capacity, walls: c.walls });
       const rig = new ContainerRig(field, `${this.id}.${c.name}`); rig.object = obj; rig.passes = c.passes ?? 2;
-      this.containers[c.name] = { field, rig, obj, def: c }; this.rigs.push(rig);
+      let cb = c.node; while (!this.bodies[cb]) cb = def.nodes.find((x) => x.name === cb).parent;
+      this.containers[c.name] = { field, rig, obj, def: c, body: this.bodies[cb], local: V() }; this.rigs.push(rig);
     }
     this.tools = [];
     for (const t of def.tools || []) {
@@ -160,6 +172,12 @@ export class Machine {
 
   get position() { return this.bodyList[0].obj.position; }
   get heading() { _f.set(0, 0, -1).applyQuaternion(this.bodyList[0].obj.quaternion); return Math.atan2(-_f.x, -_f.z); }
+  /** Heading of the leading half: the front body going forward, the rear body in reverse (articulated machines). */
+  headingOf(reverse = false) {
+    let best = this.bodyList[0];
+    for (const b of this.bodyList) if (reverse ? b.def.com[2] > best.def.com[2] : b.def.com[2] < best.def.com[2]) best = b;
+    _f.set(0, 0, -1).applyQuaternion(best.obj.quaternion); return Math.atan2(-_f.x, -_f.z);
+  }
 
   // ------------------------------------------------------------------ per game step (before physics)
   pre(dt) {
@@ -197,6 +215,7 @@ export class Machine {
     // skid contacts and node colliders in their body's frame for the substeps
     for (const b of this.bodyList) b.obj.updateMatrixWorld(true);
     for (const c of this.contacts) { c.node.localToWorld(_p.copy(c.pos)); c.body.obj.worldToLocal(c.local.copy(_p)); }
+    for (const k in this.containers) { const c = this.containers[k]; c.obj.getWorldPosition(_p); c.body.obj.worldToLocal(c.local.copy(_p)); c.weight = c.field.volume() * 1600 * G; }
     for (const nc of this.nodeColliders) {
       _m4.copy(nc.node.body.obj.matrixWorld).invert().multiply(nc.node.obj.matrixWorld);
       _p.copy(nc.pos).applyMatrix4(_m4); _q.setFromRotationMatrix(_m4);
@@ -259,7 +278,7 @@ export class Machine {
       _f.addScaledVector(_n, -_f.dot(_n)).normalize(); _s.crossVectors(_f, _n);
       const vf = v.x * _f.x + v.y * _f.y + v.z * _f.z, vs = v.x * _s.x + v.y * _s.y + v.z * _s.z;
       w.vf = vf;
-      const matId = terrain.materialAt(_c.x, _c.z), mu = terrain.gripAt(_c.x, _c.z), soft = MATERIALS[matId].compaction;
+      const matId = terrain.materialAt(_c.x, _c.z), mu = terrain.gripAt(_c.x, _c.z) * (w.side ? 1.35 : 1), soft = MATERIALS[matId].compaction; // grousers bite
       const kill = w.share / h * 0.5; // force that would stop this wheel's share of the mass in ~2 substeps
       let Fl, Fs = -vs * kill * (w.side ? 0.55 : 1);
       if (w.side) { // track contact: hydrostatic drive holds a target speed
@@ -290,12 +309,25 @@ export class Machine {
       if (tot > lim && tot > 0) { fx *= lim / tot; fz *= lim / tot; }
       rb.addForceAtPoint({ x: fx, y: N, z: fz }, { x: _p.x, y: _p.y, z: _p.z }, true);
     }
+    // payload weight bears down where the container is
+    for (const k in this.containers) {
+      const c = this.containers[k]; if (!(c.weight > 1)) continue;
+      const rb = c.body.rb, t = rb.translation(), r = rb.rotation();
+      _p.copy(c.local).applyQuaternion(_q.set(r.x, r.y, r.z, r.w)); _p.x += t.x; _p.y += t.y; _p.z += t.z;
+      rb.addForceAtPoint({ x: 0, y: -c.weight, z: 0 }, { x: _p.x, y: _p.y, z: _p.z }, true);
+    }
     // digging resistance pushes back on the body carrying the tool
     for (const t of this.tools) {
       if (t.rate <= 1e-4) continue;
       const sp = Math.hypot(t.vel.x, t.vel.z); if (sp < 0.05) continue;
       const F = Math.min(t.rate * this.mass * 2.2, this.mass * 7);
       t.body.rb.addForce({ x: -t.vel.x / sp * F, y: 0, z: -t.vel.z / sp * F }, true);
+    }
+    // soft fence at the edge of the map
+    const T = terrain, x0 = T.ox + 3, x1 = T.ox + (T.nx - 1) * T.cell - 3, z0 = T.oz + 3, z1 = T.oz + (T.nz - 1) * T.cell - 3;
+    for (const b of this.bodyList) {
+      const t = b.rb.translation(), fx = t.x < x0 ? x0 - t.x : t.x > x1 ? x1 - t.x : 0, fz = t.z < z0 ? z0 - t.z : t.z > z1 ? z1 - t.z : 0;
+      if (fx || fz) { const lv = b.rb.linvel(); b.rb.addForce({ x: (fx * 10 - lv.x * 2) * b.mass, y: 0, z: (fz * 10 - lv.z * 2) * b.mass }, true); }
     }
     // deep water drags
     const p0 = this.bodyList[0].rb.translation(), wd = terrain.waterDepthAt(p0.x, p0.z);

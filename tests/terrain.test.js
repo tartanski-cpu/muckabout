@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TerrainCore } from '../src/terrain/core.js';
 import { MAPS } from '../src/terrain/maps.js';
-import { MATERIALS, SAND, CLAY, GRAVEL, MUD, TOPSOIL, NMAT } from '../src/terrain/materials.js';
+import { MATERIALS, SAND, CLAY, GRAVEL, MUD, TOPSOIL, SPOIL, NMAT } from '../src/terrain/materials.js';
 import { ContainerField } from '../src/terrain/containers.js';
 import { Clods } from '../src/terrain/clods.js';
 import { makeRng } from '../src/util/rng.js';
@@ -96,8 +96,9 @@ describe('TerrainCore', () => {
     const core = flat(CLAY, 2);
     for (let c = 0; c < core.n; c++) core.addTop(c, TOPSOIL, 0.3);
     const r = core.cut({ p0: rect(0, -0.5, 0), p1: rect(0, -0.5, 0), capacity: 1e9 });
-    expect(r.taken[TOPSOIL] / r.taken[CLAY]).toBeCloseTo(0.3 / 0.5, 1);
-    expect(r.resist).toBeCloseTo(r.taken[TOPSOIL] * 1.0 + r.taken[CLAY] * 1.8, 5);
+    expect(r.taken[CLAY]).toBe(0); // dug clay comes out as loose spoil
+    expect(r.taken[TOPSOIL] / r.taken[SPOIL]).toBeCloseTo(0.3 / 0.5, 1);
+    expect(r.resist).toBeCloseTo(r.taken[TOPSOIL] * 1.0 + r.taken[SPOIL] * 1.8, 5);
   });
 
   it('is deterministic and sleeps when nothing moves', () => {

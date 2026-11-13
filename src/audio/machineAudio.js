@@ -9,7 +9,7 @@ import processorSource from './dieselProcessor.js?raw';
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 let moduleUrl = null;
 const processorUrl = () => (moduleUrl ??= URL.createObjectURL(new Blob([processorSource], { type: 'text/javascript' })));
-const DIG_TONE = [500, 450, 260, 380, 900, 1900, 2400]; // band centre per material id: mud dull, sand hissy, gravel crunchy
+const DIG_TONE = [500, 450, 260, 380, 900, 1900, 2400, 420]; // band centre per material id: mud dull, sand hissy, gravel crunchy
 
 export class AudioBus {
   constructor(volume = 0.5) { this.volume = volume; this.ctx = null; this.voices = []; this.workletReady = false; }

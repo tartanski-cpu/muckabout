@@ -176,10 +176,11 @@ export class TerrainCore {
         for (let m = 1; m < NMAT; m++) {
           let v = vol[m] * area; if (v <= 0) continue;
           resist += v * MATERIALS[m].dig;
-          const take = Math.min(v, cap); if (take > 0) { taken[m] += take; cap -= take; v -= take; }
+          const om = MATERIALS[m].loosens || m; // cut clay comes out as loose spoil
+          const take = Math.min(v, cap); if (take > 0) { taken[om] += take; cap -= take; v -= take; }
           if (v > 0) { // windrow ahead of the lip, at this cell's position across the blade
             const lx = P[6] + (P[9] - P[6]) * a, lz = P[8] + (P[11] - P[8]) * a;
-            this.deposit(lx + pdx * ahead, lz + pdz * ahead, m, v); pushed += v;
+            this.deposit(lx + pdx * ahead, lz + pdz * ahead, om, v); pushed += v;
           }
         }
       }
