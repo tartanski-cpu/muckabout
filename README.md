@@ -23,12 +23,22 @@ Pages and switches:
 | URL | What |
 |---|---|
 | `/` | the game: full map, river, four machines |
+| `/?physics=rapier` | start on the Rapier vehicle model instead of the custom one |
 | `/?stress=1` | the same with scripted drivers on all four machines and the clod budget held full |
 | `/?map=test` | small 40 m test patch (no river) |
 | `/?worker=0` | terrain on the main thread instead of the worker (what the tests fast-forward) |
 | `/?host=1` · `/?join=12345` | two-player co-op; add `&net=bc` to link two tabs of one browser without the internet |
 | `/?scene=stress` | terrain-only stress scene (ghost buckets) |
 | `/poc.html` | the original proof of concept |
+
+## Two vehicle models, switchable
+
+Every machine can run on either of two models, and you can flip between them while driving to compare:
+
+- **Custom** (the default): the proof of concept's hand-written approach, extended to all four machines. Speed and heading are integrated directly (articulated, front-steer or skid-steer), and the chassis rides a plane fitted through the ground under its wheels with a little suspension lag. Nothing bounces, tips over or fights a solver. Machines stop dead against each other rather than shoving.
+- **Rapier**: rigid bodies with spring suspension and tyre forces. Machines can pitch, roll over, push each other and get stuck.
+
+Switch: seated in VR, click the **left stick**; on desktop press `M`. The dash display shows which is active. `?physics=rapier` starts on Rapier. Hydraulics, digging, containers, sound and controls are identical in both.
 
 ## Playing
 
@@ -75,7 +85,7 @@ docs/terrain-design.md   data layouts, worker protocol, budget plan
 Key decisions:
 
 - **Ground** is a layered heightfield owned by a worker; material is only ever particles while airborne. Volume is audited end to end (ground + containers + clods + lost + compacted + washed) and the tests hold it constant.
-- **Machines** are Rapier rigid bodies; the ground is not a Rapier collider. Wheels and track contact points sample our terrain and apply spring and tyre forces. Articulated machines are two bodies and a motorised hinge. Booms, buckets, blades and beds are kinematic parts posed by hydraulic functions, with colliders that ride their body.
+- **Machines** have two interchangeable vehicle models (above). In the Rapier one they are rigid bodies; the ground is not a Rapier collider. Wheels and track contact points sample our terrain and apply spring and tyre forces. Articulated machines are two bodies and a motorised hinge. Booms, buckets, blades and beds are kinematic parts posed by hydraulic functions, with colliders that ride their body.
 - **XR kit** follows the design of SWVR's controls (see file headers); it is a port, not a copy, because SWVR's files are tied to its vessel state.
 - **Co-op** is host-authoritative: terrain deltas (changed cells, 1 cm, run-length), machine states at 20 Hz, cosmetic clods on the client.
 
@@ -89,5 +99,6 @@ Key decisions:
 - **Booms, buckets, blades, beds** are kinematic parts, not Rapier joints with motors. Only the articulation hinge is a real joint.
 - **`diesel.dsp`** was not in the handover; the engine is a new AudioWorklet synth, and all sound is placeholder.
 - A held control lets go if your real hand strays more than 45 cm (the spec asks for a tolerance; SWVR never lets go by distance). Change `REACH.breakAway` in `src/xr/interaction.js`.
+- The scripted loader-fills-dumper run is tuned on the Rapier model; on the custom model the loader fills the bed (better, in fact) but the scripted dumper does not finish its return trip because machines block rather than nudge each other.
 - Not built: teleport locomotion, the WebGPU compute spike, particle slosh inside the bucket, control-ownership hand-off messages beyond "seat taken".
 - The hoe bucket only cuts when its floor is more than ~7° off vertical, so stabbing straight down does nothing until you start to curl.

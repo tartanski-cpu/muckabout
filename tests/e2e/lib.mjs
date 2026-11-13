@@ -18,6 +18,8 @@ export async function harness() {
     page.on('console', (m) => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
     page.on('pageerror', (e) => errs.push('pageerror: ' + e));
     if (init) await init(page); // e.g. install a WebXR emulator before the app looks for navigator.xr
+    // the scripted runs were tuned on the Rapier model; a test that wants the custom one says so in its URL
+    if (!/physics=/.test(path) && !/poc|scene=stress/.test(path)) path += (path.includes('?') ? '&' : '?') + 'physics=' + (process.env.PHYSICS || 'rapier'); // PHYSICS=custom runs the same scenarios on the other model
     await page.goto(base + path);
     await page.waitForFunction((w) => window[w] && (window[w].ready !== false), wait, { timeout: 60000 });
     page.errs = errs;

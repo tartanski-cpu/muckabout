@@ -30,6 +30,17 @@ Nothing below has been tried on a headset. Each item says what to do and what to
 18. Tip it out. Do the clods look right falling and does a heap form?
 19. Does anything make you queasy? Try right-stick click (horizon lock) on a bank.
 
+## 3b. Custom physics against Rapier
+
+The game starts on the **custom** vehicle model (the proof of concept's style). Seated, **click the left stick** to flip to Rapier and back; the dash display says which is on.
+
+- Drive the same stretch on each: over a bank edge, across ruts, up to the stockpile. Which feels more like a heavy machine?
+- Dig on each: does the custom one bog believably when the bucket is in the pile?
+- Dozer on each at a terrace crest. On Rapier it can nose over and get stuck; on custom it should just follow the ground.
+- Backhoe legs on each: both should lift the back end.
+- On custom, drive into another machine: it should stop with a thump, not push it.
+- Tell me which you want as the default for each machine; they can differ.
+
 ## 4. The other machines
 
 20. **Dumper:** `Y` to get out, climb in. Drive it. Tipper lever back raises the bed. Load it with the loader (this needs two people or patience) and tip.

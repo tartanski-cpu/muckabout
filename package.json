@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "node tests/e2e/run.mjs"
+    "test:e2e": "node tests/e2e/run.mjs",
+    "test:e2e:custom": "PHYSICS=custom node tests/e2e/run.mjs loader xr m4 m5"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

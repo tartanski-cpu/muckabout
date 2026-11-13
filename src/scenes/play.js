@@ -60,6 +60,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       m.nodes[m.seatDef.node].add(cb.root); m.controls.clipboard = cb; m.controlRoots.push(cb.root); inter.add([cb]);
     }
   }
+  // two vehicle models to compare back to back: the hand-written one (default) and Rapier rigid bodies
+  S.physics = 'rapier';
+  S.setPhysics = (mode) => { S.physics = mode; for (const m of machines) m.setPhysics(mode); if (!S.stress) game.hud.note = `PHYSICS: ${mode.toUpperCase()}`; setHelp(); };
   S.stress = null;
   S.setStress = (v) => { if (game.remote) return; if (v && !S.stress) { for (const m of machines) m.override = {}; S.stress = startStress(game); } else if (!v && S.stress) { S.stress.stop(); S.stress = null; } game.hud.note = v ? 'STRESS: scripted machines + clod fountain' : ''; };
 
@@ -73,6 +76,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
     c.fillText(`${(Math.abs(m.speed) * 3.6).toFixed(0).padStart(2)} km/h  ${m.gear > 0 ? 'F' : m.gear < 0 ? 'R' : 'N'}${m.inp.park > 0.5 ? '  (P)' : ''}`, 12, 30);
     c.fillText(e.running ? `${e.rpm.toFixed(0)} rpm` : e.crank > 0 ? 'cranking…' : 'ENGINE OFF', 12, 58);
+    c.fillStyle = '#9fd4ff'; c.font = 'bold 15px monospace'; c.fillText(S.physics === 'custom' ? 'CUSTOM PHYSICS' : 'RAPIER PHYSICS', 12, 122); c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
     if (S.net) { c.fillStyle = S.net.lost ? '#ff7a5a' : '#9fd4ff'; c.font = 'bold 16px monospace'; c.fillText(S.net.lost ? 'LINK LOST' : `ROOM ${S.net.code}`, 150, 58); c.fillStyle = '#ffd25a'; }
     const load = m.payload(), cap = m.rigs.reduce((s, r) => s + r.field.capacity, 0);
     if (cap) { c.fillStyle = '#2b3a40'; c.fillRect(12, 70, 232, 12); c.fillStyle = '#c98a3a'; c.fillRect(12, 70, 232 * clamp(load / cap, 0, 1), 12);
@@ -167,6 +171,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
     if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); }
     if (left.stickPressed && !left.busy && !player.seated) S.setStress(!S.stress);
+    if (left.stickPressed && player.seated && !left.holding && !game.remote) { S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom'); left.pulse(0.6, 60); }
     // cab controls and their labels are many small draw calls: only draw them for machines within reach
     if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
@@ -189,6 +194,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     else if (e.code === 'KeyV') S.chase = !S.chase;
     else if (e.code === 'KeyF') game.hud.toggle();
     else if (e.code === 'KeyX') S.setStress(!S.stress);
+    else if (e.code === 'KeyM' && !game.remote) S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom');
     else if (e.code === 'KeyO') { player.horizonLock = player.horizonLock ? 0 : 0.8; }
     else if (m && e.code === 'Enter') setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyP') setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);
@@ -222,9 +228,10 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock · on foot, click the left stick for the stress test.<br>`
+      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
-      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · drag to look<br>`
+      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · drag to look<br>`
+      + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }
   const sp = map.spawn.player || [(map.spawn[kinds[0]] || [0, 0])[0] - 5, (map.spawn[kinds[0]] || [0, 0])[1] + 3, 0];

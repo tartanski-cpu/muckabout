@@ -20,6 +20,8 @@ const join = q.get('join'), hosting = flag('host', false);
   if (sceneName === 'play') {
     const { setup } = await import('./scenes/play.js');
     game.scene_ = await setup(game, {});
+    if (!join) game.scene_.setPhysics(q.get('physics') === 'rapier' ? 'rapier' : 'custom'); // custom is the default; ?physics=rapier for the other
+    game.hud.note = '';
     if (flag('stress', false)) game.scene_.setStress(true);
     coop(game);
   }

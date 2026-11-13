@@ -186,3 +186,63 @@ describe('backhoe loader', () => {
     expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-4);
   }, 60000);
 });
+
+describe('custom vehicle model (no rigid-body solver)', () => {
+  const turn = (r, h0) => { let dh = r.m.heading - h0; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI; return dh; };
+  it('loader: drives, articulates, brakes, digs and tips with volume conserved', async () => {
+    const r = await rig('loader'); r.m.setPhysics('custom'); r.step(120);
+    expect(r.m.position.y - r.terrain.heightAt(0, 8)).toBeLessThan(0.05); expect(Math.abs(r.m.speed)).toBe(0);
+    start(r.m); r.step(90); const h0 = r.m.heading;
+    r.m.inp.shuttle = 1; r.m.inp.accel = 1; r.m.inp.steer = 1; r.step(240);
+    expect(r.m.speed).toBeGreaterThan(3); expect(turn(r, h0)).toBeLessThan(-0.8);
+    const front = r.m.bodies.front.obj, rear = r.m.bodies.rear.obj, T = await import('three');
+    const hinge = (o) => o.localToWorld(new T.Vector3(0, 1, -1.5));
+    expect(hinge(front).distanceTo(hinge(rear))).toBeLessThan(0.01);               // the two halves stay joined at the hinge
+    r.m.inp.accel = 0; r.m.inp.steer = 0; r.m.inp.brake = 1; r.step(150); expect(r.m.speed).toBe(0); r.m.inp.brake = 0;
+    r.m.reset(5, 4, 0); r.step(60); const v0 = await r.total();
+    r.m.inp.throttle = 1;
+    r.step(200, (m) => { m.inp.boom = m.fn.boom.pos > -0.66 ? -1 : 0; m.inp.bucket = m.fn.bucket.pos > 0.0 ? -1 : m.fn.bucket.pos < -0.03 ? 1 : 0; });
+    r.m.inp.boom = 0; r.m.inp.bucket = 0; r.m.inp.accel = 0.7;
+    let slowest = 9; r.step(400, (m) => { if (m.payload() > 1.7) m.inp.accel = 0; else if (m.payload() > 0.5) slowest = Math.min(slowest, m.speed); });
+    const got = r.m.payload(); expect(got).toBeGreaterThan(1.2);
+    r.m.inp.accel = 0; r.m.inp.bucket = 1; r.m.inp.boom = 1; r.step(150);
+    r.m.inp.bucket = -1; r.step(300);
+    expect(r.m.payload()).toBeLessThan(0.1); r.step(240);
+    expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-4);
+  });
+  it('switches model mid-drive without a jolt', async () => {
+    const r = await rig('loader'); r.step(120); start(r.m); r.step(90);
+    r.m.inp.shuttle = 1; r.m.inp.accel = 0.8; r.step(180);
+    const v = r.m.speed, p = r.m.position.clone();
+    r.m.setPhysics('custom'); r.step(1);
+    expect(Math.abs(r.m.speed - v)).toBeLessThan(0.3); expect(r.m.position.distanceTo(p)).toBeLessThan(0.3);
+    r.step(60); r.m.setPhysics('rapier'); r.step(90);
+    const tilt = r.m.bodyList[0].obj.matrixWorld.elements[5];
+    expect(r.m.speed).toBeGreaterThan(v * 0.7); expect(tilt).toBeGreaterThan(0.9);
+    r.m.inp.accel = 0; r.m.inp.brake = 1; r.step(180);
+    for (const b of r.m.bodyList) expect(b.obj.matrixWorld.elements[5]).toBeGreaterThan(0.98); // settles upright on its wheels
+  });
+  it('dozer skid-steers and holds still; backhoe steers and its legs lift the back', async () => {
+    let r = await rig('dozer', { x: 8, z: 10 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(80);
+    r.m.inp.left = 1; r.m.inp.right = 1; r.step(180); expect(r.m.speed).toBeGreaterThan(2);
+    const h0 = r.m.heading; r.m.inp.left = 1; r.m.inp.right = -1; r.step(180); expect(turn(r, h0)).toBeLessThan(-0.7);
+    r.m.inp.left = 0; r.m.inp.right = 0; r.step(120); expect(Math.abs(r.m.speed)).toBeLessThan(0.02);
+    r = await rig('backhoe', { x: 10, z: 8 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(80);
+    const h1 = r.m.heading; r.m.inp.shuttle = 1; r.m.inp.accel = 0.6; r.m.inp.steer = 1; r.step(240); expect(turn(r, h1)).toBeLessThan(-0.6);
+    r.m.inp.accel = 0; r.m.inp.park = 1; r.step(120); const y0 = r.m.nodes.chassis.localToWorld(new (await import('three')).Vector3(0, 0, 1.2)).y;
+    r.m.inp.stabL = 1; r.m.inp.stabR = 1; r.step(240);
+    const y1 = r.m.nodes.chassis.localToWorld(new (await import('three')).Vector3(0, 0, 1.2)).y;
+    expect(y1 - y0).toBeGreaterThan(0.04); expect(r.m.wheels[0].grounded).toBe(false);
+  });
+  it('dumper carries and tips; a parked machine blocks the way', async () => {
+    const r = await rig('dumper', { x: -8, z: 6 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.step(80);
+    r.m.inp.shuttle = 1; r.m.inp.accel = 0.6; r.step(200); expect(r.m.speed).toBeGreaterThan(2);
+    // a second machine dead ahead
+    const { Machine } = await import('../src/vehicles/machine.js'), { readFileSync } = await import('node:fs');
+    const p = r.m.position.clone(), f = { x: -Math.sin(r.m.heading), z: -Math.cos(r.m.heading) };
+    const other = r.phys.add(new Machine(JSON.parse(readFileSync(new URL('../machines/dozer.json', import.meta.url))), r.phys, r.terrain, { id: 'block', x: p.x + f.x * 12, z: p.z + f.z * 12 })); other.setPhysics('custom');
+    r.step(400);
+    expect(Math.hypot(r.m.position.x - other.position.x, r.m.position.z - other.position.z)).toBeGreaterThan(3.5); // stopped short of it
+    expect(other.position.distanceTo({ x: p.x + f.x * 12, y: other.position.y, z: p.z + f.z * 12 })).toBeLessThan(0.3);
+  });
+});

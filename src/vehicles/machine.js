@@ -16,7 +16,7 @@ import { clamp } from '../util/rng.js';
 const G = 9.81;
 const V = () => new THREE.Vector3();
 const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n = V(), _c = V(), _v = V(), _p = V(), _a = V(), _m4 = new THREE.Matrix4(), _m5 = new THREE.Matrix4();
-const _na = [0, 1, 0];
+const _na = [0, 1, 0], _eul = new THREE.Euler(), _qf = new THREE.Quaternion(), _qg = new THREE.Quaternion();
 const AX = { x: V().set(1, 0, 0), y: V().set(0, 1, 0), z: V().set(0, 0, 1) };
 
 // Draw calls are the main cost on a Quest (each is drawn once per eye), so a machine's boxes are merged into one
@@ -159,6 +159,14 @@ export class Machine {
     this.engine = { running: false, crank: 0, rpm: 0, load: 0 };
     this.digRate = 0; this.spillRate = 0; this.bump = 0; this.speed = 0; this.tick = 0; this.events = [];
     this.driver = null; // who is in the seat (multiplayer / AI)
+    // ---- geometry for the custom (non-Rapier) vehicle model
+    const meanZ = (ws) => ws.reduce((a, w) => a + w.pos.z, 0) / Math.max(1, ws.length);
+    const j0 = this.joints[0], k = this.kin = { custom: false, x: 0, z: 0, y: 0, vy: 0, psi: 0, v: 0, vl: 0, vr: 0, gamma: 0, pitch: 0, roll: 0 };
+    if (j0) { // articulated: rear axle leads the maths, as in the proof of concept
+      const rear = this.wheels.filter((w) => w.body === this.bodies[j0.def.a]), front = this.wheels.filter((w) => w.body === this.bodies[j0.def.b]);
+      k.refZ = meanZ(rear); k.hingeZ = j0.def.anchor[2]; k.LR = k.refZ - k.hingeZ; k.LF = k.hingeZ - meanZ(front);
+    } else if (def.drive.type === 'tracks') { k.refZ = meanZ(this.wheels); k.W = Math.max(...this.wheels.map((w) => w.pos.x)) * 2; }
+    else { const st = this.wheels.filter((w) => w.def.steer), fx = this.wheels.filter((w) => !w.def.steer); k.refZ = meanZ(fx); k.L = k.refZ - meanZ(st); }
     this.sync(); this.poseNodes(); this.root.updateMatrixWorld(true);
   }
 
@@ -167,7 +175,115 @@ export class Machine {
     const y = this.terrain.heightAt(x, z) + 0.15, q = yaw === null ? this.spawn.q : { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
     for (const b of this.bodyList) { b.rb.setTranslation({ x, y, z }, true); b.rb.setRotation(q, true); b.rb.setLinvel({ x: 0, y: 0, z: 0 }, true); b.rb.setAngvel({ x: 0, y: 0, z: 0 }, true); }
     for (const t of this.tools) { t.cut.reset(); t.has = false; }
-    this.sync(); this.poseNodes(); this.root.updateMatrixWorld(true);
+    this.sync(); this.poseNodes(); this.root.updateMatrixWorld(true); this.speed = 0;
+    if (this.kin.custom) this._enterCustom();
+  }
+
+  // ------------------------------------------------------------------ custom vehicle model (no rigid-body solver)
+  // The proof of concept's approach, generalised to every machine: speed and heading are integrated directly
+  // (articulated, front-steer or skid-steer kinematics), and the chassis rides a plane fitted through the ground
+  // under its wheels, with a little suspension lag. No forces, joints or contacts: nothing to oscillate or tip.
+  /** 'custom' or 'rapier'. Safe to switch at any time; the machine carries its pose and speed across. */
+  setPhysics(mode) {
+    const R = this.phys.R, k = this.kin, custom = mode === 'custom';
+    if (custom === k.custom) return;
+    k.custom = custom;
+    for (const b of this.bodyList) b.rb.setBodyType(custom ? R.RigidBodyType.KinematicPositionBased : R.RigidBodyType.Dynamic, true);
+    if (custom) this._enterCustom();
+    else { _f.set(0, 0, -1).applyQuaternion(this.bodyList[0].obj.quaternion); for (const b of this.bodyList) { const t = b.rb.translation(); b.rb.setTranslation({ x: t.x, y: t.y + 0.05, z: t.z }, true); b.rb.setLinvel({ x: _f.x * k.v, y: 0, z: _f.z * k.v }, true); b.rb.setAngvel({ x: 0, y: 0, z: 0 }, true); } }
+  }
+  get physicsMode() { return this.kin.custom ? 'custom' : 'rapier'; }
+  _enterCustom() {
+    const k = this.kin, o = this.bodyList[0].obj;
+    k.psi = this.heading; k.v = this.speed || 0; k.vl = k.vr = k.v; k.vy = 0; k.pitch = 0; k.roll = 0;
+    k.gamma = this.joints[0] ? this.joints[0].target : 0;
+    const s = Math.sin(k.psi), c = Math.cos(k.psi);
+    k.x = o.position.x + s * k.refZ; k.z = o.position.z + c * k.refZ; k.y = o.position.y; // the reference point: rear axle (or track centre)
+  }
+  /** Support point in the reference body's frame (front-body points swing round the hinge). */
+  _refLocal(body, p, out) {
+    const j = this.joints[0];
+    if (!j || body === this.bodies[j.def.a]) return out.copy(p);
+    const a = j.def.anchor, g = this.kin.gamma, cs = Math.cos(g), sn = Math.sin(g), dx = p.x - a[0], dz = p.z - a[2];
+    return out.set(a[0] + dx * cs + dz * sn, p.y, a[2] - dx * sn + dz * cs);
+  }
+  customStep(dt) {
+    const k = this.kin, T = this.terrain, dr = this.def.drive, px = k.x, pz = k.z, ppsi = k.psi;
+    // grip and softness under the wheels
+    let mu = 0, soft = 0; for (const w of this.wheels) { mu += T.gripAt(w.gx, w.gz) * (w.side ? 1.35 : 1); soft += MATERIALS[T.materialAt(w.gx, w.gz)].compaction; }
+    mu /= this.wheels.length; soft /= this.wheels.length;
+    const slope = -G * Math.sin(k.pitch) * 0.85, grip = mu * G * Math.cos(k.pitch);
+    const dig = Math.min(this.digRate * 2.2, 7), rr = G * (0.02 + 0.22 * soft);
+    let toolMoving = 0; for (const t of this.tools) toolMoving = Math.max(toolMoving, Math.hypot(t.vel.x, t.vel.z));
+    const oppose = (v, a) => v - Math.sign(v) * Math.min(Math.abs(v), a * dt); // decelerate toward zero, never past it
+    if (dr.type === 'tracks') {
+      const tgt = this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
+      k.vl += clamp(tgt.L - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R - k.vr, -amax * dt, amax * dt);
+      const push = toolMoving > 0.05 ? dig : 0, hold = dr.maxForce / this.mass; // the blade's load and the hill can overpower the tracks
+      for (const side of ['vl', 'vr']) { let v = k[side]; v = oppose(v, Math.max(0, push - hold * 0.35)); if (Math.abs(slope) > grip) v += (slope - Math.sign(slope) * grip) * dt; k[side] = v; }
+      k.v = (k.vl + k.vr) / 2; k.psi += (k.vr - k.vl) / k.W * 0.3 * dt; // tracks scrub sideways when they turn: far slower than the speed difference alone suggests
+    } else {
+      let a = clamp(this.tractive / this.mass * 0.75, -grip, grip);
+      k.v += (a + slope) * dt;
+      k.v = oppose(k.v, Math.min(this.brake * 7, grip) + rr + (toolMoving > 0.05 ? dig : 0) + Math.abs(k.v) * 0.22);
+      if (this.brake > 0.3 && Math.abs(k.v) < 0.25 && Math.abs(slope) < grip) k.v = 0; // brakes hold on anything the tyres can grip
+      const vmax = dr.maxSpeed; k.v = clamp(k.v, -vmax[1] * 1.1, vmax[0] * 1.1);
+      if (this.joints[0]) { k.gamma = this.joints[0].target; k.psi += k.v * Math.sin(k.gamma) / (k.LF + k.LR * Math.cos(k.gamma)) * dt; }
+      else { let st = 0, n = 0; for (const w of this.wheels) if (w.def.steer) { st += w.steer; n++; } k.psi += k.v * Math.tan(n ? st / n : 0) / k.L * dt; }
+    }
+    const wd = T.waterDepthAt(k.x, k.z); if (wd > 0.5) { k.v = oppose(k.v, (wd - 0.5) * 6); k.vl = oppose(k.vl, (wd - 0.5) * 6); k.vr = oppose(k.vr, (wd - 0.5) * 6); }
+    const ds = k.v * Math.cos(k.pitch) * dt;
+    k.x -= Math.sin(k.psi) * ds; k.z -= Math.cos(k.psi) * ds;
+    // map edge
+    const x0 = T.ox + 3, x1 = T.ox + (T.nx - 1) * T.cell - 3, z0 = T.oz + 3, z1 = T.oz + (T.nz - 1) * T.cell - 3;
+    if (k.x < x0 || k.x > x1 || k.z < z0 || k.z > z1) { k.x = clamp(k.x, x0, x1); k.z = clamp(k.z, z0, z1); k.v = k.vl = k.vr = 0; }
+    // other machines and props: simple, like the proof of concept: if this step would overlap, don't take it and bounce off a little
+    if (this.phys.blocked(this, k)) { const v = k.v; k.x = px; k.z = pz; k.psi = ppsi; k.v = k.vl = k.vr = -v * 0.15; this.bump = Math.max(this.bump, Math.min(1, Math.abs(v) * 0.4 + 0.3)); }
+
+    // the chassis rides a plane through the ground under its supports
+    const s = Math.sin(k.psi), c = Math.cos(k.psi), ox = k.x - s * k.refZ, oz = k.z - c * k.refZ; // reference body origin
+    let Sw = 0, Sx = 0, Sz = 0, Sxx = 0, Szz = 0, Sxz = 0, Sh = 0, Sxh = 0, Szh = 0;
+    const add = (lx, lz, h, wgt) => { Sw += wgt; Sx += wgt * lx; Sz += wgt * lz; Sxx += wgt * lx * lx; Szz += wgt * lz * lz; Sxz += wgt * lx * lz; Sh += wgt * h; Sxh += wgt * lx * h; Szh += wgt * lz * h; };
+    const fit = () => { // least squares h = a + b·x + c·z
+      const m = [Sw, Sx, Sz, Sx, Sxx, Sxz, Sz, Sxz, Szz], d = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+      if (Math.abs(d) < 1e-9) return [Sh / Math.max(Sw, 1e-9), 0, 0];
+      return [(Sh * (m[4] * m[8] - m[5] * m[7]) - m[1] * (Sxh * m[8] - m[5] * Szh) + m[2] * (Sxh * m[7] - m[4] * Szh)) / d,
+        (m[0] * (Sxh * m[8] - m[5] * Szh) - Sh * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * Szh - Sxh * m[6])) / d,
+        (m[0] * (m[4] * Szh - Sxh * m[7]) - m[1] * (m[3] * Szh - Sxh * m[6]) + Sh * (m[3] * m[7] - m[4] * m[6])) / d];
+    };
+    const fs = Math.sin(k.psi + k.gamma), fc = Math.cos(k.psi + k.gamma);
+    for (const w of this.wheels) {
+      this._refLocal(w.body, w.pos, _p);
+      const wx = ox + c * _p.x + s * _p.z, wz = oz - s * _p.x + c * _p.z, front = this.joints[0] && w.body !== this.bodyList[0];
+      const dx = front ? -fs : -s, dz = front ? -fc : -c, reach = w.side ? 0 : w.r * 0.6;
+      const g = reach ? Math.max(T.heightAt(wx, wz), T.heightAt(wx + dx * reach, wz + dz * reach), T.heightAt(wx - dx * reach, wz - dz * reach)) : T.heightAt(wx, wz);
+      add(_p.x, _p.z, g - (w.pos.y - w.r), 1);
+      w.gx = wx; w.gz = wz; w.grounded = true; w.comp = 0; w.vf = w.side ? (w.side === 'L' ? k.vl : k.vr) : k.v; w.N = w.share * G; w.slip = 0; w.spin += w.vf * dt / w.r;
+    }
+    let [a, b, cc] = fit();
+    let lifted = false; // stabiliser feet, blade or bucket pressed into the ground carry the machine too
+    for (const ct of this.contacts) {
+      this._refLocal(ct.body, ct.local, _p);
+      const wx = ox + c * _p.x + s * _p.z, wz = oz - s * _p.x + c * _p.z, need = T.heightAt(wx, wz) - _p.y;
+      ct.N = 0; if (need > a + b * _p.x + cc * _p.z + 0.01) { add(_p.x, _p.z, need, 6); lifted = true; ct.N = this.mass * G / 4; }
+    }
+    if (lifted) { [a, b, cc] = fit(); for (const w of this.wheels) { const h = a + b * w.pos.x + cc * w.pos.z; if (h - (T.heightAt(w.gx, w.gz) - (w.pos.y - w.r)) > 0.03) { w.grounded = false; w.N = 0; } } }
+    k.vy -= G * dt; k.y += k.vy * dt;
+    if (k.y < a) { if (k.vy < -2) this.bump = Math.max(this.bump, Math.min(1, -k.vy * 0.25)); k.y += (a - k.y) * Math.min(1, dt * 16); if (k.vy < 0) k.vy = 0; }
+    k.pitch += (Math.atan(-cc) - k.pitch) * Math.min(1, dt * 6); k.roll += (Math.atan(b) - k.roll) * Math.min(1, dt * 6);
+    // too steep to hold: it slides (the brake check above already lets it roll)
+    // pose the bodies
+    const q = _q.setFromEuler(_eul.set(k.pitch, k.psi, k.roll, 'YXZ')), b0 = this.bodyList[0];
+    b0.rb.setTranslation({ x: ox, y: k.y, z: oz }, true); b0.rb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+    b0.rb.setNextKinematicTranslation({ x: ox, y: k.y, z: oz }); b0.rb.setNextKinematicRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
+    if (this.joints[0]) {
+      const an = this.joints[0].def.anchor, bf = this.bodies[this.joints[0].def.b];
+      _qf.copy(q).multiply(_qg.setFromAxisAngle(AX.y, k.gamma));
+      _c.set(an[0], an[1], an[2]).applyQuaternion(q); _a.set(an[0], an[1], an[2]).applyQuaternion(_qf);
+      const fx = ox + _c.x - _a.x, fy = k.y + _c.y - _a.y, fz = oz + _c.z - _a.z;
+      bf.rb.setTranslation({ x: fx, y: fy, z: fz }, true); bf.rb.setRotation({ x: _qf.x, y: _qf.y, z: _qf.z, w: _qf.w }, true);
+      bf.rb.setNextKinematicTranslation({ x: fx, y: fy, z: fz }); bf.rb.setNextKinematicRotation({ x: _qf.x, y: _qf.y, z: _qf.z, w: _qf.w });
+    }
   }
 
   get position() { return this.bodyList[0].obj.position; }
@@ -251,6 +367,7 @@ export class Machine {
 
   // ------------------------------------------------------------------ per physics substep
   applyForces(h) {
+    if (this.kin.custom) return; // the custom model moved it already
     const terrain = this.terrain, dr = this.def.drive;
     for (const b of this.bodyList) { b.rb.resetForces(true); b.rb.resetTorques(true); }
     let driven = 0; for (const w of this.wheels) if (w.grounded && w.def.driven !== false) driven++;
@@ -342,9 +459,9 @@ export class Machine {
     this.sync();
     const b0 = this.bodyList[0], lv = b0.rb.linvel();
     _f.set(0, 0, -1).applyQuaternion(b0.obj.quaternion);
-    this.speed = lv.x * _f.x + lv.y * _f.y + lv.z * _f.z;
+    this.speed = this.kin.custom ? this.kin.v : lv.x * _f.x + lv.y * _f.y + lv.z * _f.z;
     this.root.updateMatrixWorld(true);
-    for (const w of this.wheels) { w.mesh.position.y = w.pos.y + (w.grounded ? w.comp : -this.sus.ext); w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); }
+    for (const w of this.wheels) { w.mesh.position.y = w.pos.y + (this.kin.custom ? 0 : w.grounded ? w.comp : -this.sus.ext); w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); }
     // tools: cut what the edge swept, feed the container, remember resistance
     let dig = 0;
     for (const t of this.tools) {
