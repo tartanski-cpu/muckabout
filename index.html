@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muckshift — VR wheel loader</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9fcbee; font-family: system-ui, sans-serif; }
+  canvas { display: block; }
+  #help { position: fixed; left: 12px; top: 12px; background: rgba(16,22,26,.82); color: #f3ead8; padding: 12px 14px; border-radius: 10px;
+          font-size: 13px; line-height: 1.5; max-width: 330px; border-left: 4px solid #f0b21a; }
+  #help b { color: #ffd25a; }
+  #help h1 { font-size: 16px; margin: 0 0 6px; letter-spacing: .04em; }
+  #help .k { display: inline-block; min-width: 1.4em; padding: 0 4px; border-radius: 4px; background: #2b3a40; text-align: center; font-family: monospace; }
+  #stats { position: fixed; right: 12px; top: 12px; background: rgba(16,22,26,.7); color: #ffd25a; padding: 6px 10px; border-radius: 8px; font: 12px monospace; }
+  #toggle { cursor: pointer; float: right; opacity: .7; }
+</style>
+</head>
+<body>
+<div id="help">
+  <span id="toggle" onclick="this.parentNode.style.display='none'">✕</span>
+  <h1>MUCKSHIFT · wheel loader POC</h1>
+  <b>Quest:</b> press <i>Enter VR</i>, sit down.<br>
+  Left stick — drive (up/down) &amp; steer<br>
+  Right stick — boom (pull back = lift), bucket (left curl / right dump)<br>
+  Grip near the <b>steering wheel</b> or <b>joystick</b> to grab them<br>
+  <span class="k">A</span> horn · <span class="k">B</span> recentre seat · <span class="k">Y</span> reset loader<br>
+  <b>Desktop:</b> <span class="k">W</span><span class="k">S</span> drive <span class="k">A</span><span class="k">D</span> steer
+  <span class="k">I</span><span class="k">K</span> boom <span class="k">J</span><span class="k">L</span> bucket ·
+  <span class="k">V</span> cab/chase view · drag to look · <span class="k">R</span> reset · <span class="k">H</span> horn<br>
+  <b>Perf HUD:</b> left wrist in VR, <span class="k">X</span> toggles · click left stick for the stress test<br>
+  Desktop: <span class="k">P</span> HUD · <span class="k">T</span> stress test<br>
+  <b>Job:</b> scoop the heap, load 8 m³ into the truck.
+</div>
+<div id="stats"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
