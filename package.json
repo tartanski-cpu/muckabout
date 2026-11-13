@@ -12,6 +12,7 @@
     "test:e2e": "node tests/e2e/run.mjs"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
     "three": "^0.170.0"
   },
   "devDependencies": {

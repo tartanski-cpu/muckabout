@@ -25,7 +25,7 @@ export class Chips {
       const gi = ci * CHUNK + i, gj = cj * CHUNK + j, c = gj * t.nx + gi, m = t.info[c * 4]; if (!m) continue;
       const worked = t.info[c * 4 + 1] > 0, r = hash2(gi, gj, m);
       let type = MATERIALS[m].chip, dens = type === 1 ? 0.55 : 0.16, col = MATERIALS[m].color;
-      if (m === TOPSOIL && !worked) { dens = 0.2; col = GRASS_COLOR; } else if (m === TOPSOIL) { type = 2; dens = 0.12; }
+      if (m === TOPSOIL && !worked) { dens = 0.11; col = GRASS_COLOR; } else if (m === TOPSOIL) { type = 2; dens = 0.12; }
       if (!type || r > dens) continue;
       const a = hash2(gi, gj, 7), b = hash2(gi, gj, 13), k = 0.7 + 0.5 * a;
       out[type].push(t.ox + (gi + a - 0.5) * t.cell, t.h[c] + (type === 3 ? 0 : 0.015), t.oz + (gj + b - 0.5) * t.cell, 0.7 + b * 0.9, a * 6.283, col[0] * k, col[1] * k, col[2] * k);

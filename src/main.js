@@ -2,7 +2,7 @@ import { Game, debugCamera } from './game/app.js';
 
 const q = new URLSearchParams(location.search);
 const flag = (k, d) => (q.has(k) ? q.get(k) !== '0' : d);
-const sceneName = q.get('scene') || 'stress';
+const sceneName = q.get('scene') || 'play';
 const status = document.getElementById('status');
 
 (async () => {
@@ -14,6 +14,10 @@ const status = document.getElementById('status');
     game.scene_ = setup(game, { fountain: flag('fountain', true) });
     debugCamera(game, 22);
     document.getElementById('helpBody').innerHTML = 'Terrain stress scene: four scripted buckets and a clod fountain.<br>Drag to look, wheel to zoom. <a href="poc.html">Original proof of concept</a>';
+  }
+  if (sceneName === 'play') {
+    const { setup } = await import('./scenes/play.js');
+    game.scene_ = await setup(game, {});
   }
   game.start();
   status.textContent = `${game.terrain.mode} terrain · ${game.opts.map} map`;

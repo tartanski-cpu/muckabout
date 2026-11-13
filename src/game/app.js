@@ -52,6 +52,7 @@ export class Game {
     this.frameUpdaters = []; // fn(dt) run each rendered frame
     this.clock = new THREE.Clock();
     this.focus = new THREE.Vector3(); // what the desktop debug camera looks at
+    this.THREE = THREE; // for scripted tests
     addEventListener('resize', () => {
       this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
     });

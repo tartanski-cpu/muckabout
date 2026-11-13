@@ -33,6 +33,8 @@ class DieselProcessor extends AudioWorkletProcessor {
     this.pulseDecay = Math.exp(-1 / (0.005 * sampleRate));
     this.knockDecay = Math.exp(-1 / (0.0016 * sampleRate));
     this.smooth = 1 - Math.exp(-1 / (0.03 * sampleRate));
+    this.on = true;
+    this.port.onmessage = (e) => { if (typeof e.data.on === 'boolean') this.on = e.data.on; };
   }
 
   noise() { // xorshift, -1..1
@@ -43,6 +45,7 @@ class DieselProcessor extends AudioWorkletProcessor {
   process(inputs, outputs, params) {
     const out = outputs[0][0];
     if (!out) return true;
+    if (!this.on) return true; // engine stopped: leave the block silent and skip the work
     const rpmT = params.rpm[0], loadT = params.load[0], sr = sampleRate;
     for (let i = 0; i < out.length; i++) {
       this.rpm += (rpmT - this.rpm) * this.smooth;

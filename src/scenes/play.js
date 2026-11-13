@@ -1,0 +1,199 @@
+// The playable scene: machines with physical cab controls, the player on foot or seated, sound and haptics,
+// plus the desktop keyboard debug path.
+import * as THREE from 'three';
+import { DEFS } from '../../machines/index.js';
+import { Physics } from '../vehicles/physics.js';
+import { Machine } from '../vehicles/machine.js';
+import { XRInput, stickOf } from '../xr/input.js';
+import { InteractionSystem } from '../xr/interaction.js';
+import { Hands } from '../xr/hands.js';
+import { Player } from '../xr/player.js';
+import { makeControl, labelPlate } from '../xr/controls/index.js';
+import { AudioBus, MachineVoice, renderEngine } from '../audio/machineAudio.js';
+import { clamp } from '../util/rng.js';
+
+const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
+
+export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
+  const { terrain, scene } = game, map = terrain.map;
+  const phys = await Physics.create(), input = new XRInput(game.renderer, game.rig), inter = new InteractionSystem();
+  const hands = new Hands(scene), player = new Player(game, input), bus = new AudioBus();
+  const machines = [], keys = new Set();
+  const S = { phys, input, inter, hands, player, bus, machines, keys, chase: false, look: { yaw: 0, pitch: -0.15 }, renderEngine };
+
+  for (const kind of kinds) {
+    const def = DEFS[kind], [x, z, yaw] = map.spawn[kind] || [0, 0, 0];
+    const m = phys.add(new Machine(def, phys, terrain, { id: kind, x, z, yaw }));
+    scene.add(m.root);
+    for (const c of Object.values(m.containers)) game.addContainer(c.rig, c.obj);
+    m.voice = new MachineVoice(bus, def.engine);
+    m.override = {}; m.controls = {}; m.joyFns = new Set();
+    for (const d of def.controls || []) {
+      const c = makeControl(d); m.nodes[d.parent].add(c.root); m.controls[d.name] = c;
+      if (d.type === 'joystick') { m.joyFns.add(d.x[0]); m.joyFns.add(d.y[0]); }
+      if (d.type === 'handrail') c.onGrab = () => { if (player.machine !== m) sit(m); };
+      if (d.out === 'recentre') c.onChange = () => { if (c.value) player.recentre(); };
+      if (d.out === 'horn') c.onChange = () => { if (c.value) { bus.start(); m.voice.horn(); } };
+      if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) stand(); };
+    }
+    inter.add(Object.values(m.controls));
+    if (def.placard) { const pl = labelPlate('R TRIGGER: GO   L TRIGGER: BRAKE', 0.3); pl.position.fromArray(def.placard.pos); if (def.placard.rot) pl.rotation.fromArray(def.placard.rot); m.nodes[def.placard.parent].add(pl); }
+    machines.push(m);
+  }
+  game.machines = machines; game.play = S;
+  game.machine = (id) => machines.find((m) => m.id === id);
+
+  // dash display: one canvas, shown in whichever cab the player is in
+  const dashC = document.createElement('canvas'); dashC.width = 256; dashC.height = 128;
+  const dashT = new THREE.CanvasTexture(dashC), dash = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: dashT }));
+  dash.visible = false; let dashTimer = 0;
+  function drawDash(m) {
+    const c = dashC.getContext('2d'), e = m.engine;
+    c.fillStyle = '#10161a'; c.fillRect(0, 0, 256, 128); c.strokeStyle = '#ffb21a'; c.lineWidth = 3; c.strokeRect(2, 2, 252, 124);
+    c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
+    c.fillText(`${(Math.abs(m.speed) * 3.6).toFixed(0).padStart(2)} km/h  ${m.gear > 0 ? 'F' : m.gear < 0 ? 'R' : 'N'}${m.inp.park > 0.5 ? '  (P)' : ''}`, 12, 30);
+    c.fillText(e.running ? `${e.rpm.toFixed(0)} rpm` : e.crank > 0 ? 'cranking…' : 'ENGINE OFF', 12, 58);
+    const load = m.payload(), cap = m.rigs.reduce((s, r) => s + r.field.capacity, 0);
+    if (cap) { c.fillStyle = '#2b3a40'; c.fillRect(12, 70, 232, 12); c.fillStyle = '#c98a3a'; c.fillRect(12, 70, 232 * clamp(load / cap, 0, 1), 12);
+      c.fillStyle = '#9fe08a'; c.font = 'bold 18px monospace'; c.fillText(`LOAD ${load.toFixed(2)} m³`, 12, 108); }
+    dashT.needsUpdate = true;
+  }
+
+  function sit(m) {
+    inter.releaseAll(input.hands); player.sit(m); S.look.yaw = 0; S.look.pitch = -0.15;
+    const d = m.def.display || { parent: m.seatDef.node, pos: [m.seatDef.eye[0] + 0.42, m.seatDef.eye[1] - 0.74, m.seatDef.eye[2] - 0.9], rot: [-0.5, -0.25, 0] };
+    m.nodes[d.parent].add(dash); dash.position.fromArray(d.pos); dash.rotation.fromArray(d.rot); dash.visible = true; drawDash(m);
+    setHelp();
+  }
+  function stand() { inter.releaseAll(input.hands); player.stand(); dash.visible = false; setHelp(); }
+  S.sit = sit; S.stand = stand;
+
+  // ---- inputs → machine
+  function readControls(m) {
+    const inp = m.inp;
+    for (const f of m.joyFns) inp[f] = 0;
+    for (const c of Object.values(m.controls)) {
+      const d = c.def;
+      if (d.type === 'joystick') { inp[d.x[0]] += c.value.x * d.x[1]; inp[d.y[0]] += c.value.y * d.y[1]; }
+      else if (d.out && d.type !== 'button' && d.type !== 'handrail') inp[d.out] = c.value;
+    }
+    inp.accel = 0; inp.brake = 0; inp.decel = 0;
+    if (player.machine === m) {
+      const { left, right } = input.hands, tracks = m.def.drive.type === 'tracks';
+      // feet aren't tracked: triggers are the pedals while that hand is on a control
+      if (right.tracked && right.holding) inp.accel = right.trigger;
+      if (left.tracked && left.holding) { if (tracks) inp.decel = left.trigger; else inp.brake = left.trigger; }
+      if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && keys.size)) assist(m, left, right);
+    }
+    Object.assign(inp, m.override);
+  }
+  const setCtl = (m, name, v) => { const c = m.controls[name]; if (c && !c.held && c.value !== v) c.set(v); };
+  const k = (c) => (keys.has(c) ? 1 : 0);
+  /** Thumbstick assist (dash toggle, off by default) and the desktop keyboard: both drive without the levers. */
+  function assist(m, left, right) {
+    const inp = m.inp, vr = game.renderer.xr.isPresenting;
+    let fwd = k('KeyW') - k('KeyS'), turn = k('KeyD') - k('KeyA');
+    if (vr && left.tracked && !left.holding) { const [x, y] = stickOf(left); fwd += y; turn += x; }
+    fwd = clamp(fwd, -1, 1); turn = clamp(turn, -1, 1);
+    if (m.def.drive.type === 'tracks') {
+      const l = clamp(fwd + turn, -1, 1), r = clamp(fwd - turn, -1, 1);
+      if (fwd || turn || !m.controls.left?.held) { inp.left = l; inp.right = r; setCtl(m, 'left', l); setCtl(m, 'right', r); }
+    } else {
+      if (fwd) { const dir = Math.sign(fwd); inp.shuttle = dir; setCtl(m, 'shuttle', dir); inp.accel = Math.max(inp.accel, Math.abs(fwd)); }
+      if (turn || !m.controls.steer?.held) { inp.steer = turn; setCtl(m, 'steer', turn); }
+      inp.brake = Math.max(inp.brake, k('Space'));
+    }
+    for (const [fn, pos, neg] of m.def.keys || []) { const v = k(pos) - k(neg); if (v) inp[fn] = v; }
+    if (vr && right.tracked && !right.holding && m.def.assistStick) { const [x, y] = stickOf(right), a = m.def.assistStick; if (x) inp[a.x[0]] = x * a.x[1]; if (y) inp[a.y[0]] = y * a.y[1]; }
+  }
+
+  game.updaters.push((dt) => {
+    for (const m of machines) readControls(m);
+    phys.step(dt);
+    for (const m of machines) {
+      if (!game.fast) for (const ev of m.events) m.voice.play(ev);
+      if (player.machine === m) { const amp = Math.min(1, m.digRate * 0.5) + m.bump; if (amp > 0.03) for (const s of ['left', 'right']) if (input.hands[s].holding) input.hands[s].pulse(amp, 30); }
+    }
+  });
+
+  // ---- per frame: hands, interaction, player, camera, audio, HUD
+  const hudHolder = new THREE.Group(); scene.add(hudHolder); game.hud.attachTo(hudHolder);
+  game.frameUpdaters.push((fdt) => {
+    input.update();
+    inter.update(input.hands, fdt);
+    const { left, right } = input.hands;
+    if (left.primaryPressed) game.hud.toggle();
+    if (left.secondaryPressed && player.seated) stand();
+    if (right.secondaryPressed) player.recentre();
+    if (right.primaryPressed && player.machine) { bus.start(); player.machine.voice.horn(); }
+    player.update(fdt, input.hands);
+    desktopCamera();
+    scene.updateMatrixWorld();
+    hands.update(input.hands, fdt);
+    hudHolder.visible = left.tracked; if (left.tracked) { hudHolder.position.copy(left.pos); hudHolder.quaternion.copy(left.quat); }
+    if (bus.ctx) {
+      game.camera.getWorldPosition(_p); game.camera.getWorldDirection(_f); _u.set(0, 1, 0).applyQuaternion(game.camera.getWorldQuaternion(_q));
+      bus.setListener(_p, _f, _u);
+      for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } m.voice.drive(s, m.position); }
+    }
+    if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
+    const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
+  });
+
+  // ---- desktop debug: keyboard + mouse look
+  let drag = false;
+  const el = game.renderer.domElement;
+  el.addEventListener('pointerdown', () => { drag = true; bus.start(); });
+  addEventListener('pointerup', () => { drag = false; });
+  addEventListener('pointermove', (e) => { if (drag) { S.look.yaw -= e.movementX * 0.004; S.look.pitch = clamp(S.look.pitch - e.movementY * 0.004, -1.3, 1.3); } });
+  game.renderer.xr.addEventListener('sessionstart', () => { bus.start(); S.chase = false; if (game.camera.parent !== game.rig) game.rig.add(game.camera); setTimeout(() => player.recentre(), 500); });
+  game.renderer.xr.addEventListener('sessionend', () => { inter.releaseAll(input.hands); game.camera.position.set(0, 0, 0); game.camera.rotation.set(0, 0, 0); });
+  addEventListener('keyup', (e) => keys.delete(e.code));
+  addEventListener('keydown', (e) => {
+    if (e.repeat) return; keys.add(e.code); bus.start();
+    const m = player.machine, n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
+    if (n >= 0 && machines[n]) sit(machines[n]);
+    else if (e.code === 'KeyQ') { if (m) stand(); }
+    else if (e.code === 'KeyV') S.chase = !S.chase;
+    else if (e.code === 'KeyF') game.hud.toggle();
+    else if (m && e.code === 'Enter') setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);
+    else if (m && e.code === 'KeyP') setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);
+    else if (m && e.code === 'KeyT') setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));
+    else if (m && e.code === 'KeyG') setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
+    else if (m && e.code === 'KeyR') m.reset();
+    else if (m && e.code === 'KeyH') m.voice.horn();
+    else if (m && e.code === 'KeyC') player.recentre();
+    else if (m && e.code === 'KeyB' && m.controls.swivel) m.controls.swivel.press(null);
+  });
+  function desktopCamera() {
+    if (game.renderer.xr.isPresenting) return;
+    const cam = game.camera, m = player.machine;
+    if (m && S.chase) {
+      if (cam.parent !== scene) scene.add(cam);
+      const a = m.heading + S.look.yaw, p = m.position;
+      cam.position.set(p.x + Math.sin(a) * 11, p.y + 6 - S.look.pitch * 6, p.z + Math.cos(a) * 11);
+      _f.set(0, 0, -2).applyQuaternion(m.bodyList[0].obj.quaternion); cam.lookAt(p.x + _f.x, p.y + 1.5, p.z + _f.z);
+      return;
+    }
+    if (cam.parent !== game.rig) game.rig.add(cam);
+    if (m) cam.position.set(0, 0, 0);
+    else { // walking on the desktop: WASD
+      const fwd = k('KeyW') - k('KeyS'), side = k('KeyD') - k('KeyA'), sp = (keys.has('ShiftLeft') ? 5 : 2) * 0.016;
+      const yaw = player.yaw + S.look.yaw; player.feet.x += (-Math.sin(yaw) * fwd + Math.cos(yaw) * side) * sp; player.feet.z += (-Math.cos(yaw) * fwd - Math.sin(yaw) * side) * sp;
+    }
+    cam.rotation.set(S.look.pitch, S.look.yaw, 0, 'YXZ');
+  }
+  function setHelp() {
+    const el = document.getElementById('helpBody'); if (!el) return;
+    const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
+    el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
+      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('X')} perf HUD.<br>`
+      + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
+      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · drag to look<br>`
+      + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
+  }
+  const sp = map.spawn.player || [(map.spawn[kinds[0]] || [0, 0])[0] - 5, (map.spawn[kinds[0]] || [0, 0])[1] + 3, 0];
+  player.place(sp[0], sp[1], sp[2] || 0);
+  setHelp();
+  return S;
+}
