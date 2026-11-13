@@ -5,6 +5,8 @@
 import { MATERIALS, NMAT } from './materials.js';
 
 const G = 9.81;
+// flow speed (m/s) below which a material stays put: the natural river bed is stable, a mud bank is not
+const SCOUR = [9, 0.6, 0.35, 1.6, 1.0, 3.6, 9, 0.5];
 
 export class Water {
   /** @param {import('./core.js').TerrainCore} core @param {object} map map definition with .river */
@@ -20,13 +22,16 @@ export class Water {
     this.fl = new Float32Array(n); this.fr = new Float32Array(n); this.fu = new Float32Array(n); this.fd = new Float32Array(n);
     this.vx = new Float32Array(n); this.vz = new Float32Array(n);
     this.inflow = r.inflow ?? 3.0;          // m³/s
-    this.erodeK = r.erodeK ?? 0.0016;       // m of mud per second per m/s of flow
-    this.tick = 0; this.washed = 0; this._vol = new Float64Array(NMAT);
+    this.erodeK = r.erodeK ?? 0.004;        // m of mud per second per m/s of flow above its scour speed
+    this.outLevel = r.level - (r.fall ?? 0.45);  // water surface just beyond the downstream edge
+    this.tick = 0; this.washed = 0; this._vol = new Float64Array(NMAT); this.eroding = true;
     this.sampleBed();
     for (let j = 0; j < this.nz; j++) for (let i = 0; i < this.nx; i++) {
       const c = j * this.nx + i, x = this.ox + (i + 0.5) * cell, z = this.oz + (j + 0.5) * cell;
       if (Math.abs(z - map.riverZ(x)) < 8) this.d[c] = Math.max(0, r.level - this.b[c]);
     }
+    // let the flow establish before play starts, without eroding anything meanwhile
+    this.eroding = false; for (let k = 0; k < (r.warmup ?? 2400); k++) this.step(1 / 60); this.eroding = true; this.tick = 0;
     this.markWet();
   }
   sampleBed() {
@@ -57,10 +62,10 @@ export class Water {
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const c = j * nx + i, hc = b[c] + d[c];
       let L = i > 0 ? Math.max(0, fl[c] + kf * (hc - b[c - 1] - d[c - 1])) : 0;
-      let R = i < nx - 1 ? Math.max(0, fr[c] + kf * (hc - b[c + 1] - d[c + 1])) : Math.max(0, fr[c] + kf * Math.max(0, d[c] - 0.02)); // free outflow at the downstream edge
+      let R = i < nx - 1 ? Math.max(0, fr[c] + kf * (hc - b[c + 1] - d[c + 1])) : (d[c] > 0.02 ? Math.max(0, fr[c] + kf * (hc - this.outLevel)) : 0); // downstream edge: a fixed stage beyond the map
       let U = j > 0 ? Math.max(0, fu[c] + kf * (hc - b[c - nx] - d[c - nx])) : 0;
       let D = j < nz - 1 ? Math.max(0, fd[c] + kf * (hc - b[c + nx] - d[c + nx])) : 0;
-      const damp = 1 - Math.min(0.5, dt * (0.6 + 0.04 / Math.max(d[c], 0.02))); // bed friction, stronger in shallows
+      const damp = 1 - Math.min(0.5, dt * (0.035 + 0.012 / Math.max(d[c], 0.03))); // bed friction, stronger in shallows
       L *= damp; R *= damp; U *= damp; D *= damp;
       const sum = (L + R + U + D) * dt, avail = d[c] * a2;
       if (sum > avail) { const s = avail / sum; L *= s; R *= s; U *= s; D *= s; }
@@ -75,20 +80,21 @@ export class Water {
       this.vz[c] = (inU - fu[c] + fd[c] - inD) * 0.5 / (cell * dm);
       d[c] = dn > 0 ? dn : 0;
     }
-    if (this.tick % 4 === 0) { this.erode(dt * 4); this.markWet(); }
+    if (this.eroding && this.tick % 4 === 0) { this.erode(dt * 4); this.markWet(); }
   }
 
   erode(dt) {
     const { core, k, nx, nz, d, vx, vz, cell } = this, cnx = core.nx, vol = this._vol;
     for (let j = 1; j < nz - 1; j++) for (let i = 0; i < nx; i++) {
       const c = j * nx + i; if (d[c] < 0.04) continue;
-      const sp = Math.hypot(vx[c], vz[c]); if (sp < 0.3) continue;
+      const sp = Math.hypot(vx[c], vz[c]); if (sp < 0.35) continue;
       // carry one water cell downstream (two near the fastest flow)
       const hop = sp > 1.5 ? 2 : 1, ti = i + Math.round(vx[c] / sp) * hop, tj = j + Math.round(vz[c] / sp) * hop;
       const base = (this.j0 + j) * k * cnx + i * k;
       for (const t of [base, base + 1, base + cnx, base + cnx + 1]) {
         if (!core.nl[t]) continue;
-        const m = core.topMat(t), dh = MATERIALS[m].erosion * this.erodeK * Math.min(sp, 3) * dt;
+        const m = core.topMat(t), over = Math.min(sp, 4) - SCOUR[m]; if (over <= 0) continue; // slower than this material's scour speed
+        const dh = MATERIALS[m].erosion * this.erodeK * over * dt;
         if (dh < 1e-5) continue;
         vol.fill(0);
         const got = core.removeTop(t, dh, vol); if (got <= 0) continue;

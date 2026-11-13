@@ -6,7 +6,8 @@ const sceneName = q.get('scene') || 'play';
 const status = document.getElementById('status');
 
 (async () => {
-  const game = new Game({ map: q.get('map') || 'test', worker: flag('worker', true), seed: 1337 });
+  const map = q.get('map') || (sceneName === 'stress' ? 'test' : 'dirttown');
+  const game = new Game({ map, worker: flag('worker', true), water: map === 'dirttown' && flag('water', true), seed: 1337 });
   await game.init();
   window.__game = game;
   if (sceneName === 'stress') {
@@ -18,6 +19,7 @@ const status = document.getElementById('status');
   if (sceneName === 'play') {
     const { setup } = await import('./scenes/play.js');
     game.scene_ = await setup(game, {});
+    if (flag('stress', false)) game.scene_.setStress(true);
   }
   game.start();
   status.textContent = `${game.terrain.mode} terrain · ${game.opts.map} map`;

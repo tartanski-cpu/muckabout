@@ -16,7 +16,7 @@ export function driveTo(m, x, z, { speed = 2.5, reverse = false } = {}) {
     o.left = clamp(v - turn, -1, 1); o.right = clamp(v + turn, -1, 1);
   } else {
     o.steer = clamp(-err * 2.5, -1, 1) * (reverse ? -1 : 1);
-    o.shuttle = reverse ? -1 : 1; o.accel = sp < want ? 0.6 : 0; o.brake = sp > want + 0.8 ? 0.5 : 0;
+    o.shuttle = reverse ? -1 : 1; o.accel = sp < want * 0.5 && want > 1.5 ? 1 : sp < want ? 0.6 : 0; o.brake = sp > want + 0.8 ? 0.5 : 0; // floor it when bogged or climbing
   }
   return dist;
 }

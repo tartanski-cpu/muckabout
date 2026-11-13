@@ -15,9 +15,9 @@ export function makeEnvironment(scene, terrain) {
   };
   // backdrop: a wide skirt sloping away from the map edge, and a ring of trees to hide the seam
   const half = terrain.nx * terrain.cell / 2, cx = terrain.ox + half, cz = terrain.oz + half;
-  const skirt = new THREE.Mesh(new THREE.RingGeometry(half * 0.98, 320, 48, 1).rotateX(-Math.PI / 2),
+  const skirt = new THREE.Mesh(new THREE.CircleGeometry(320, 48).rotateX(-Math.PI / 2), // a full disc: nothing but ground under and around the map
     new THREE.MeshLambertMaterial({ color: new THREE.Color(...GRASS_COLOR).multiplyScalar(0.9) }));
-  skirt.position.set(cx, -2.5, cz); scene.add(skirt);
+  skirt.position.set(cx, -2.6, cz); scene.add(skirt);
   const rnd = makeRng(99), NT = 220;
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.22, 1.6, 5).translate(0, 0.8, 0), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }), NT);
   const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(1.4, 4.5, 6).translate(0, 3.6, 0), new THREE.MeshLambertMaterial({ color: 0x2f6b2c }), NT);

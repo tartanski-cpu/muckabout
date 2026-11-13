@@ -10,7 +10,6 @@ export const MAPS = {
   test: {
     cfg: { nx: 160, nz: 160, cell: 0.25, ox: -20, oz: -20 },
     spawn: { loader: [0, 6, 0], dumper: [-8, 4, 0], dozer: [8, 8, 0], backhoe: [-6, 12, 0] },
-    hopper: { x: -12, z: -6, yaw: 0 },
     build(core) {
       const { nx, nz, cell, ox, oz } = core.cfg;
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
@@ -27,8 +26,8 @@ export const MAPS = {
   // The MVP map: yard on the top terrace, three terraces stepping down (south = +z), river, sand site beyond.
   dirttown: {
     cfg: { nx: 480, nz: 480, cell: 0.25, ox: -60, oz: -60 },
-    spawn: { loader: [-4, -44, Math.PI], dumper: [4, -44, Math.PI], dozer: [-12, -42, Math.PI], backhoe: [12, -42, Math.PI] },
-    hopper: { x: -24, z: -46, yaw: 0 },
+    spawn: { loader: [-4, -44, Math.PI], dumper: [4, -44, Math.PI], dozer: [-12, -42, Math.PI], backhoe: [12, -42, Math.PI], player: [0, -50, Math.PI] },
+    hopper: { x: -24, z: -46, w: 5, d: 4, depth: 1.2, target: 20 },
     river: { z: 20, halfWidth: 3.5, level: 0, bed: -1.0, x0: -60, x1: 60 },
     sandSite: { x: 0, z: 42, r: 14 },
     riverZ: (x) => 20 + 1.5 * Math.sin(x * 0.08),
@@ -58,6 +57,9 @@ export const MAPS = {
         else layers = [[CLAY, depth - 0.3], [TOPSOIL, 0.3]];
         const rg = Math.hypot(x - 22, z + 46);            // gravel stockpile in the yard
         if (rg < 5.5) layers.push([GRAVEL, Math.min(3.0, 4.0 * (1 - rg / 5.5))]);
+        // the hopper is a pit in the yard: bare floor, nothing to dig or slump
+        const hp = me.hopper;
+        if (Math.abs(x - hp.x) < hp.w / 2 + 0.3 && Math.abs(z - hp.z) < hp.d / 2 + 0.3) { core.setColumn(j * nx + i, 9 - hp.depth - 0.05, []); continue; }
         core.setColumn(j * nx + i, bed, layers);
       }
     },

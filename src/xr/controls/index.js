@@ -8,9 +8,17 @@
 // Differences: each control exposes `value` directly (machines read it every step), detents are a list,
 // and `handlePose` tells the hand visual where to sit while holding ("elastic hands").
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clamp } from '../../util/rng.js';
 
-const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion();
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _c = new THREE.Color();
+/** Non-indexed copy of a geometry, moved to (x, y, z) and given one vertex colour, ready to merge. */
+export function paint(geo, color, x = 0, y = 0, z = 0) {
+  const g = geo.index ? geo.toNonIndexed() : geo.clone(); g.translate(x, y, z); g.deleteAttribute('uv');
+  _c.setHex(color); const n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
+}
 const HOVER = 0x335533;
 
 export function labelPlate(text, width = 0.14) {
@@ -29,11 +37,18 @@ export class Control {
     if (def.rot) this.root.rotation.fromArray(def.rot);
     this.value = def.init ?? 0; this.holders = []; this.enabled = true; this.hovered = false; this.mats = [];
     this.onChange = null;
-    if (def.label && typeof document !== 'undefined') { const l = labelPlate(def.label, def.labelWidth ?? 0.13); l.position.set(0, 0.002, 0.075); l.rotation.x = -Math.PI / 2; this.root.add(l); this.plate = l; }
+    this.fixedParts = [];   // geometry that never moves: merged per machine into one mesh (decor.js)
+    this.label = def.label ? { text: def.label, width: def.labelWidth ?? 0.13, pos: [0, 0.002, 0.075], rot: [-Math.PI / 2, 0, 0] } : null;
   }
   get held() { return this.holders.length > 0; }
   mat(color) { const m = new THREE.MeshLambertMaterial({ color, flatShading: true }); this.mats.push(m); return m; }
-  mesh(geo, color, parent = this.root) { const m = new THREE.Mesh(geo, this.mat(color)); parent.add(m); return m; }
+  /** A static part (base, housing): painted geometry in the control's frame, drawn in the machine's merged decor mesh. */
+  fixed(geo, color, x = 0, y = 0, z = 0) { this.fixedParts.push(paint(geo, color, x, y, z)); }
+  /** The moving part: several painted geometries merged into ONE mesh that glows when hovered. parts: [geo, color, x, y, z][] */
+  moving(parts, parent = this.root) {
+    const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }); this.mats.push(m);
+    const mesh = new THREE.Mesh(mergeGeometries(parts.map((p) => paint(...p))), m); parent.add(mesh); return mesh;
+  }
   setHover(on) { if (on === this.hovered) return; this.hovered = on; for (const m of this.mats) m.emissive.setHex(on ? HOVER : 0); }
   local(world, out = _v) { return this.root.worldToLocal(out.copy(world)); }
   /** Distance from a world point to the part you'd take hold of. */
@@ -58,10 +73,10 @@ export class Lever1D extends Control {
     super(def);
     this.len = def.length ?? 0.18; this.max = def.maxAngle ?? 0.5; this.range = def.range ?? [-1, 1];
     this.detents = def.detents ?? null; this.spring = !!def.spring; this.catch = def.catch ?? 0.14; this.inDetent = true;
-    this.mesh(new THREE.BoxGeometry(0.05, 0.02, 0.09), 0x2b2b2b);
+    this.fixed(new THREE.BoxGeometry(0.05, 0.02, 0.09), 0x2b2b2b);
     this.arm = new THREE.Group(); this.root.add(this.arm);
-    const rod = this.mesh(new THREE.CylinderGeometry(0.008, 0.01, this.len, 6), 0x9a9c9e, this.arm); rod.position.y = this.len / 2;
-    this.knob = this.mesh(new THREE.SphereGeometry(0.026, 8, 6), def.color ?? 0x1c1c1c, this.arm); this.knob.position.y = this.len;
+    this.moving([[new THREE.CylinderGeometry(0.008, 0.01, this.len, 6), 0x9a9c9e, 0, this.len / 2, 0], [new THREE.SphereGeometry(0.026, 8, 6), def.color ?? 0x1c1c1c, 0, this.len, 0]], this.arm);
+    this.knob = new THREE.Object3D(); this.knob.position.y = this.len; this.arm.add(this.knob);
     this.show();
   }
   get theta() { const [a, b] = this.range, t = (this.value - a) / (b - a); return (0.5 - t) * 2 * this.max; }
@@ -96,10 +111,10 @@ export class Lever1D extends Control {
 export class Joystick2D extends Control {
   constructor(def) {
     super(def); this.value = { x: 0, y: 0 }; this.travel = def.travel ?? 0.07; this.h = def.height ?? 0.16; this.keyed = false;
-    this.mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.02, 8), 0x2b2b2b);
+    this.fixed(new THREE.CylinderGeometry(0.035, 0.045, 0.02, 8), 0x2b2b2b);
     this.stick = new THREE.Group(); this.root.add(this.stick);
-    const rod = this.mesh(new THREE.CylinderGeometry(0.012, 0.016, this.h - 0.02, 6), 0x6d6e70, this.stick); rod.position.y = (this.h - 0.02) / 2;
-    this.knob = this.mesh(new THREE.SphereGeometry(0.035, 8, 6), 0x1c1c1c, this.stick); this.knob.position.y = this.h;
+    this.moving([[new THREE.CylinderGeometry(0.012, 0.016, this.h - 0.02, 6), 0x6d6e70, 0, (this.h - 0.02) / 2, 0], [new THREE.SphereGeometry(0.035, 8, 6), 0x1c1c1c, 0, this.h, 0]], this.stick);
+    this.knob = new THREE.Object3D(); this.knob.position.y = this.h; this.stick.add(this.knob);
     this.g = new THREE.Vector3();
   }
   show() { this.stick.rotation.set(-this.value.y * 0.35, 0, -this.value.x * 0.35); }
@@ -121,11 +136,10 @@ export class SteeringWheel extends Control {
     super(def); this.radius = def.radius ?? 0.19; this.maxAngle = (def.turns ?? 1.4) * Math.PI; this.angle = 0; this.multi = true;
     this.prev = new Map(); this.offs = new Map(); this.click = 0;
     if (def.tilt) this.root.rotation.x = def.tilt;
-    const col = this.mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.4, 6).rotateX(Math.PI / 2), 0x3a3a3c); col.position.z = -0.2;
+    this.fixed(new THREE.CylinderGeometry(0.035, 0.045, 0.4, 6).rotateX(Math.PI / 2), 0x3a3a3c, 0, 0, -0.2);
     this.spin = new THREE.Group(); this.root.add(this.spin);
-    this.mesh(new THREE.TorusGeometry(this.radius, 0.022, 6, 20), 0x2b2b2b, this.spin);
-    this.mesh(new THREE.BoxGeometry(this.radius * 2, 0.03, 0.03), 0x2b2b2b, this.spin);
-    const knob = this.mesh(new THREE.SphereGeometry(0.03, 6, 4), 0xc9381e, this.spin); knob.position.set(this.radius * 0.84, this.radius * 0.47, 0.03);
+    this.moving([[new THREE.TorusGeometry(this.radius, 0.022, 6, 20), 0x2b2b2b], [new THREE.BoxGeometry(this.radius * 2, 0.03, 0.03), 0x2b2b2b],
+      [new THREE.SphereGeometry(0.03, 6, 4), 0xc9381e, this.radius * 0.84, this.radius * 0.47, 0.03]], this.spin);
   }
   show() { this.angle = -this.value * this.maxAngle; this.spin.rotation.z = this.angle; }
   distanceTo(world) { const l = this.local(world); return Math.hypot(Math.hypot(l.x, l.y) - this.radius, l.z); }
@@ -151,10 +165,10 @@ export class SteeringWheel extends Control {
 export class Key extends Control {
   constructor(def) {
     super(def);
-    this.mesh(new THREE.CylinderGeometry(0.03, 0.034, 0.012, 12), 0xa8acb0).position.y = 0.006;
+    this.fixed(new THREE.CylinderGeometry(0.03, 0.034, 0.012, 12), 0xa8acb0, 0, 0.006, 0);
     this.key = new THREE.Group(); this.key.position.y = 0.012; this.root.add(this.key);
-    this.mesh(new THREE.BoxGeometry(0.006, 0.03, 0.014), 0xc8b060, this.key).position.y = 0.025;
-    this.bow = this.mesh(new THREE.BoxGeometry(0.008, 0.032, 0.04), 0x202326, this.key); this.bow.position.y = 0.055;
+    this.moving([[new THREE.BoxGeometry(0.006, 0.03, 0.014), 0xc8b060, 0, 0.025, 0], [new THREE.BoxGeometry(0.008, 0.032, 0.04), 0x202326, 0, 0.055, 0]], this.key);
+    this.bow = new THREE.Object3D(); this.bow.position.y = 0.055; this.key.add(this.bow);
     this.show();
   }
   show() { this.key.rotation.y = this.value > 0.5 ? -Math.PI / 2 : 0; }
@@ -179,8 +193,8 @@ export class Key extends Control {
 export class Button extends Control {
   constructor(def) {
     super(def); this.kind = 'press';
-    this.mesh(new THREE.CylinderGeometry(0.026, 0.03, 0.012, 10), 0x2b2b2b).position.y = 0.006;
-    this.cap = this.mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.016, 10), def.color ?? 0xc9381e); this.cap.position.y = 0.02;
+    this.fixed(new THREE.CylinderGeometry(0.026, 0.03, 0.012, 10), 0x2b2b2b, 0, 0.006, 0);
+    this.cap = this.moving([[new THREE.CylinderGeometry(0.02, 0.02, 0.016, 10), def.color ?? 0xc9381e]]); this.cap.position.y = 0.02;
   }
   show() { this.cap.position.y = this.value > 0.5 ? 0.014 : 0.02; }
   distanceTo(world) { return this.local(world).distanceTo(_w.set(0, 0.02, 0)); }
@@ -192,12 +206,12 @@ export class Button extends Control {
 export class Toggle extends Control {
   constructor(def) {
     super(def); this.kind = 'press';
-    this.mesh(new THREE.BoxGeometry(0.05, 0.012, 0.06), 0x2b2b2b).position.y = 0.006;
-    this.rocker = this.mesh(new THREE.BoxGeometry(0.03, 0.014, 0.05), def.color ?? 0xd9a015); this.rocker.position.y = 0.018;
-    this.lamp = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 4), new THREE.MeshBasicMaterial({ color: 0x44ff66 })); this.lamp.position.set(0.035, 0.012, 0); this.root.add(this.lamp);
+    this.fixed(new THREE.BoxGeometry(0.05, 0.012, 0.06), 0x2b2b2b, 0, 0.006, 0);
+    // the rocker carries its own tell-tale: a green end that shows when it is on
+    this.rocker = this.moving([[new THREE.BoxGeometry(0.03, 0.014, 0.05), def.color ?? 0xd9a015], [new THREE.BoxGeometry(0.031, 0.015, 0.012), 0x33dd55, 0, 0, -0.02]]); this.rocker.position.y = 0.018;
     this.show();
   }
-  show() { this.rocker.rotation.x = this.value > 0.5 ? -0.3 : 0.3; this.lamp.visible = this.value > 0.5; }
+  show() { this.rocker.rotation.x = this.value > 0.5 ? -0.35 : 0.35; } // on = pressed down at the far (green) end
   distanceTo(world) { return this.local(world).distanceTo(_w.set(0, 0.02, 0)); }
   press(hand) { this.value = this.value > 0.5 ? 0 : 1; this.show(); hand?.pulse(0.5, 30); this.changed(); }
 }
@@ -206,8 +220,8 @@ export class Toggle extends Control {
 export class Handrail extends Control {
   constructor(def) {
     super(def); this.len = def.length ?? 0.5; this.onGrab = null;
-    const bar = this.mesh(new THREE.CylinderGeometry(0.018, 0.018, this.len, 6), 0xf0e040); bar.position.y = 0;
-    if (this.plate) { this.plate.rotation.set(0, -Math.PI / 2, 0); this.plate.position.set(-0.03, this.len / 2 + 0.05, 0); this.plate.scale.setScalar(2); }
+    this.moving([[new THREE.CylinderGeometry(0.018, 0.018, this.len, 6), 0xf0e040]]);
+    if (this.label) { this.label.rot = [0, -Math.PI / 2, 0]; this.label.pos = [-0.03, this.len / 2 + 0.05, 0]; this.label.width = 0.26; }
   }
   distanceTo(world) { const p = this.local(world), t = clamp(p.y, -this.len / 2, this.len / 2); return Math.hypot(p.x, p.y - t, p.z); }
   grabStart(hand) { super.grabStart(hand); hand.pulse(0.5, 40); if (this.onGrab) this.onGrab(hand, this); }

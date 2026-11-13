@@ -11,6 +11,7 @@ import { Chips } from '../render/chips.js';
 import { ClodMesh } from '../render/clodMesh.js';
 import { ContainerMesh } from '../render/containerMesh.js';
 import { makeEnvironment } from '../render/scenery.js';
+import { WaterMesh } from '../render/water.js';
 import { makeRng } from '../util/rng.js';
 
 export const DT = 1 / 60;
@@ -41,6 +42,7 @@ export class Game {
     this.env = makeEnvironment(this.scene, this.terrain);
     this.ground = new Ground(renderer, this.terrain, this.env); this.scene.add(this.ground.group);
     this.chips = new Chips(this.terrain); this.scene.add(this.chips.group);
+    if (o.water) { this.water = new WaterMesh(this.terrain, this.env); this.water.onReady = (m) => this.scene.add(m); if (this.water.mesh) this.scene.add(this.water.mesh); }
     this.clods = new Clods({ rng: this.rng, max: 1500 });
     this.rigs = []; // ContainerRig list (clod targets)
     this.containerMeshes = [];
@@ -111,6 +113,7 @@ export class Game {
     this.ground.update(_cam); this.chips.update(_cam);
     this.clodMesh.update();
     for (const c of this.containerMeshes) c.update();
+    if (this.water) this.water.update(fdt);
     perf.end('upload');
     perf.begin('render');
     this.renderer.render(this.scene, this.camera);

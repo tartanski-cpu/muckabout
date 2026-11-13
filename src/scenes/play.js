@@ -8,10 +8,14 @@ import { XRInput, stickOf } from '../xr/input.js';
 import { InteractionSystem } from '../xr/interaction.js';
 import { Hands } from '../xr/hands.js';
 import { Player } from '../xr/player.js';
-import { makeControl, labelPlate } from '../xr/controls/index.js';
+import { makeControl } from '../xr/controls/index.js';
+import { buildDecor } from '../xr/controls/decor.js';
 import { AudioBus, MachineVoice, renderEngine } from '../audio/machineAudio.js';
 import { clamp } from '../util/rng.js';
 import * as autopilot from '../game/autopilot.js';
+import { makeHopper } from '../game/hopper.js';
+import { makeChecklist, Clipboard } from '../game/checklist.js';
+import { startStress } from './stress.js';
 
 const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -39,12 +43,25 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) stand(); };
     }
     inter.add(Object.values(m.controls));
-    m.controlRoots = Object.values(m.controls).map((c) => c.root);
-    if (def.placard) { const pl = labelPlate('R TRIGGER: GO   L TRIGGER: BRAKE', 0.3); pl.position.fromArray(def.placard.pos); if (def.placard.rot) pl.rotation.fromArray(def.placard.rot); m.nodes[def.placard.parent].add(pl); }
+    const placard = def.placard ? [{ parent: m.nodes[def.placard.parent], text: m.def.drive.type === 'tracks' ? 'L TRIGGER: DECELERATOR' : 'R TRIGGER: GO   L TRIGGER: BRAKE', width: 0.3, pos: def.placard.pos, rot: def.placard.rot || [0, 0, 0] }] : [];
+    m.controlRoots = Object.values(m.controls).map((c) => c.root).concat(buildDecor(Object.values(m.controls), placard));
     machines.push(m);
   }
   game.machines = machines; game.play = S; game.autopilot = autopilot;
   game.machine = (id) => machines.find((m) => m.id === id);
+
+  // the job: hopper in the yard, checklist on a clipboard in every cab
+  if (map.hopper) {
+    S.hopper = makeHopper(game, phys, map.hopper);
+    S.checklist = makeChecklist(game, { machines, hopper: S.hopper, map });
+    S.checklist.onTick = () => { for (const s of ['left', 'right']) input.hands[s].pulse(0.9, 150); };
+    for (const m of machines) {
+      const e = m.seatDef.eye, cb = new Clipboard({ name: 'clipboard', pos: [e[0] - 0.5, e[1] - 0.45, e[2] - 0.62], rot: [-0.5, 0.45, 0] }, S.checklist.texture);
+      m.nodes[m.seatDef.node].add(cb.root); m.controls.clipboard = cb; m.controlRoots.push(cb.root); inter.add([cb]);
+    }
+  }
+  S.stress = null;
+  S.setStress = (v) => { if (v && !S.stress) { for (const m of machines) m.override = {}; S.stress = startStress(game); } else if (!v && S.stress) { S.stress.stop(); S.stress = null; } game.hud.note = v ? 'STRESS: scripted machines + clod fountain' : ''; };
 
   // dash display: one canvas, shown in whichever cab the player is in
   const dashC = document.createElement('canvas'); dashC.width = 256; dashC.height = 128;
@@ -141,6 +158,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } m.voice.drive(s, m.position); }
     }
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
+    if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); }
+    if (left.stickPressed && !left.busy && !player.seated) S.setStress(!S.stress);
     // cab controls and their labels are many small draw calls: only draw them for machines within reach
     if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
@@ -162,6 +181,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     else if (e.code === 'KeyQ') { if (m) stand(); }
     else if (e.code === 'KeyV') S.chase = !S.chase;
     else if (e.code === 'KeyF') game.hud.toggle();
+    else if (e.code === 'KeyX') S.setStress(!S.stress);
     else if (m && e.code === 'Enter') setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyP') setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyT') setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));
@@ -174,6 +194,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   function desktopCamera() {
     if (game.renderer.xr.isPresenting) return;
     const cam = game.camera, m = player.machine;
+    if (S.overview) { if (cam.parent !== scene) scene.add(cam); cam.position.fromArray(S.overview.from); cam.lookAt(...S.overview.to); return; } // bird's-eye for screenshots
     if (m && S.chase) {
       if (cam.parent !== scene) scene.add(cam);
       const a = m.heading + S.look.yaw, p = m.position;
@@ -193,9 +214,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('X')} perf HUD.<br>`
+      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('X')} perf HUD · on foot, click the left stick for the stress test.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
-      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · drag to look<br>`
+      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · drag to look<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }
   const sp = map.spawn.player || [(map.spawn[kinds[0]] || [0, 0])[0] - 5, (map.spawn[kinds[0]] || [0, 0])[1] + 3, 0];

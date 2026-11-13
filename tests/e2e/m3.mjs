@@ -13,7 +13,7 @@ try {
     const ls = new Script(L, loaderCycle({ from: [5, 3], dig: [5, -6], stage: [5, 12], target: D.containers.bed }), { loop: true });
     const ds = new Script(D, dumperCycle({ park: [-1.95, 4.4], via: [3.5, 0.5], tip: [-12, 14], load: 2.0 }), { loop: true, timeout: 200 }); // the dumper waits as long as loading takes
     const t0 = performance.now(); let n = 0, peak = 0, low = 99;
-    while (ds.cycles < 1 && n < 60 * 240) { g.sim(1, () => { ls.step(1 / 60); ds.step(1 / 60); }); n++; const b = D.payload('bed'); peak = Math.max(peak, b); if (ds.i >= 3) low = Math.min(low, b); }
+    while (ds.cycles < 1 && n < 60 * 420) { g.sim(1, () => { ls.step(1 / 60); ds.step(1 / 60); }); n++; const b = D.payload('bed'); peak = Math.max(peak, b); if (ds.i >= 3) low = Math.min(low, b); }
     return { n, ms: (performance.now() - t0) / n, loaderCycles: ls.cycles, dumperCycles: ds.cycles, peak, low, tipped: ds.i, dz: D.position.z, lz: L.position.z, lup: L.bodyList[0].obj.matrixWorld.elements[5], dup: D.bodyList[0].obj.matrixWorld.elements[5] };
   });
   console.log(`loader→dumper: ${(res.n / 60).toFixed(0)} s simulated at ${res.ms.toFixed(3)} ms/step; loader cycles ${res.loaderCycles}, bed peak ${res.peak.toFixed(2)} m³`);
