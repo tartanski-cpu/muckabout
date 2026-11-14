@@ -10,7 +10,7 @@ const ids = await page.evaluate(() => __game.machines.map((m) => m.id));
 for (const id of ids.filter((i) => !want.length || want.includes(i))) {
   await page.evaluate((id) => { const g = __game, m = g.machine(id); for (const o of g.machines) o.reset(o === m ? 0 : 60 + g.machines.indexOf(o) * 9, o === m ? 12 : 60, 0); g.sim(30);
     if (m.fn.boom) { m.fn.boom.pos = -0.55; m.fn.bucket.pos = 0.05; } if (m.fn.lift) m.fn.lift.pos = -0.05; if (m.fn.hoeBoom) { m.fn.hoeBoom.pos = 0.7; m.fn.dipper.pos = 1.6; m.fn.hoeBucket.pos = 1.2; }
-    m.poseNodes(); g.sim(2); g.play.stand(); }, id);
+    m.poseNodes(); g.sim(2); g.play.stand(); if (!g.play._demo) g.play._demo = {}; if (!g.play._demo[id]) g.play._demo[id] = g.play.avatarDemo(m); }, id);
   for (const [view, from, to] of [['front', [-4.6, 3.4, 5.2], [0, 1.5, 10.6]], ['rear', [4.8, 3.6, 17.5], [0, 1.5, 11.6]], ['side', [-8, 2.0, 10.6], [0, 1.6, 10.6]]]) {
     await page.evaluate(([from, to]) => { __game.play.overview = { from, to }; }, [from, to]); await page.waitForTimeout(500);
     await page.screenshot({ path: `shots/gallery_${id}_${view}.png` });

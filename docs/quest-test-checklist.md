@@ -107,3 +107,10 @@ Listen for each of these, from the seat and standing beside the machine. For eac
 - Each machine should sound like a different engine (the dozer biggest and slowest, the backhoe a smaller four-cylinder).
 - With all four engines running, does the frame rate hold? (Each engine is one audio worklet.)
 - On the headset's own speakers there is little bass: can you still hear the idle clearly?
+
+## Avatars and vehicle look (new)
+
+- Two-player: the other player is now a full figure as in SWVR (head with a face and hat, torso, arms with elbows, the faceted hands, legs). Standing: do the feet sit on the ground and the arms follow the hands believably? In a cab: do they sit, with the hands on the controls? Each player should get a different outfit.
+- Vehicles are cel shaded with a dark outline; nothing else is. Is the outline the right weight up close in the cab and from 20 m? Any flicker or gaps at panel corners? Does the frame rate hold with four machines in view (the outline draws each machine part twice)?
+- Pushed soil: the granules ahead of the blade should travel with it, roll forward, and sink into the heap about two seconds after you stop. Granule size right?
+

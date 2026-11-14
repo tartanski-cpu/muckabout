@@ -77,22 +77,22 @@ try {
   const rest = await page.evaluate(() => ({ speed: m.speed, joy: m.controls.loader.value, accel: m.inp.accel }));
   check(Math.abs(rest.speed) < 0.3 && rest.joy.y === 0 && rest.accel === 0, 'releasing the controls stops the machine');
 
-  // an Xbox pad on the desktop: right trigger goes, right stick works the bucket, B is the park brake
+  // an Xbox pad on the desktop: right trigger goes, LB + right stick works the bucket, B is the park brake
   const padSet = (axes, btn) => page.evaluate(([axes, btn]) => { P.pad.fake = { axes, buttons: Array.from({ length: 17 }, (_, i) => ({ value: btn[i] || 0 })) }; }, [axes, btn]);
   const tilt1 = await page.evaluate(() => m.fn.bucket.pos);
-  await padSet([0.4, 0, 1, 0], { 7: 1 }); await frame(2500);
+  await padSet([0.4, 0, 1, 0], { 7: 1, 4: 1 }); await frame(2500);
   const pd = await page.evaluate(() => ({ accel: m.inp.accel, gear: m.gear, pull: m.tractive, tilt: m.fn.bucket.pos, steer: m.inp.steer, on: P.pad.on }));
   check(pd.on && pd.accel === 1 && pd.gear === 1 && pd.pull > 1e4 && pd.steer > 0.2, `gamepad: right trigger drives forward, left stick steers (pull ${(pd.pull / 1000).toFixed(0)} kN, steer ${pd.steer.toFixed(2)})`); // (it may be nose-on to the stockpile by now, so pull, not speed)
-  check(Math.abs(pd.tilt - tilt1) > 0.2, 'gamepad: right stick works the bucket');
+  check(Math.abs(pd.tilt - tilt1) > 0.2, 'gamepad: LB + right stick works the bucket');
   await padSet([0, 0, 0, 0], { 1: 1 }); await frame(300);
   check(await page.evaluate(() => m.controls.park.value > 0.5), 'gamepad: B sets the park brake');
   await padSet([0, 0, 0, 0], {}); await frame(100); await padSet([0, 0, 0, 0], { 1: 1 }); await frame(300);
-  // LB held: the right stick looks round and leaves the bucket alone
+  // without LB the right stick looks round and leaves the bucket alone
   await padSet([0, 0, 0, 0], {}); await frame(100);
   const lk0 = await page.evaluate(() => ({ yaw: P.look.yaw, tilt: m.fn.bucket.pos }));
-  await padSet([0, 0, 1, 0], { 4: 1 }); await frame(600);
+  await padSet([0, 0, 1, 0], {}); await frame(600);
   const lk1 = await page.evaluate(() => ({ yaw: P.look.yaw, tilt: m.fn.bucket.pos }));
-  check(lk1.yaw < lk0.yaw - 0.3 && Math.abs(lk1.tilt - lk0.tilt) < 0.02, `gamepad: LB + right stick looks round without moving the bucket (yaw ${lk0.yaw.toFixed(2)} → ${lk1.yaw.toFixed(2)})`);
+  check(lk1.yaw < lk0.yaw - 0.3 && Math.abs(lk1.tilt - lk0.tilt) < 0.02, `gamepad: right stick alone looks round without moving the bucket (yaw ${lk0.yaw.toFixed(2)} → ${lk1.yaw.toFixed(2)})`);
   await page.evaluate(() => { P.pad.fake = null; }); await frame(1500);
 
   // scripted dig and tip, fast-forwarded, driven through the override path

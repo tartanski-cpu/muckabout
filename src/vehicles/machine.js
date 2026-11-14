@@ -97,11 +97,16 @@ PAINT.onBeforeCompile = (sh) => {
   sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tile;\nvarying float vTile;\nvarying float vHgt;\nuniform float uGround;').replace('#include <uv_vertex>', '#include <uv_vertex>\nvTile = tile;')
     .replace('#include <project_vertex>', '#include <project_vertex>\nvec4 wp_ = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nwp_ = instanceMatrix * wp_;\n#endif\nvHgt = (modelMatrix * wp_).y - uGround;');
   sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTile;\nvarying float vHgt;\nuniform float uLampOn;\nuniform float uTime;')
+    // cel shading (vehicles only): sunlight falls in three flat steps instead of a smooth ramp
+    .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n#if NUM_DIR_LIGHTS > 0\nfloat ndl_ = dot(normal, directionalLights[0].direction);\nfloat band_ = 0.5 * smoothstep(0.08, 0.12, ndl_) + 0.5 * smoothstep(0.52, 0.56, ndl_);\nreflectedLight.directDiffuse *= band_ / max(ndl_, 0.04);\n#endif')
     .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat fr_ = vTile - floor(vTile + 0.1);\ntotalEmissiveRadiance += diffuseColor.rgb * (step(0.2, fr_) * (1.0 - step(0.33, fr_)) * uLampOn * 2.2 + step(0.33, fr_) * step(0.55, fract(uTime * 1.5)) * 2.5);')
     .replace('#include <common>', '#include <common>\nfloat pHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat pNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(pHash(i), pHash(i + vec2(1.0, 0.0)), f.x), mix(pHash(i + vec2(0.0, 1.0)), pHash(i + vec2(1.0, 1.0)), f.x), f.y); }')
     // rust shows in patches (a slow noise over the machine, snapped to the pixel grid), not on every panel alike
     .replace('#include <map_fragment>', 'vec4 px = texture2D(map, vec2((fract(vMapUv.x) * 0.96875 + 0.015625 + floor(vTile + 0.1)) * 0.125, fract(vMapUv.y)));\nfloat patch_ = smoothstep(0.42, 0.62, pNoise(floor(vMapUv * 64.0) / 64.0 * 1.1 + 3.7));\nfloat rust_ = px.a * (0.25 + 0.75 * patch_);\ndiffuseColor.rgb = mix(diffuseColor.rgb * px.rgb * 2.0, vec3(0.33, 0.15, 0.06) * (0.6 + px.r * 1.4), step(0.45, rust_) * 0.9);\n// site mud: thrown up from the wheels, thick low down and thinning to spatter by cab height (pixel-snapped so it stays crisp)\nvec2 mp_ = floor(vMapUv * 64.0) / 64.0;\nfloat mud_ = smoothstep(1.75, 0.25, vHgt) * (0.35 + 0.65 * pNoise(mp_ * 2.3 + 11.0)) + 0.25 * step(0.93, pHash(mp_ * 64.0)) * smoothstep(2.2, 0.9, vHgt);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.27, 0.2, 0.13) * (0.75 + 0.5 * pHash(mp_ * 64.0 + 5.0)), step(0.5, mud_) * (vTile > 4.45 ? 0.0 : 0.8) * (1.0 - step(0.2, vTile - floor(vTile + 0.1))));');
 };
+// the ink line round each part: the same shape drawn inside out, a little larger, in near black
+const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x14110e, side: THREE.BackSide });
+OUTLINE.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += normal * 0.034;'); };
 const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
 const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
 /** Geometry placed at pos/rot and painted one colour, ready for merging. */
@@ -243,7 +248,7 @@ export class Machine {
       if (!byParent.has(key)) byParent.set(key, { parent: v.parent, glass, parts: [] });
       byParent.get(key).parts.push(part(geo, v.mat || 'yellow', v.pos, v.rot));
     }
-    for (const g of byParent.values()) this.nodes[g.parent].add(new THREE.Mesh(mergeGeometries(g.parts), g.glass ? GLASS : PAINT));
+    for (const g of byParent.values()) { const geo = mergeGeometries(g.parts), mesh = new THREE.Mesh(geo, g.glass ? GLASS : PAINT); this.nodes[g.parent].add(mesh); if (!g.glass) mesh.add(new THREE.Mesh(geo, OUTLINE)); }
     // ---- hydraulic rams: each joins a point on one part to a point on another, and is drawn stretched between them
     this.links = (def.links || []).map((l) => ({ a: this.nodes[l.a[0]], pa: new THREE.Vector3(l.a[1], l.a[2], l.a[3]), b: this.nodes[l.b[0]], pb: new THREE.Vector3(l.b[1], l.b[2], l.b[3]), r: l.r ?? 0.065, barrel: l.barrel ?? 0.55 }));
     // ---- running tracks: grouser pads carried round the loop by track speed (one instanced mesh per machine)

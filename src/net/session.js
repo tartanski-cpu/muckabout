@@ -50,7 +50,7 @@ export async function startHost(game, S, transport, code) {
   game.frameUpdaters.push((dt) => {
     for (const [id, peer] of net.peers) { // draw the other player; drop anyone silent for 12 s (a headset taken off rarely closes the link)
       if (now() - peer.last > 12) { drop(id); continue; }
-      let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene));
+      let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene, id, (x, z) => game.terrain.heightAt(x, z)));
       a.update(peer.pose, dt);
     }
     net.acc += dt; if (net.acc < NET_DT) return; net.acc = Math.min(net.acc - NET_DT, NET_DT); net.n++;
@@ -103,7 +103,7 @@ export async function startClient(game, S, transport, code) {
     const pr = net.poses.bracket(t);
     if (pr) for (const id in pr.b) { // the other players
       if (id === net.id) continue;
-      let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene, id === 'host' ? 0xd0562f : 0x2f8fd0));
+      let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene, id, (x, z) => game.terrain.heightAt(x, z)));
       a.update(pr.b[id], dt);
     }
     // someone else got the seat first: get out

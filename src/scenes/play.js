@@ -14,6 +14,7 @@ import { AudioBus, MachineVoice, renderEngine } from '../audio/machineAudio.js';
 import { clamp } from '../util/rng.js';
 import * as autopilot from '../game/autopilot.js';
 import { PushHeap } from '../render/pushHeap.js';
+import { Avatar } from '../net/avatar.js';
 import { makeHopper } from '../game/hopper.js';
 import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { startStress } from './stress.js';
@@ -144,11 +145,12 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const hit = (i) => { const d = b(i) > 0.5, was = pad.prev[i]; pad.prev[i] = d; return d && !was; };
     pad.l[0] = dz(g.axes[0]); pad.l[1] = -dz(g.axes[1]); pad.r[0] = dz(g.axes[2]); pad.r[1] = -dz(g.axes[3]);
     pad.fwd = b(7) - b(6); pad.brake = b(2);
-    // seated, hold LB and the right stick looks round (the chase camera orbits the machine) instead of working the implement
+    // seated, the right stick looks round (the chase camera orbits the machine); held with LB it works the implement instead
     const lb = b(4) > 0.5, now = performance.now();
     if (lb && !pad.lb) { pad.lbAt = now; pad.lbUsed = false; }
-    if (lb && player.machine && (pad.r[0] || pad.r[1])) {
-      S.look.yaw -= pad.r[0] * 0.045; S.look.pitch = clamp(S.look.pitch + pad.r[1] * 0.03, -1.3, 1.3); pad.lbUsed = true; pad.r[0] = pad.r[1] = 0;
+    if (player.machine && (pad.r[0] || pad.r[1])) {
+      if (lb) pad.lbUsed = true;
+      else { S.look.yaw -= pad.r[0] * 0.045; S.look.pitch = clamp(S.look.pitch + pad.r[1] * 0.03, -1.3, 1.3); pad.r[0] = pad.r[1] = 0; }
     }
     const lbTap = !lb && pad.lb && !pad.lbUsed && now - pad.lbAt < 350; pad.lb = lb; // a short press with no looking is still throttle down
     if (pad.fwd || pad.l[0] || pad.l[1] || g.buttons.some((x) => x.value > 0.5)) bus.start();
@@ -207,6 +209,15 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   });
 
   const heap = S.heap = new PushHeap(terrain); scene.add(heap.mesh);
+  /** For looking at the figures without a second player: one standing by the machine, one in its seat (tools/gallery.mjs). */
+  S.avatarDemo = (m) => {
+    const q = [0, 0, 0, 1], p = m.position, eye = new THREE.Vector3().fromArray(m.seatDef.eye); m.nodes[m.seatDef.node].localToWorld(eye);
+    const at = (x, y, z) => [x, y, z, ...q], gx = p.x - 3.2, gz = p.z - 1.5, gy = terrain.heightAt(gx, gz);
+    const A = new Avatar(scene, 'host', (x, z) => terrain.heightAt(x, z)), B = new Avatar(scene, 'p2', (x, z) => terrain.heightAt(x, z));
+    A.update({ h: at(gx, gy + 1.68, gz), l: at(gx - 0.25, gy + 1.0, gz - 0.2), r: at(gx + 0.3, gy + 1.35, gz - 0.35) }, 1);
+    B.update({ h: at(eye.x, eye.y, eye.z), l: at(eye.x - 0.2, eye.y - 0.45, eye.z - 0.45), r: at(eye.x + 0.3, eye.y - 0.5, eye.z - 0.35) }, 1);
+    return [A, B];
+  };
   // Material being shoved along ahead of a blade or a full bucket: a bed of granules riding the heap (render/pushHeap.js), and a few chunks thrown up along the cutting edge.
   // They carry no volume (the soil itself is already heaped on the ground ahead); they are there so you can see it move.
   function churn(ev) {
@@ -318,7 +329,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
-      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick bucket, blade or bed · hold ${K('LB')} + right stick look round (orbits in chase view) · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▼ reset; on foot, sticks walk and look<br>`
+      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▼ reset; on foot, sticks walk and look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }
