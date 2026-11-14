@@ -56,6 +56,8 @@ export class Control {
   /** World pose for the hand visual while holding. Default: the grab point, controller orientation. */
   handlePose(hand, pos, quat) { this.grabPoint(pos); quat.copy(hand.quat); }
   grabPoint(out) { return this.root.getWorldPosition(out); }
+  /** World point the pointer ray aims at (press controls). */
+  pressPoint(out) { return this.root.localToWorld(out.set(0, 0.02, 0)); }
   grabStart(hand) { this.holders.push(hand); }
   grabMove(_hand) {}
   grabEnd(hand) { const i = this.holders.indexOf(hand); if (i >= 0) this.holders.splice(i, 1); }
@@ -219,9 +221,10 @@ export class Toggle extends Control {
 /** A grab handle that triggers an action (climb into the cab). */
 export class Handrail extends Control {
   constructor(def) {
-    super(def); this.len = def.length ?? 0.5; this.onGrab = null;
-    this.moving([[new THREE.CylinderGeometry(0.018, 0.018, this.len, 6), 0xf0e040]]);
-    if (this.label) { this.label.rot = [0, -Math.PI / 2, 0]; this.label.pos = [-0.03, this.len / 2 + 0.05, 0]; this.label.width = 0.26; }
+    super(def); this.len = def.length ?? 0.5; this.onGrab = null; this.reachBonus = 0.1; // generous: you grab it from the ground, at a stretch
+    const side = def.pos[0] < 0 ? -1 : 1; // which side of the machine it is on: the label faces outward
+    this.moving([[new THREE.CylinderGeometry(0.024, 0.024, this.len, 8), 0xf0e040], [new THREE.BoxGeometry(0.1, 0.03, 0.03), 0xf0e040, -side * 0.05, this.len / 2 - 0.02, 0], [new THREE.BoxGeometry(0.1, 0.03, 0.03), 0xf0e040, -side * 0.05, -this.len / 2 + 0.02, 0]]);
+    if (this.label) { this.label.rot = [0, side * Math.PI / 2, 0]; this.label.pos = [side * 0.035, def.labelY ?? 0, 0]; this.label.width = 0.34; }
   }
   distanceTo(world) { const p = this.local(world), t = clamp(p.y, -this.len / 2, this.len / 2); return Math.hypot(p.x, p.y - t, p.z); }
   grabStart(hand) { super.grabStart(hand); hand.pulse(0.5, 40); if (this.onGrab) this.onGrab(hand, this); }

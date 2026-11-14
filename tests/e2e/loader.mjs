@@ -32,10 +32,21 @@ try {
   await page.evaluate(() => hand('right', at('key'), false)); await frame(1500);
   check(await page.evaluate(() => m.engine.running), 'key starts the engine after cranking');
 
-  // park brake: poke the rocker
-  await page.evaluate(() => hand('right', at('park', 0, 0.02, 0), false)); await frame();
-  check(await page.evaluate(() => m.controls.park.value === 0 && m.inp.park === 0), 'poking the park brake rocker releases it');
-  await page.evaluate(() => hand('right', at('park', 0, 0.3, 0), false)); await frame();
+  // park brake lever: take the red knob and push it forward
+  await page.evaluate(() => hand('right', at('park'), true)); await frame();
+  await page.evaluate(() => { const c = m.controls.park, k = c.root.worldToLocal(at('park')); hand('right', c.root.localToWorld(new __game.THREE.Vector3(k.x, k.y, k.z - 0.24)), true); }); await frame();
+  await page.evaluate(() => hand('right', at('park', 0, 0.4, 0.1), false)); await frame();
+  check(await page.evaluate(() => m.controls.park.value === 0 && m.inp.park === 0), 'pushing the park brake lever forward releases it');
+  // laser: point at the stick-assist rocker from half a metre away and pull the trigger
+  await page.evaluate(() => { const V = __game.THREE.Vector3, t = m.controls.assist.pressPoint(new V()), from = t.clone().add(new V(0.1, 0.45, 0.25)); window._ray = { from, dir: t.clone().sub(from) }; P.input.setFake('right', { pos: m.nodes.rear.worldToLocal(from.clone()), parent: m.nodes.rear, dir: _ray.dir, grip: false }); }); await frame();
+  const lz = await page.evaluate(() => ({ line: P.inter.state.right.line.visible, hover: m.controls.assist.hovered, pose: P.hands.h.right.pose }));
+  check(lz.line && lz.hover && lz.pose === 'point', 'laser pointer finds a rocker out of reach; the hand points');
+  await page.evaluate(() => { const f = P.input.fake.right; f.trigger = 1; }); await frame();
+  await page.evaluate(() => { const f = P.input.fake.right; f.trigger = 0; }); await frame();
+  check(await page.evaluate(() => m.controls.assist.value === 1), 'trigger presses it through the laser');
+  await page.evaluate(() => { const f = P.input.fake.right; f.trigger = 1; }); await frame();
+  await page.evaluate(() => { const f = P.input.fake.right; f.trigger = 0; }); await frame();
+  await page.evaluate(() => hand('right', at('park', 0, 0.4, 0.1), false)); await frame();
 
   // shuttle lever: grab the knob, push forward into the F detent; the glove rides the knob
   await page.evaluate(() => hand('left', at('shuttle'), true)); await frame();

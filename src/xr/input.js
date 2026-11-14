@@ -4,10 +4,11 @@
 // Added here: "fake" hands, so tests and the desktop debug path can drive the same interaction code.
 import * as THREE from 'three';
 
+const _q = new THREE.Quaternion();
 export const BTN = { trigger: 0, grip: 1, stick: 3, primary: 4, secondary: 5 }; // primary = A / X, secondary = B / Y
 
 function makeHand(name) {
-  return { name, tracked: false, pos: new THREE.Vector3(), quat: new THREE.Quaternion(), tip: new THREE.Vector3(),
+  return { name, tracked: false, pos: new THREE.Vector3(), quat: new THREE.Quaternion(), tip: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, -1), hasRay: false, pointing: false,
     gripDown: false, gripPressed: false, gripReleased: false, triggerDown: false, triggerPressed: false, trigger: 0,
     stick: [0, 0], stickPressed: false, primaryPressed: false, secondaryPressed: false, primaryDown: false, secondaryDown: false,
     busy: false, holding: null, _prev: { grip: false, trig: false, stick: false, a: false, b: false }, gamepad: null,
@@ -38,6 +39,7 @@ export class XRInput {
       h.tracked = false; h.gamepad = null;
       if (f) {
         h.tracked = true; h.pos.copy(f.pos); if (f.parent) f.parent.localToWorld(h.pos); if (f.quat) h.quat.copy(f.quat); h.tip.copy(h.pos);
+        h.hasRay = !!f.dir; if (f.dir) h.dir.copy(f.dir).normalize(); // fake hands only point when given a direction
         grip = !!f.grip; trig = f.trigger || 0; if (f.stick) [sx, sy] = f.stick; a = !!f.primary; b = !!f.secondary;
       } else if (presenting) {
         const g = this.grips.find((x) => x.grip.userData.side === side);
@@ -45,6 +47,7 @@ export class XRInput {
         if (g && gp) {
           h.tracked = true; h.gamepad = gp;
           g.grip.getWorldPosition(h.pos); g.grip.getWorldQuaternion(h.quat); g.ray.getWorldPosition(h.tip);
+          h.dir.set(0, 0, -1).applyQuaternion(g.ray.getWorldQuaternion(_q)); h.hasRay = true; // the pointer ray: target-ray space looks down -z
           const bt = gp.buttons;
           grip = !!bt[BTN.grip]?.pressed; trig = bt[BTN.trigger]?.value || 0; sx = gp.axes[2] || 0; sy = gp.axes[3] || 0;
           sc = !!bt[BTN.stick]?.pressed; a = !!bt[BTN.primary]?.pressed; b = !!bt[BTN.secondary]?.pressed;

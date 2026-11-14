@@ -21,7 +21,7 @@ const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3
 
 export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   const { terrain, scene } = game, map = terrain.map;
-  const phys = await Physics.create(), input = new XRInput(game.renderer, game.rig), inter = new InteractionSystem();
+  const phys = await Physics.create(), input = new XRInput(game.renderer, game.rig), inter = new InteractionSystem(scene);
   const hands = new Hands(scene), player = new Player(game, input), bus = new AudioBus();
   const machines = [], keys = new Set();
   const S = { phys, input, inter, hands, player, bus, machines, keys, chase: false, look: { yaw: 0, pitch: -0.15 }, renderEngine };
@@ -38,6 +38,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       const c = makeControl(d); m.nodes[d.parent].add(c.root); m.controls[d.name] = c;
       if (d.type === 'joystick') { m.joyFns.add(d.x[0]); m.joyFns.add(d.y[0]); }
       if (d.type === 'handrail') c.onGrab = () => { if (player.machine !== m) S.sit(m); };
+      if (d.type === 'handrail') (m.rails ??= []).push(c);
       if (d.out === 'recentre') c.onChange = () => { if (c.value) player.recentre(); };
       if (d.out === 'horn') c.onChange = () => { if (c.value) { bus.start(); m.voice.horn(); } };
       if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) S.stand(); };
@@ -109,6 +110,14 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       // feet aren't tracked: triggers are the pedals while that hand is on a control
       if (right.tracked && right.holding) inp.accel = right.trigger;
       if (left.tracked && left.holding) { if (tracks) inp.decel = left.trigger; else inp.brake = left.trigger; }
+      // thumbsticks work the implements too, so a hand on the wheel can still lift the boom (the levers still work)
+      const rear = m.fn.swivel && m.fn.swivel.pos > 1.5, map = (rear ? m.def.sticksRear : m.def.sticks) || {};
+      for (const [h, key] of [[left, 'left'], [right, 'right']]) {
+        const sm = map[key]; if (!sm || !h.tracked || (key === 'left' && inp.assist > 0.5 && !rear)) continue; // with stick assist on, the left stick drives instead
+        const [sx, sy] = stickOf(h);
+        if (sm.x && sx) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + sx * sm.x[1], -1, 1);
+        if (sm.y && sy) inp[sm.y[0]] = clamp((inp[sm.y[0]] || 0) + sy * sm.y[1], -1, 1);
+      }
       if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && keys.size)) assist(m, left, right);
     }
     if (m.driver && m.driver !== 'local' && m.remoteInp) Object.assign(inp, m.remoteInp); // co-op: the other player is driving this one
@@ -121,7 +130,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const inp = m.inp, vr = game.renderer.xr.isPresenting;
     const rear = m.fn.swivel && m.fn.swivel.pos > 1.5; // backhoe facing its rear controls: the keys work the hoe instead of driving
     let fwd = rear ? 0 : k('KeyW') - k('KeyS'), turn = rear ? 0 : k('KeyD') - k('KeyA');
-    if (vr && left.tracked && !left.holding) { const [x, y] = stickOf(left); fwd += y; turn += x; }
+    if (vr && left.tracked && inp.assist > 0.5) { const [x, y] = stickOf(left); fwd += y; turn += x; }
     fwd = clamp(fwd, -1, 1); turn = clamp(turn, -1, 1);
     if (m.def.drive.type === 'tracks') {
       const l = clamp(fwd + turn, -1, 1), r = clamp(fwd - turn, -1, 1);
@@ -132,7 +141,6 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       inp.brake = Math.max(inp.brake, k('Space'));
     }
     for (const [fn, pos, neg] of (rear ? m.def.keysRear : m.def.keys) || []) { const v = k(pos) - k(neg); if (v) inp[fn] = v; }
-    if (vr && right.tracked && !right.holding && m.def.assistStick) { const [x, y] = stickOf(right), a = m.def.assistStick; if (x) inp[a.x[0]] = x * a.x[1]; if (y) inp[a.y[0]] = y * a.y[1]; }
   }
 
   game.updaters.push((dt) => {
@@ -172,8 +180,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); }
     if (left.stickPressed && !left.busy && !player.seated) S.setStress(!S.stress);
     if (left.stickPressed && player.seated && !left.holding && !game.remote) { S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom'); left.pulse(0.6, 60); }
-    // cab controls and their labels are many small draw calls: only draw them for machines within reach
-    if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; } }
+    // cab controls and their labels are many small draw calls: only draw them for machines within reach (handrails always: they are how you find the way in)
+    if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; for (const r of m.rails || []) r.root.visible = true; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
   });
 
@@ -228,7 +236,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold. Triggers are the pedals while that hand is on a control (right go, left brake). ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test.<br>`
+      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · drag to look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`

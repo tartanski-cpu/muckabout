@@ -55,15 +55,16 @@ try {
   await page.evaluate(() => ctl('right', at('key'), { squeeze: 1 })); await frames(4);
   await page.evaluate(() => xrd.controllers.right.updateButtonValue('squeeze', 0)); await frames(4, 1300);
   check(await page.evaluate(() => m.engine.running), 'key starts the engine');
-  const tip = await page.evaluate(() => { const h = P.input.hands.right; return h.tip.distanceTo(h.pos); });
-  await page.evaluate((tip) => { const p = at('park', 0, 0.02, 0); p.z += 0; window._parkAim = p; ctl('right', p); }, tip); await frames(4);
-  let park = await page.evaluate(() => m.controls.park.value);
-  if (park !== 0) { // the poke point is the controller's pointing tip, a little ahead of the grip: bring that to the rocker
-    await page.evaluate(() => { const h = P.input.hands.right, off = h.tip.clone().sub(h.pos); ctl('right', _parkAim.clone().sub(off)); }); await frames(4);
-    park = await page.evaluate(() => m.controls.park.value);
-  }
-  check(park === 0, `park brake rocker pokes off (controller tip is ${(tip * 100).toFixed(0)} cm ahead of the grip)`);
-  await page.evaluate(() => ctl('right', at('park', 0, 0.35, 0.2))); await frames(3);
+  await page.evaluate(() => ctl('right', at('park'), { squeeze: 1 })); await frames(4);
+  await page.evaluate(() => { const c = m.controls.park, k = c.root.worldToLocal(at('park')); ctl('right', c.root.localToWorld(new V(k.x, k.y, k.z - 0.24))); }); await frames(4);
+  await page.evaluate(() => xrd.controllers.right.updateButtonValue('squeeze', 0)); await frames(3);
+  check(await page.evaluate(() => m.controls.park.value === 0), 'park brake lever pushes off');
+  await page.evaluate(() => ctl('right', at('park', 0, 0.45, 0.2))); await frames(3);
+  // thumbstick works the boom with nothing held
+  const b0 = await page.evaluate(() => m.fn.boom.pos);
+  await page.evaluate(() => xrd.controllers.right.updateAxes('thumbstick', 0, 1)); await frames(4, 700);
+  await page.evaluate(() => xrd.controllers.right.updateAxes('thumbstick', 0, 0)); await frames(3);
+  check(await page.evaluate((b0) => m.fn.boom.pos > b0 + 0.15, b0), 'right thumbstick pulled back raises the boom');
   await page.evaluate(() => ctl('left', at('shuttle'), { squeeze: 1 })); await frames(4);
   await page.evaluate(() => ctl('left', at('shuttle', 0, 0.16, -0.09), { squeeze: 1 })); await frames(4);
   await page.evaluate(() => xrd.controllers.left.updateButtonValue('squeeze', 0)); await frames(3);
