@@ -36,7 +36,8 @@ try {
   await client.evaluate(() => { const g = __game, m = g.machine('dumper'); g.play.sit(m); m.controls.key.set(1); m.controls.park.set(0); m.controls.shuttle.set(1); m.override = { accel: 0.7 }; });
   const z0 = await host.evaluate(() => __game.machine('dumper').position.z);
   for (let k = 0; k < 6; k++) { await sync(600); await host.evaluate(() => { __game.sim(60); }); }
-  await sync(1500);
+  await client.evaluate(() => { __game.machine('dumper').override = { accel: 0, brake: 1 }; }); // stop, so the comparison is of position, not of how far it travels in the interpolation delay
+  await sync(2500);
   const drv = await host.evaluate(() => ({ driver: __game.machine('dumper').driver, z: __game.machine('dumper').position.z, running: __game.machine('dumper').engine.running, key: __game.machine('dumper').controls.key.value }));
   const cz = await client.evaluate(() => __game.machine('dumper').position.z);
   check(drv.driver && drv.driver !== 'local' && drv.running, 'host gave the dumper seat to the client and its key turned on the host');
