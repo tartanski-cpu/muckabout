@@ -111,6 +111,10 @@ Key decisions:
 
 `window.__game` is the test surface: `sim(n, fn)` fast-forward (inline terrain only), `audit()`, `machine(id)`, `autopilot`, `play` (player, input with fake hands, checklist, hopper, net).
 
+## Gamepad (desktop)
+
+An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick bucket/blade/bed (both sticks work the hoe from the backhoe's rear seat, right stick click turns the seat), **RB/LB** throttle, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
+
 ## Sound
 
 All sound is synthesised; there are no samples. The engine note is not mixed from inputs: it follows a small engine model.

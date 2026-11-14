@@ -128,10 +128,34 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
         if (sm.x && sx) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + sx * sm.x[1], -1, 1);
         if (sm.y && sy) inp[sm.y[0]] = clamp((inp[sm.y[0]] || 0) + sy * sm.y[1], -1, 1);
       }
-      if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && keys.size)) assist(m, left, right);
+      if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && (keys.size || pad.on))) assist(m, left, right);
     }
     if (m.driver && m.driver !== 'local' && m.remoteInp) Object.assign(inp, m.remoteInp); // co-op: the other player is driving this one
     Object.assign(inp, m.override);
+  }
+  // ---- gamepad on the desktop (standard / Xbox layout). Sticks as stickOf gives them: x right, y forward.
+  const pad = S.pad = { on: false, fwd: 0, brake: 0, l: [0, 0], r: [0, 0], prev: [], fake: null };
+  function pollPad() {
+    const g = pad.fake || (navigator.getGamepads ? [...navigator.getGamepads()].find((p) => p && p.connected && p.mapping === 'standard') : null);
+    pad.on = !!g && !game.renderer.xr.isPresenting;
+    if (!pad.on) { pad.fwd = pad.brake = 0; pad.l[0] = pad.l[1] = pad.r[0] = pad.r[1] = 0; return; }
+    const dz = (v = 0) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85), b = (i) => g.buttons[i]?.value ?? 0;
+    const hit = (i) => { const d = b(i) > 0.5, was = pad.prev[i]; pad.prev[i] = d; return d && !was; };
+    pad.l[0] = dz(g.axes[0]); pad.l[1] = -dz(g.axes[1]); pad.r[0] = dz(g.axes[2]); pad.r[1] = -dz(g.axes[3]);
+    pad.fwd = b(7) - b(6); pad.brake = b(2);
+    if (pad.fwd || pad.l[0] || pad.l[1] || g.buttons.some((x) => x.value > 0.5)) bus.start();
+    const m = player.machine, seat = (d) => { const i = (machines.indexOf(m) + d + machines.length) % machines.length; if (m) S.stand(); S.sit(machines[m ? i : 0]); };
+    if (hit(3)) { if (m) S.stand(); else { let best = machines[0], bd = 1e9; for (const o of machines) { const d = Math.hypot(o.position.x - player.feet.x, o.position.z - player.feet.z); if (d < bd) { bd = d; best = o; } } S.sit(best); } } // Y: in / out
+    if (hit(15)) seat(1); if (hit(14)) seat(-1);                                                     // d-pad left / right: next machine
+    if (hit(8)) S.chase = !S.chase;                                                                  // View: chase camera
+    if (!m) return;
+    if (hit(9)) setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);                                // Menu: ignition
+    if (hit(1)) setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);                              // B: park brake
+    if (hit(5)) setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));                // RB / LB: throttle
+    if (hit(4)) setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
+    if (hit(0)) m.voice.horn();                                                                      // A: horn
+    if (hit(11) && m.controls.swivel) m.controls.swivel.press(null);                                 // right stick click: turn the seat (backhoe)
+    if (hit(13)) m.reset();                                                                          // d-pad down: put it back on its wheels
   }
   const setCtl = (m, name, v) => { const c = m.controls[name]; if (c && !c.held && c.value !== v) c.set(v); };
   const k = (c) => (keys.has(c) ? 1 : 0);
@@ -140,6 +164,15 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const inp = m.inp, vr = game.renderer.xr.isPresenting;
     const rear = m.fn.swivel && m.fn.swivel.pos > 1.5; // backhoe facing its rear controls: the keys work the hoe instead of driving
     let fwd = rear ? 0 : k('KeyW') - k('KeyS'), turn = rear ? 0 : k('KeyD') - k('KeyA');
+    if (pad.on) { // gamepad: triggers go and reverse, left stick steers (and drives a tracked machine), right stick works the implement
+      const tracks = m.def.drive.type === 'tracks', map = (rear ? m.def.sticksRear : m.def.sticks) || {};
+      if (!rear) { fwd += pad.fwd + (tracks ? pad.l[1] : 0); turn += pad.l[0]; }
+      for (const [key, st] of [['left', pad.l], ['right', pad.r]]) {
+        const sm = map[key]; if (!sm || (key === 'left' && !rear)) continue;
+        if (sm.x && st[0]) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + st[0] * sm.x[1], -1, 1);
+        if (sm.y && st[1]) inp[sm.y[0]] = clamp((inp[sm.y[0]] || 0) + st[1] * sm.y[1], -1, 1);
+      }
+    }
     if (vr && left.tracked && inp.assist > 0.5) { const [x, y] = stickOf(left); fwd += y; turn += x; }
     fwd = clamp(fwd, -1, 1); turn = clamp(turn, -1, 1);
     if (m.def.drive.type === 'tracks') {
@@ -148,7 +181,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     } else {
       if (fwd) { const dir = Math.sign(fwd); inp.shuttle = dir; setCtl(m, 'shuttle', dir); inp.accel = Math.max(inp.accel, Math.abs(fwd)); }
       if (turn || !m.controls.steer?.held) { inp.steer = turn; setCtl(m, 'steer', turn); }
-      inp.brake = Math.max(inp.brake, k('Space'));
+      inp.brake = Math.max(inp.brake, k('Space'), pad.brake);
     }
     for (const [fn, pos, neg] of (rear ? m.def.keysRear : m.def.keys) || []) { const v = k(pos) - k(neg); if (v) inp[fn] = v; }
   }
@@ -180,7 +213,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   // ---- per frame: hands, interaction, player, camera, audio, HUD
   const hudHolder = new THREE.Group(); scene.add(hudHolder); game.hud.attachTo(hudHolder);
   game.frameUpdaters.push((fdt) => {
-    input.update();
+    input.update(); pollPad();
     inter.update(input.hands, fdt);
     const { left, right } = input.hands;
     if (left.primaryPressed) game.hud.toggle();
@@ -262,7 +295,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (cam.parent !== game.rig) game.rig.add(cam);
     if (m) cam.position.set(0, 0, 0);
     else { // walking on the desktop: WASD
-      const fwd = k('KeyW') - k('KeyS'), side = k('KeyD') - k('KeyA'), sp = (keys.has('ShiftLeft') ? 5 : 2) * 0.016;
+      const fwd = clamp(k('KeyW') - k('KeyS') + pad.l[1], -1, 1), side = clamp(k('KeyD') - k('KeyA') + pad.l[0], -1, 1), sp = (keys.has('ShiftLeft') || pad.fwd > 0.5 ? 5 : 2) * 0.016;
+      S.look.yaw -= pad.r[0] * 0.04; S.look.pitch = clamp(S.look.pitch + pad.r[1] * 0.03, -1.3, 1.3);
       const yaw = player.yaw + S.look.yaw; player.feet.x += (-Math.sin(yaw) * fwd + Math.cos(yaw) * side) * sp; player.feet.z += (-Math.cos(yaw) * fwd - Math.sin(yaw) * side) * sp;
     }
     cam.rotation.set(S.look.pitch, S.look.yaw, 0, 'YXZ');
@@ -274,6 +308,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
+      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick bucket, blade or bed · ${K('RB')}/${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▼ reset; on foot, sticks walk and look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }
