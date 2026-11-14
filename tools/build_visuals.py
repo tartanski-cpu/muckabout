@@ -274,6 +274,8 @@ def drop_static(v):
         return x.get('box') == [0.6, 0.05, 0.07] and x['mat'] == 'black'
     return [x for x in v if not gone(x)]
 
+EXHAUST = {'loader': {"parent": "rear", "pos": [0.5, 3.5, 0.95]}, 'dumper': {"parent": "front", "pos": [0.62, 3.7, -0.92]},
+           'dozer': {"parent": "chassis", "pos": [0.3, 3.14, -1.15]}, 'backhoe': {"parent": "chassis", "pos": [0.4, 3.04, -2.2]}}
 FLOOR = {'loader': (2.0, 1.55, 'rear'), 'dumper': (1.8, 1.6, 'front'), 'dozer': (1.75, 1.55, 'chassis'), 'backhoe': (1.55, 1.45, 'chassis')}
 RAILS = {'loader': (1.33, -1.2), 'dumper': (1.3, -3.08), 'dozer': (1.36, 1.25), 'backhoe': (1.2, -1.32)}
 BUILD = {'loader': loader, 'dumper': dumper, 'dozer': dozer, 'backhoe': backhoe}
@@ -299,4 +301,5 @@ for name, fn in BUILD.items():
     d['visuals'] = drop_static(fn()) + extras(name)
     d['links'] = LINKS[name]
     if name in TRACKS: d['trackLoops'] = TRACKS[name]
+    d['exhaust'] = EXHAUST[name]
     dump(name, d); print(name, len(d['visuals']), 'parts, cab floor', new)

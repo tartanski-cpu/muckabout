@@ -31,7 +31,8 @@ const COLORS = { yellow: 0xf0b21a, yellow2: 0xd2940f, dark: 0x3a3a3c, black: 0x1
 // cube-projected UVs in metres, so pixels are square and the same size on every face.
 const TILE = { hazard: 1, grey: 2, black: 3, tyre: 3, track: 3, seat: 3, dark: 3, lamp: 3, tail: 3, amber: 3, vent: 4, warn: 5, plate: 6, gauges: 7 };
 const DECAL = { warn: 1, plate: 1, gauges: 1 }; // stretched once over the part's big face instead of tiling
-const PAINT_U = { uGround: { value: 0 } };
+const GLOW = { lamp: 0.25, tail: 0.25, amber: 0.4 }; // rides in the fraction of the tile index: lamps light at dusk, beacons flash
+export const PAINT_U = { uGround: { value: 0 }, uLampOn: { value: 0 }, uTime: { value: 0 } };
 function pixelAtlas() {
   const W = 512, H = 64, d = new Uint8Array(W * H * 4), h2 = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + s * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   const put = (t, x, y, r, g = r, b = r) => { const k = (((y & 63) * W) + t * 64 + (x & 63)) * 4; d[k] = r; d[k + 1] = g; d[k + 2] = b; };
@@ -91,13 +92,14 @@ function pixelAtlas() {
 }
 const PAINT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, map: pixelAtlas() });
 PAINT.onBeforeCompile = (sh) => {
-  sh.uniforms.uGround = PAINT_U.uGround;
+  sh.uniforms.uGround = PAINT_U.uGround; sh.uniforms.uLampOn = PAINT_U.uLampOn; sh.uniforms.uTime = PAINT_U.uTime;
   sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tile;\nvarying float vTile;\nvarying float vHgt;\nuniform float uGround;').replace('#include <uv_vertex>', '#include <uv_vertex>\nvTile = tile;')
     .replace('#include <project_vertex>', '#include <project_vertex>\nvec4 wp_ = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nwp_ = instanceMatrix * wp_;\n#endif\nvHgt = (modelMatrix * wp_).y - uGround;');
-  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTile;\nvarying float vHgt;')
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTile;\nvarying float vHgt;\nuniform float uLampOn;\nuniform float uTime;')
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nfloat fr_ = vTile - floor(vTile + 0.1);\ntotalEmissiveRadiance += diffuseColor.rgb * (step(0.2, fr_) * (1.0 - step(0.33, fr_)) * uLampOn * 2.2 + step(0.33, fr_) * step(0.55, fract(uTime * 1.5)) * 2.5);')
     .replace('#include <common>', '#include <common>\nfloat pHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat pNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(pHash(i), pHash(i + vec2(1.0, 0.0)), f.x), mix(pHash(i + vec2(0.0, 1.0)), pHash(i + vec2(1.0, 1.0)), f.x), f.y); }')
     // rust shows in patches (a slow noise over the machine, snapped to the pixel grid), not on every panel alike
-    .replace('#include <map_fragment>', 'vec4 px = texture2D(map, vec2((fract(vMapUv.x) * 0.96875 + 0.015625 + floor(vTile + 0.5)) * 0.125, fract(vMapUv.y)));\nfloat patch_ = smoothstep(0.42, 0.62, pNoise(floor(vMapUv * 64.0) / 64.0 * 1.1 + 3.7));\nfloat rust_ = px.a * (0.25 + 0.75 * patch_);\ndiffuseColor.rgb = mix(diffuseColor.rgb * px.rgb * 2.0, vec3(0.33, 0.15, 0.06) * (0.6 + px.r * 1.4), step(0.45, rust_) * 0.9);\n// site mud: thrown up from the wheels, thick low down and thinning to spatter by cab height (pixel-snapped so it stays crisp)\nvec2 mp_ = floor(vMapUv * 64.0) / 64.0;\nfloat mud_ = smoothstep(1.75, 0.25, vHgt) * (0.35 + 0.65 * pNoise(mp_ * 2.3 + 11.0)) + 0.25 * step(0.82, pHash(mp_ * 64.0)) * smoothstep(2.6, 1.0, vHgt);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.34, 0.25, 0.16) * (0.75 + 0.5 * pHash(mp_ * 64.0 + 5.0)), step(0.5, mud_) * (vTile > 4.5 ? 0.0 : 0.8));');
+    .replace('#include <map_fragment>', 'vec4 px = texture2D(map, vec2((fract(vMapUv.x) * 0.96875 + 0.015625 + floor(vTile + 0.1)) * 0.125, fract(vMapUv.y)));\nfloat patch_ = smoothstep(0.42, 0.62, pNoise(floor(vMapUv * 64.0) / 64.0 * 1.1 + 3.7));\nfloat rust_ = px.a * (0.25 + 0.75 * patch_);\ndiffuseColor.rgb = mix(diffuseColor.rgb * px.rgb * 2.0, vec3(0.33, 0.15, 0.06) * (0.6 + px.r * 1.4), step(0.45, rust_) * 0.9);\n// site mud: thrown up from the wheels, thick low down and thinning to spatter by cab height (pixel-snapped so it stays crisp)\nvec2 mp_ = floor(vMapUv * 64.0) / 64.0;\nfloat mud_ = smoothstep(1.75, 0.25, vHgt) * (0.35 + 0.65 * pNoise(mp_ * 2.3 + 11.0)) + 0.25 * step(0.93, pHash(mp_ * 64.0)) * smoothstep(2.2, 0.9, vHgt);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.27, 0.2, 0.13) * (0.75 + 0.5 * pHash(mp_ * 64.0 + 5.0)), step(0.5, mud_) * (vTile > 4.45 ? 0.0 : 0.8) * (1.0 - step(0.2, vTile - floor(vTile + 0.1))));');
 };
 const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
 const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
@@ -110,7 +112,7 @@ function part(geo, color, pos, rot) {
   for (let i = 0; i < n; i++) { col[i * 3] = _mc.r; col[i * 3 + 1] = _mc.g; col[i * 3 + 2] = _mc.b; }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   // cube-projected UVs in metres (1 unit = one 64 px tile = 1 m), per triangle, from where the part sits on its node
-  const P = g.attributes.position, uv = new Float32Array(n * 2), tile = new Float32Array(n).fill(TILE[color] || 0);
+  const P = g.attributes.position, uv = new Float32Array(n * 2), tile = new Float32Array(n).fill((TILE[color] || 0) + (GLOW[color] || 0));
   for (let i = 0; i < n; i += 3) {
     const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i), ux = P.getX(i + 1) - ax, uy = P.getY(i + 1) - ay, uz = P.getZ(i + 1) - az, vx = P.getX(i + 2) - ax, vy = P.getY(i + 2) - ay, vz = P.getZ(i + 2) - az;
     const nx = Math.abs(uy * vz - uz * vy), ny = Math.abs(uz * vx - ux * vz), nz = Math.abs(ux * vy - uy * vx);

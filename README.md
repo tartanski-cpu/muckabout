@@ -64,6 +64,12 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 
 **Two players:** one presses *Host a game* on the start page and reads out the five-digit room number; the other types it and presses *Join*. The host's headset runs the world; the other player sees it about 0.15 s behind. First into a seat owns that machine.
 
+## Light and effects
+
+- **Time of day**: golden hour by default, with day and dusk to switch to (`N` on desktop; on foot in VR, click the right stick). Each sets the sun, sky light, haze, a sky dome with sun glow and thin cloud, and how brightly lamps burn.
+- **Machine lighting**: a soft pool of shade under each machine (drawn in the ground shader, not shadow maps), headlamp pools on the ground and glowing lamps at dusk, flashing beacons.
+- **Effects** (`src/game/effects.js`, one instanced draw call): exhaust smoke that goes thick and black when the engine labours or is revved, with a cough on start-up; dust off tyres and tracks on dry ground, where a tool is cutting and where tipped material lands; white spray in the river; mud flung from a spinning tyre.
+
 ## The machine models
 
 `tools/build_visuals.py` writes each machine's look into its JSON: 150–200 painted boxes and cylinders per machine, merged at load into one mesh per moving part, so detail costs almost nothing in draw calls. On top of that:

@@ -32,6 +32,7 @@ export class Chips {
     const mk = (g) => { const m = new THREE.InstancedMesh(g, g === tuft ? new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }) : new THREE.MeshLambertMaterial({ flatShading: true }), CAP); m.count = 0; m.frustumCulled = false; m.setColorAt(0, new THREE.Color(1, 1, 1)); return m; };
     this.meshes = [null, mk(shard), mk(clump), mk(tuft)]; // index = chip type
     this.group = new THREE.Group(); this.group.add(this.meshes[1], this.meshes[2], this.meshes[3]);
+    this.tuftMaterial = this.meshes[3].material;
     this.lists = new Map(); this.dirty = new Set(); this.near = []; this.nearKey = ''; this.rebuild = true;
     terrain.onChunks((chunks) => { for (const c of chunks) if (this.lists.has(c.id)) this.dirty.add(c.id); });
   }
@@ -61,6 +62,8 @@ export class Chips {
     });
   }
   /** Call once per frame. Rebuilds at most one chunk's list a frame and refills the instance buffers at most ~8 times a second. */
+  /** Grass blades are unlit, so they take the time of day's light as a tint. */
+  setLight(rgb) { this.tuftMaterial.color.setRGB(Math.min(1, rgb[0]), Math.min(1, rgb[1]), Math.min(1, rgb[2])); }
   update(camPos) {
     const t = this.t, ci = Math.floor((camPos.x - t.ox) / t.cell / CHUNK), cj = Math.floor((camPos.z - t.oz) / t.cell / CHUNK);
     const key = ci + ',' + cj; this.frame = (this.frame || 0) + 1;

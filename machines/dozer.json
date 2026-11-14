@@ -20,5 +20,6 @@
   "sticks": {"left": {"x": ["tilt", -1], "y": ["lift", -1]}, "right": {"x": ["tilt", -1], "y": ["lift", -1]}},
   "cabFloor": 1.75,
   "links": [{"a": ["chassis", -0.72, 1.78, -1.95], "b": ["arms", -0.72, -0.2, -2.25], "r": 0.065, "barrel": 0.55}, {"a": ["chassis", 0.72, 1.78, -1.95], "b": ["arms", 0.72, -0.2, -2.25], "r": 0.065, "barrel": 0.55}, {"a": ["arms", 1.2, -0.3, -1.25], "b": ["blade", 1.2, 0.36, 0.14], "r": 0.05, "barrel": 0.55}],
-  "trackLoops": {"parent": "chassis", "x": [-1.0, 1.0], "y": 0.42, "half": 1.65, "r": 0.47, "pads": 37, "w": 0.6}
+  "trackLoops": {"parent": "chassis", "x": [-1.0, 1.0], "y": 0.42, "half": 1.65, "r": 0.47, "pads": 37, "w": 0.6},
+  "exhaust": {"parent": "chassis", "pos": [0.3, 3.14, -1.15]}
 }

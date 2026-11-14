@@ -76,3 +76,12 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 - The engine and hydraulic sounds are tuned by numbers, not by ear.
 - The dozer needs a careful driver at a bank crest: go over too fast and it noses down and cannot back out until you cut more.
 - The loader spills roughly a third of each bucket when loading the dumper under the scripted driver; a human can place it better, but the reach is tight.
+
+## 8. Light and effects (added after the first headset session)
+
+37. Golden hour is the default. On foot, click the **right stick** to step through day → golden → dusk. Does each look right in the headset, and is anything too dark to work in at dusk?
+38. At dusk: do the lamps glow, the beacons flash, and the headlamp pool land on the ground ahead of a running machine?
+39. Is there a soft patch of shade under each machine, and does it sit in the right place relative to the sun?
+40. Exhaust: thin grey at idle, thick and black when you rev hard or push into a pile, a black cough on start-up. Too much, too little, wrong place?
+41. Dust off the wheels on dry ground; spray in the river; mud off a spinning tyre in the mud flats; dust where a bucketful lands.
+42. **Frame rate with all of this on**, standing near the four working machines in the stress test. It was a solid 90 before this pass.

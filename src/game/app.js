@@ -111,7 +111,7 @@ export class Game {
     for (const u of this.frameUpdaters) u(fdt);
     perf.begin('upload');
     this.camera.getWorldPosition(_cam);
-    this.ground.update(_cam); this.chips.update(_cam);
+    this.ground.update(_cam); this.chips.update(_cam); if (this.env.flat) this.chips.setLight(this.env.flat);
     this.clodMesh.update();
     for (const c of this.containerMeshes) c.update();
     if (this.water) this.water.update(fdt);

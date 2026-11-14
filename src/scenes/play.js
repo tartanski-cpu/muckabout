@@ -17,6 +17,9 @@ import { makeHopper } from '../game/hopper.js';
 import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { startStress } from './stress.js';
 import { Rams } from '../render/rams.js';
+import { Particles } from '../render/particles.js';
+import { Effects } from '../game/effects.js';
+import { PAINT_U } from '../vehicles/machine.js';
 
 const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -50,6 +53,10 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     machines.push(m);
   }
   const rams = new Rams(scene, machines);
+  const fx = S.fx = new Effects(game, new Particles(scene, game.env), machines);
+  { const dep = terrain.deposit.bind(terrain); terrain.deposit = (x, z, m, v) => { dep(x, z, m, v); fx.landed(x, z, m); }; } // dust where tipped material lands
+  const shadows = [], lamps = []; let fxTime = 0;
+  S.setLighting = (name) => { game.env.apply(name); if (!S.stress) game.hud.note = `LIGHT: ${game.env.name.toUpperCase()}`; };
   game.machines = machines; game.play = S; game.autopilot = autopilot;
   game.machine = (id) => machines.find((m) => m.id === id);
 
@@ -172,6 +179,16 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     scene.updateMatrixWorld();
     hands.update(input.hands, fdt);
     rams.update();
+    // lighting that follows the machines: a pool of shade under each half, headlamp pools at dusk, lamps and beacons
+    shadows.length = 0; lamps.length = 0;
+    for (const m of machines) {
+      for (const b of m.bodyList) { const c = b.def.colliders?.[0]; if (!c) continue; b.obj.localToWorld(_p.set(c.pos[0], 0, c.pos[2])); shadows.push({ x: _p.x, z: _p.z, r: Math.max(c.size[0], c.size[2]) * 0.62 }); }
+      if (m.engine.running) { const lead = m.bodyList[m.bodyList.length - 1].obj; _f.set(0, 0, -1).applyQuaternion(lead.quaternion); _f.y = 0; _f.normalize(); lead.localToWorld(_p.set(0, 1.5, m.joints[0] ? m.joints[0].def.anchor[2] - 2.2 : -2.2)); lamps.push({ x: _p.x, z: _p.z, dx: _f.x, dz: _f.z }); }
+    }
+    game.ground.setMachineLighting(shadows, lamps);
+    fxTime += fdt; PAINT_U.uTime.value = fxTime; PAINT_U.uLampOn.value = game.env.lamps.value;
+    fx.update(fdt);
+    if (right.stickPressed && !player.seated) S.setLighting(game.env.next());
     hudHolder.visible = left.tracked; if (left.tracked) { hudHolder.position.copy(left.pos); hudHolder.quaternion.copy(left.quat); }
     if (bus.ctx) {
       game.camera.getWorldPosition(_p); game.camera.getWorldDirection(_f); _u.set(0, 1, 0).applyQuaternion(game.camera.getWorldQuaternion(_q));
@@ -206,6 +223,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     else if (e.code === 'KeyF') game.hud.toggle();
     else if (e.code === 'KeyX') S.setStress(!S.stress);
     else if (e.code === 'KeyM' && !game.remote) S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom');
+    else if (e.code === 'KeyN') S.setLighting(game.env.next());
     else if (e.code === 'KeyO') { player.horizonLock = player.horizonLock ? 0 : 0.8; }
     else if (m && e.code === 'Enter') setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyP') setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);
@@ -239,9 +257,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test.<br>`
+      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
-      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · drag to look<br>`
+      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }

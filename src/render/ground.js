@@ -38,6 +38,9 @@ void main() {
 const FRAG = /* glsl */`
 uniform vec3 uSun; uniform vec3 uSunColor; uniform vec3 uSky; uniform vec3 uGroundLight;
 uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar;
+uniform vec4 uShadow[8];   // x, z, radius, strength: a soft pool of shade under each machine half
+uniform vec4 uLamp[4];     // x, z, dir x, dir z: headlamp pools on the ground
+uniform float uLampOn;
 varying vec3 vWorld; varying vec3 vColor; varying vec3 vSmooth; varying vec4 vDetail;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -58,6 +61,11 @@ void main() {
   col *= 1.0 - 0.22 * smoothstep(0.12, 0.6, steep);                                       // steep faces sit a little in shade
   float d = max(dot(n, uSun), 0.0);
   vec3 light = uSunColor * d + mix(uGroundLight, uSky, n.y * 0.5 + 0.5);
+  float shade = 1.0;
+  for (int i = 0; i < 8; i++) { vec4 s = uShadow[i]; if (s.w > 0.0) shade *= 1.0 - s.w * smoothstep(1.0, 0.45, length(vWorld.xz - s.xy) / s.z); }
+  light = uSunColor * d * shade + mix(uGroundLight, uSky, n.y * 0.5 + 0.5) * (0.55 + 0.45 * shade);
+  if (uLampOn > 0.01) for (int i = 0; i < 4; i++) { vec2 v = vWorld.xz - uLamp[i].xy; float al = dot(v, uLamp[i].zw), lat = length(v - uLamp[i].zw * al);
+    light += vec3(1.0, 0.88, 0.62) * uLampOn * 1.1 * smoothstep(0.0, 2.5, al) * smoothstep(18.0, 5.0, al) * smoothstep(al * 0.42 + 1.2, 0.0, lat); }
   col *= light;
   float fog = smoothstep(uFogNear, uFogFar, dist);
   gl_FragColor = vec4(mix(col, uFogColor, fog), 1.0);
@@ -67,7 +75,7 @@ void main() {
 export class Ground {
   /** @param {THREE.WebGLRenderer} renderer @param {import('../terrain/client.js').TerrainClient} terrain */
   constructor(renderer, terrain, env) {
-    this.renderer = renderer; this.terrain = terrain;
+    this.renderer = renderer; this.terrain = terrain; this.env = env;
     const { nx, nz, cell, ox, oz } = terrain;
     this.hTex = new THREE.DataTexture(terrain.h, nx, nz, THREE.RedFormat, THREE.FloatType);
     this.infoTex = new THREE.DataTexture(terrain.info, nx, nz, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -80,6 +88,7 @@ export class Ground {
         uDetail: { value: DETAIL.map((d) => new THREE.Vector3(...d)) }, uSize: { value: new THREE.Vector2(nx, nz) },
         uSun: { value: env.sunDir }, uSunColor: { value: env.sunColor }, uSky: { value: env.skyLight }, uGroundLight: { value: env.groundLight },
         uFogColor: { value: env.fogColor }, uFogNear: { value: env.fogNear }, uFogFar: { value: env.fogFar },
+        uShadow: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, uLamp: { value: Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, 1, 0)) }, uLampOn: env.lamps,
       },
     });
     this.group = new THREE.Group(); this.tiles = [];
@@ -122,6 +131,14 @@ export class Ground {
     g.setAttribute('skirt', new THREE.Float32BufferAttribute(skirt, 1));
     g.setIndex(pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
     return g;
+  }
+
+  /** Shade and lamp pools for the machines: list of {x, z, r} (up to 8) and {x, z, dx, dz} (up to 4). */
+  setMachineLighting(shadows, lamps) {
+    const S = this.material.uniforms.uShadow.value, Lm = this.material.uniforms.uLamp.value, sun = this.env.sunDir;
+    const k = Math.min(2.2, 1.1 / Math.max(sun.y, 0.25)); // shade falls away from the sun, further when it is low
+    for (let i = 0; i < 8; i++) { const s = shadows[i]; if (s) S[i].set(s.x - sun.x * k, s.z - sun.z * k, s.r, 0.62); else S[i].set(0, 0, 1, 0); }
+    for (let i = 0; i < 4; i++) { const l = lamps[i]; if (l) Lm[i].set(l.x, l.z, l.dx, l.dz); else Lm[i].set(1e6, 1e6, 1, 0); }
   }
 
   /** Upload queued chunk edits and pick LODs. Call once per frame before render. */
