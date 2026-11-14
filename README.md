@@ -64,6 +64,16 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 
 **Two players:** one presses *Host a game* on the start page and reads out the five-digit room number; the other types it and presses *Join*. The host's headset runs the world; the other player sees it about 0.15 s behind. First into a seat owns that machine.
 
+## The machine models
+
+`tools/build_visuals.py` writes each machine's look into its JSON: 150–200 painted boxes and cylinders per machine, merged at load into one mesh per moving part, so detail costs almost nothing in draw calls. On top of that:
+
+- **Pixel paint** (the style of SWVR's interiors: 64 px tiles at 64 px per metre, crisp): panel seams, rivets, scratches, tread plate, hazard stripes, louvred vents, maker's plates, warning labels and an instrument cluster, with rust blooms and streaks in patches and site mud thrown up over the lower panels.
+- **Working hydraulics**: every ram is drawn stretched between its two mounting points each frame, so cylinders extend and swing with booms, buckets, blade, bed, legs and steering (two draw calls for all of them).
+- **Running tracks**: the dozer's grouser pads travel round the track loop at track speed.
+
+`node tools/gallery.mjs [machine]` takes outside and cab screenshots after a change.
+
 ## How it is built
 
 ```

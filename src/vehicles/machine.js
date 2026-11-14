@@ -16,21 +16,24 @@ import { clamp } from '../util/rng.js';
 const G = 9.81;
 const V = () => new THREE.Vector3();
 const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n = V(), _c = V(), _v = V(), _p = V(), _a = V(), _m4 = new THREE.Matrix4(), _m5 = new THREE.Matrix4();
+const _trk = new THREE.Object3D();
 const _na = [0, 1, 0], _eul = new THREE.Euler(), _qf = new THREE.Quaternion(), _qg = new THREE.Quaternion();
 const AX = { x: V().set(1, 0, 0), y: V().set(0, 1, 0), z: V().set(0, 0, 1) };
 
 // Draw calls are the main cost on a Quest (each is drawn once per eye), so a machine's boxes are merged into one
 // vertex-coloured mesh per moving part instead of one mesh per box.
 const COLORS = { yellow: 0xf0b21a, yellow2: 0xd2940f, dark: 0x3a3a3c, black: 0x19191b, tyre: 0x1f1f20, hub: 0xd9a015, steel: 0x6d6e70, chrome: 0xb4b8bc, grey: 0x8a8d90, seat: 0x2b2b2b, red: 0xc9381e, orange: 0xd9541e, orange2: 0xb5441a,
-  green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a, lamp: 0xfff3c4, tail: 0xb01414, amber: 0xff9a1a, rust: 0x7a4a2c, rim: 0xe2a516, cream: 0xd8ccb0, hazard: 0xffffff };
+  green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a, lamp: 0xfff3c4, tail: 0xb01414, amber: 0xff9a1a, rust: 0x7a4a2c, rim: 0xe2a516, cream: 0xd8ccb0, hazard: 0xffffff, vent: 0xffffff, warn: 0xffffff, plate: 0xffffff, gauges: 0xffffff };
 // Pixel paint, in the style set for SWVR's interiors (docs/PIXEL_STYLE.md there): 64 × 64 px tiles at 64 px per metre,
 // crisp pixels, greyscale averaging mid-grey and multiplying the part's own colour, so one "painted steel plate" tile
 // serves yellow, orange and black alike. Detail lives in the pixels (panel seams, rivets, scratches, tread plate,
 // hazard stripes), not in geometry. Four tiles in one 256 × 64 texture; each part carries a `tile` index and
 // cube-projected UVs in metres, so pixels are square and the same size on every face.
-const TILE = { hazard: 1, grey: 2, black: 3, tyre: 3, track: 3, seat: 3, dark: 3, lamp: 3, tail: 3, amber: 3 };
+const TILE = { hazard: 1, grey: 2, black: 3, tyre: 3, track: 3, seat: 3, dark: 3, lamp: 3, tail: 3, amber: 3, vent: 4, warn: 5, plate: 6, gauges: 7 };
+const DECAL = { warn: 1, plate: 1, gauges: 1 }; // stretched once over the part's big face instead of tiling
+const PAINT_U = { uGround: { value: 0 } };
 function pixelAtlas() {
-  const W = 256, H = 64, d = new Uint8Array(W * H * 4), h2 = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + s * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const W = 512, H = 64, d = new Uint8Array(W * H * 4), h2 = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + s * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
   const put = (t, x, y, r, g = r, b = r) => { const k = (((y & 63) * W) + t * 64 + (x & 63)) * 4; d[k] = r; d[k + 1] = g; d[k + 2] = b; };
   // alpha = how rusty this pixel can get (the shader decides where on the machine rust actually shows)
   const rust = (t, x, y, a) => { const k = (((y & 63) * W) + t * 64 + (x & 63)) * 4; if (a > d[k + 3]) d[k + 3] = a; };
@@ -64,17 +67,37 @@ function pixelAtlas() {
   }
   for (const [rx, ry] of [[5, 5], [58, 5], [5, 58], [58, 58], [5, 37], [58, 37]]) { rust(0, rx, ry - 1, 210); rust(0, rx + 1, ry - 1, 170); for (let q = 2; q < 7; q++) rust(0, rx, ry - q, 200 - q * 26); } // weeping rivets
   for (let k = 0; k < 7; k++) { const x0 = 8 + Math.floor(h2(k, 1, 50) * 48), y0 = 8 + Math.floor(h2(k, 2, 50) * 48); for (let q = 0; q < 2 + Math.floor(h2(k, 3, 50) * 3); q++) { put(0, x0 + q, y0, 178); if (h2(k, q, 51) > 0.5) put(0, x0 + q, y0 + 1, 166); } } // scuffs down to bare metal
+  // ---- tile 4: louvred vent; 5: warning label; 6: maker's plate; 7: instrument cluster (decals carry their own colours, at half brightness)
+  const F = { M: '101111111101101', U: '101101101101111', C: '111100100100111', K: '101110100110101', A: '010101111101101', B: '110101110101110', O: '111101101101111', T: '111010010010010' };
+  const text = (t, str, x0, y0, sc, r, g, b) => [...str].forEach((ch, i) => { const gl = F[ch]; if (!gl) return; for (let q = 0; q < 15; q++) if (gl[q] === '1') for (let a = 0; a < sc; a++) for (let c = 0; c < sc; c++) put(t, x0 + i * (3 * sc + sc) + (q % 3) * sc + a, y0 - Math.floor(q / 3) * sc - c, r, g, b); });
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const n = Math.round(h2(x, y, 9) * 6);
+    put(4, x, y, y % 8 < 3 ? 34 + n : y % 8 === 3 ? 150 : 96 + n);                                                  // slats: shadow, lit lip, face
+    const tri = y >= 10 && y <= 54 && Math.abs(x - 32) <= (54 - y) * 0.5, edge = tri && (y <= 12 || Math.abs(x - 32) >= (54 - y) * 0.5 - 2.5);
+    if (tri) { if (edge) put(5, x, y, 12, 12, 14); else put(5, x, y, 124, 100, 8); } else put(5, x, y, 118 + n, 116 + n, 108 + n);
+    if (tri && !edge && Math.abs(x - 32) < 2 && ((y > 22 && y < 40) || (y > 15 && y < 19))) put(5, x, y, 12, 12, 14);  // the "!"
+    const border = x < 2 || y < 2 || x > 61 || y > 61; put(6, x, y, border ? 110 : 14 + n, border ? 86 : 14 + n, border ? 10 : 16 + n);
+    put(7, x, y, 12 + n, 13 + n, 15 + n);
+  }
+  text(6, 'MUCK', 9, 50, 3, 124, 98, 10); text(6, 'ABOUT', 3, 26, 3, 120, 120, 116);
+  for (const [cx, cy, rr, na] of [[17, 42, 12, 0.7], [47, 42, 12, 2.2], [32, 16, 9, 1.4]]) {                           // three dials with needles
+    for (let a = 0; a < 64; a++) { const an = a / 64 * Math.PI * 2; put(7, Math.round(cx + Math.cos(an) * rr), Math.round(cy + Math.sin(an) * rr), 118, 118, 112); if (a % 8 === 0 && an < 4.2) put(7, Math.round(cx + Math.cos(an) * (rr - 2)), Math.round(cy + Math.sin(an) * (rr - 2)), 96, 96, 92); }
+    for (let q = 0; q < rr - 3; q++) put(7, Math.round(cx + Math.cos(na) * q), Math.round(cy + Math.sin(na) * q), 124, 28, 16);
+  }
+  for (const [lx, c] of [[8, [20, 110, 30]], [16, [124, 90, 8]], [48, [124, 20, 14]], [56, [30, 60, 124]]]) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) put(7, lx + a, 6 + b, c[0], c[1], c[2]);
   const t = new THREE.DataTexture(d, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
   t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.NoColorSpace; t.needsUpdate = true;
   return t;
 }
 const PAINT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, map: pixelAtlas() });
 PAINT.onBeforeCompile = (sh) => {
-  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tile;\nvarying float vTile;').replace('#include <uv_vertex>', '#include <uv_vertex>\nvTile = tile;');
-  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTile;')
+  sh.uniforms.uGround = PAINT_U.uGround;
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tile;\nvarying float vTile;\nvarying float vHgt;\nuniform float uGround;').replace('#include <uv_vertex>', '#include <uv_vertex>\nvTile = tile;')
+    .replace('#include <project_vertex>', '#include <project_vertex>\nvec4 wp_ = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nwp_ = instanceMatrix * wp_;\n#endif\nvHgt = (modelMatrix * wp_).y - uGround;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTile;\nvarying float vHgt;')
     .replace('#include <common>', '#include <common>\nfloat pHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat pNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(pHash(i), pHash(i + vec2(1.0, 0.0)), f.x), mix(pHash(i + vec2(0.0, 1.0)), pHash(i + vec2(1.0, 1.0)), f.x), f.y); }')
     // rust shows in patches (a slow noise over the machine, snapped to the pixel grid), not on every panel alike
-    .replace('#include <map_fragment>', 'vec4 px = texture2D(map, vec2((fract(vMapUv.x) * 0.96875 + 0.015625 + floor(vTile + 0.5)) * 0.25, fract(vMapUv.y)));\nfloat patch_ = smoothstep(0.42, 0.62, pNoise(floor(vMapUv * 64.0) / 64.0 * 1.1 + 3.7));\nfloat rust_ = px.a * (0.25 + 0.75 * patch_);\ndiffuseColor.rgb = mix(diffuseColor.rgb * px.rgb * 2.0, vec3(0.33, 0.15, 0.06) * (0.6 + px.r * 1.4), step(0.45, rust_) * 0.9);');
+    .replace('#include <map_fragment>', 'vec4 px = texture2D(map, vec2((fract(vMapUv.x) * 0.96875 + 0.015625 + floor(vTile + 0.5)) * 0.125, fract(vMapUv.y)));\nfloat patch_ = smoothstep(0.42, 0.62, pNoise(floor(vMapUv * 64.0) / 64.0 * 1.1 + 3.7));\nfloat rust_ = px.a * (0.25 + 0.75 * patch_);\ndiffuseColor.rgb = mix(diffuseColor.rgb * px.rgb * 2.0, vec3(0.33, 0.15, 0.06) * (0.6 + px.r * 1.4), step(0.45, rust_) * 0.9);\n// site mud: thrown up from the wheels, thick low down and thinning to spatter by cab height (pixel-snapped so it stays crisp)\nvec2 mp_ = floor(vMapUv * 64.0) / 64.0;\nfloat mud_ = smoothstep(1.75, 0.25, vHgt) * (0.35 + 0.65 * pNoise(mp_ * 2.3 + 11.0)) + 0.25 * step(0.82, pHash(mp_ * 64.0)) * smoothstep(2.6, 1.0, vHgt);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.34, 0.25, 0.16) * (0.75 + 0.5 * pHash(mp_ * 64.0 + 5.0)), step(0.5, mud_) * (vTile > 4.5 ? 0.0 : 0.8));');
 };
 const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
 const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
@@ -92,6 +115,14 @@ function part(geo, color, pos, rot) {
     const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i), ux = P.getX(i + 1) - ax, uy = P.getY(i + 1) - ay, uz = P.getZ(i + 1) - az, vx = P.getX(i + 2) - ax, vy = P.getY(i + 2) - ay, vz = P.getZ(i + 2) - az;
     const nx = Math.abs(uy * vz - uz * vy), ny = Math.abs(uz * vx - ux * vz), nz = Math.abs(ux * vy - uy * vx);
     for (let q = i; q < i + 3; q++) { const x = P.getX(q), y = P.getY(q), z = P.getZ(q); if (nx >= ny && nx >= nz) { uv[q * 2] = z; uv[q * 2 + 1] = y; } else if (ny >= nz) { uv[q * 2] = x; uv[q * 2 + 1] = z; } else { uv[q * 2] = x; uv[q * 2 + 1] = y; } }
+  }
+  if (DECAL[color]) { // one copy of the tile across the part's biggest face
+    g.computeBoundingBox(); const bb = g.boundingBox, sz = [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z], thin = sz.indexOf(Math.min(...sz)), ua = thin === 0 ? 2 : 0, va = thin === 1 ? 2 : 1, mn = [bb.min.x, bb.min.y, bb.min.z];
+    for (let i = 0; i < n; i += 3) { // per face, so lettering reads the right way round from both sides of the machine
+      const e1 = [P.getX(i + 1) - P.getX(i), P.getY(i + 1) - P.getY(i), P.getZ(i + 1) - P.getZ(i)], e2 = [P.getX(i + 2) - P.getX(i), P.getY(i + 2) - P.getY(i), P.getZ(i + 2) - P.getZ(i)];
+      const nrm = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], flip = thin === 0 ? nrm[0] > 0 : thin === 2 ? nrm[2] < 0 : false;
+      for (let q = i; q < i + 3; q++) { const c = [P.getX(q), P.getY(q), P.getZ(q)]; let u = Math.min(0.999, Math.max(0.001, (c[ua] - mn[ua]) / (sz[ua] || 1))); if (flip) u = 1 - u; uv[q * 2] = u; uv[q * 2 + 1] = Math.min(0.999, Math.max(0.001, (c[va] - mn[va]) / (sz[va] || 1))); }
+    }
   }
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setAttribute('tile', new THREE.BufferAttribute(tile, 1));
   return g;
@@ -210,6 +241,17 @@ export class Machine {
       byParent.get(key).parts.push(part(geo, v.mat || 'yellow', v.pos, v.rot));
     }
     for (const g of byParent.values()) this.nodes[g.parent].add(new THREE.Mesh(mergeGeometries(g.parts), g.glass ? GLASS : PAINT));
+    // ---- hydraulic rams: each joins a point on one part to a point on another, and is drawn stretched between them
+    this.links = (def.links || []).map((l) => ({ a: this.nodes[l.a[0]], pa: new THREE.Vector3(l.a[1], l.a[2], l.a[3]), b: this.nodes[l.b[0]], pb: new THREE.Vector3(l.b[1], l.b[2], l.b[3]), r: l.r ?? 0.065, barrel: l.barrel ?? 0.55 }));
+    // ---- running tracks: grouser pads carried round the loop by track speed (one instanced mesh per machine)
+    this.trackRuns = [];
+    if (def.trackLoops) {
+      const lp = def.trackLoops, n = lp.pads, geo = part(new THREE.BoxGeometry(lp.w, 0.06, 0.08), 'black', [0, 0, 0]);
+      const mesh = new THREE.InstancedMesh(geo, PAINT, n * lp.x.length); mesh.frustumCulled = false; this.nodes[lp.parent].add(mesh);
+      lp.x.forEach((x, i) => this.trackRuns.push({ x, side: i === 0 ? 'L' : 'R', s: 0, first: i * n }));
+      this.trackMesh = mesh; this.trackDef = lp; this._poseTracks();
+    }
+    for (const b of this.bodyList) b.obj.traverse((o) => { if (o.isMesh && o.material === PAINT) o.onBeforeRender = () => { PAINT_U.uGround.value = this.bodyList[0].obj.position.y; PAINT.uniformsNeedUpdate = true; }; });
     // ---- tools and containers
     this.containers = {}; this.rigs = [];
     for (const c of def.containers || []) {
@@ -558,6 +600,7 @@ export class Machine {
     }
     this.digRate = dig;
     let spill = 0; for (const r of this.rigs) spill += r.spillRate; this.spillRate = spill;
+    if (this.trackRuns.length) { for (const run of this.trackRuns) { const w = this.wheels.find((x) => x.side === run.side); run.s += (w ? w.vf : this.speed) * dt; } this._poseTracks(); }
     // ruts
     if (this.tick % 4 === 0) for (const w of this.wheels) if (w.grounded && Math.abs(w.vf) > 0.2) this.terrain.compact(w.gx, w.gz, (w.def.w ?? 0.5) * 0.6, clamp(w.N / (w.share * G), 0, 1));
     this.bump *= 0.8;
@@ -580,6 +623,18 @@ export class Machine {
     this.poseNodes();
     this.wheels.forEach((w, i) => { w.steer = s.w[i]; w.spin += this.speed * dt / w.r; w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); });
     this.root.updateMatrixWorld(true);
+  }
+
+  _poseTracks() {
+    const lp = this.trackDef, n = lp.pads, L = lp.half, r = lp.r, loop = 4 * L + 2 * Math.PI * r, o = _trk;
+    for (const run of this.trackRuns) for (let i = 0; i < n; i++) {
+      let d = ((i / n) * loop + run.s) % loop; if (d < 0) d += loop;
+      let z, y, a; // top run (moving forward = toward -z), front arc, bottom run, rear arc
+      if (d < 2 * L) { z = L - d; y = lp.y + r; a = 0; } else if (d < 2 * L + Math.PI * r) { const t = (d - 2 * L) / r; z = -L - Math.sin(t) * r; y = lp.y + Math.cos(t) * r; a = t; }
+      else if (d < 4 * L + Math.PI * r) { z = -L + (d - 2 * L - Math.PI * r); y = lp.y - r; a = Math.PI; } else { const t = (d - 4 * L - Math.PI * r) / r; z = L + Math.sin(t) * r; y = lp.y - Math.cos(t) * r; a = Math.PI + t; }
+      o.position.set(run.x, y, z); o.rotation.set(a, 0, 0); o.updateMatrix(); this.trackMesh.setMatrixAt(run.first + i, o.matrix);
+    }
+    this.trackMesh.instanceMatrix.needsUpdate = true;
   }
 
   /** Volume held in this machine's containers (m³). */

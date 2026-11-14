@@ -16,6 +16,7 @@ import * as autopilot from '../game/autopilot.js';
 import { makeHopper } from '../game/hopper.js';
 import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { startStress } from './stress.js';
+import { Rams } from '../render/rams.js';
 
 const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3(), _q = new THREE.Quaternion();
 
@@ -48,6 +49,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     m.controlRoots = Object.values(m.controls).map((c) => c.root).concat(buildDecor(Object.values(m.controls), placard));
     machines.push(m);
   }
+  const rams = new Rams(scene, machines);
   game.machines = machines; game.play = S; game.autopilot = autopilot;
   game.machine = (id) => machines.find((m) => m.id === id);
 
@@ -169,6 +171,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     desktopCamera();
     scene.updateMatrixWorld();
     hands.update(input.hands, fdt);
+    rams.update();
     hudHolder.visible = left.tracked; if (left.tracked) { hudHolder.position.copy(left.pos); hudHolder.quaternion.copy(left.quat); }
     if (bus.ctx) {
       game.camera.getWorldPosition(_p); game.camera.getWorldDirection(_f); _u.set(0, 1, 0).applyQuaternion(game.camera.getWorldQuaternion(_q));

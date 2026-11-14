@@ -49,6 +49,17 @@ def cab(p, cx, cz, fl, col, col2, column=True, seat=True, steps=None):
     if seat:
         o += [B(p, [0.3, 0.32, 0.3], [cx, fl + 0.18, cz + 0.2], 'black'), B(p, [0.52, 0.12, 0.5], [cx, fl + 0.5, cz + 0.18], 'seat'),
               B(p, [0.5, 0.64, 0.1], [cx, fl + 0.9, cz + 0.47], 'seat', rot=[0.12, 0, 0]), B(p, [0.26, 0.18, 0.08], [cx, fl + 1.3, cz + 0.52], 'seat')]
+    # the next level down: instruments, pedals, armrests, wipers, door handle, grab bars, extinguisher
+    o += [B(p, [0.3, 0.2, 0.02], [cx + 0.2, fl + 0.78, cz - 0.4], 'gauges', rot=[-0.5, 0, 0]), B(p, [0.34, 0.24, 0.03], [cx + 0.2, fl + 0.775, cz - 0.39], 'black', rot=[-0.5, 0, 0]),
+          B(p, [0.12, 0.03, 0.2], [cx + 0.2, fl + 0.07, cz - 0.55], 'grey', rot=[0.5, 0, 0]), B(p, [0.12, 0.03, 0.2], [cx - 0.2, fl + 0.07, cz - 0.55], 'grey', rot=[0.5, 0, 0]),
+          B(p, [1.3, 0.02, 1.2], [cx, fl + 0.012, cz], 'grey'),
+          B(p, [0.03, 0.03, 0.7], [cx - 0.3, fl + 0.95, cz - 0.83], 'black', rot=[0, 0, 0.9]), B(p, [0.03, 0.03, 0.7], [cx + 0.3, fl + 0.95, cz - 0.83], 'black', rot=[0, 0, 0.9]),
+          B(p, [0.04, 0.05, 0.2], [cx - 0.83, fl + 0.6, cz - 0.3], 'chrome'), C(p, 0.06, 0.06, 0.34, [cx + 0.6, fl + 0.2, cz + 0.62], 'red'), C(p, 0.025, 0.025, 0.08, [cx + 0.6, fl + 0.41, cz + 0.62], 'black'),
+          B(p, [0.1, 0.1, 0.03], [cx - 0.82, fl + 0.38, cz + 0.45], 'warn'), B(p, [0.16, 0.16, 0.012], [cx + 0.83, fl + 0.36, cz - 0.4], 'warn')]
+    if seat:
+        for sx in (-1, 1): o.append(B(p, [0.07, 0.05, 0.34], [cx + sx * 0.3, fl + 0.72, cz + 0.28], 'seat'))
+    for sx in (-1, 1):       # grab bars up the front posts and light guards
+        o += [C(p, 0.016, 0.016, 0.7, [cx + sx * 0.86, fl + 0.9, cz - 0.86], 'chrome'), B(p, [0.24, 0.02, 0.02], [cx + sx * 0.6, fl + 1.76, cz - 0.99], 'chrome'), B(p, [0.24, 0.02, 0.02], [cx + sx * 0.6, fl + 1.6, cz - 0.99], 'chrome')]
     for sx in (-1, 1):       # mirrors
         o += [B(p, [0.5, 0.03, 0.03], [cx + sx * 1.03, fl + 1.42, cz - 0.82], 'black'), B(p, [0.04, 0.3, 0.18], [cx + sx * 1.3, fl + 1.36, cz - 0.82], 'black')]
     for (x, y, z) in (steps or []):
@@ -76,6 +87,9 @@ def loader_bucket(p, half, floor, back, lip, n_teeth):
         o += [B(p, [0.06, 0.92, depth], [sx * half, floor + 0.44, mid], 'dark', taper=[1, 0.36], lean=[0, depth * 0.31]),
               B(p, [0.08, 0.1, depth * 0.9], [sx * half, floor + 0.02, mid], 'yellow2')]
     for x in (-half * 0.5, 0, half * 0.5): o.append(B(p, [0.1, 0.04, depth * 0.9], [x, floor - 0.075, mid], 'black'))
+    o += [B(p, [w, 0.3, 0.06], [0, floor + 0.1, back - 0.07], 'dark', rot=[0.7, 0, 0]), B(p, [w * 0.5, 0.12, 0.02], [0, floor + 0.62, back + 0.055], 'plate'),
+          B(p, [0.16, 0.16, 0.012], [half * 0.7, floor + 0.36, back + 0.056], 'warn')]
+    for x in (-half * 0.75, -half * 0.25, half * 0.25, half * 0.75): o.append(B(p, [0.06, 0.7, 0.05], [x, floor + 0.36, back + 0.07], 'yellow2'))
     return o + teeth(p, n_teeth, half, floor - 0.01, lip - 0.1)
 
 # ---------------------------------------------------------------------------------------------------------------- loader
@@ -83,7 +97,7 @@ def loader():
     fl, cz = 2.0, -0.7; v = []
     v += [B('rear', [1.3, 0.7, 3.7], [0, 1.0, 0.35], 'dark'), B('rear', [2.0, 0.3, 0.42], [0, 0.75, 0], 'black'), B('rear', [1.5, 0.5, 1.62], [0, 1.72, cz], 'dark'),
           B('rear', [1.72, 1.05, 2.1], [0, 1.9, 1.32], 'yellow', taper=[0.86, 0.94]), B('rear', [1.0, 0.04, 1.3], [0, 2.44, 1.3], 'black'),
-          B('rear', [1.42, 0.82, 0.06], [0, 1.85, 2.4], 'black'), B('rear', [2.3, 0.78, 0.56], [0, 1.15, 2.56], 'yellow2', taper=[1, 0.78]),
+          B('rear', [1.42, 0.82, 0.06], [0, 1.85, 2.4], 'vent'), B('rear', [2.3, 0.78, 0.56], [0, 1.15, 2.56], 'yellow2', taper=[1, 0.78]),
           B('rear', [0.3, 0.16, 0.3], [0, 0.86, 2.9], 'black'), C('rear', 0.06, 0.06, 1.0, [0.5, 2.9, 0.95], 'dark'), C('rear', 0.085, 0.085, 0.1, [0.5, 3.42, 0.95], 'black'),
           C('rear', 0.13, 0.13, 0.42, [-0.5, 2.62, 0.85], 'black'), C('rear', 0.16, 0.16, 0.08, [-0.5, 2.86, 0.85], 'yellow2'),
           C('rear', 0.13, 0.13, 0.52, [0, 1.0, -1.5], 'chrome'), C('rear', 0.1, 0.1, 0.3, [0, 1.55, -1.5], 'chrome')]
@@ -115,7 +129,7 @@ def loader():
 def dumper():
     fl, cz = 1.8, -1.9; v = []
     v += [B('front', [1.5, 0.6, 3.1], [0, 1.05, -1.75], 'dark'), B('front', [2.1, 0.3, 0.42], [0, 0.8, -1.8], 'black'), B('front', [1.6, 0.4, 1.72], [0, 1.58, cz], 'dark'),
-          B('front', [2.0, 0.95, 0.95], [0, 1.95, -3.25], 'orange', taper=[0.88, 0.62], lean=[0, 0.14]), B('front', [1.5, 0.62, 0.06], [0, 1.78, -3.74], 'black'),
+          B('front', [2.0, 0.95, 0.95], [0, 1.95, -3.25], 'orange', taper=[0.88, 0.62], lean=[0, 0.14]), B('front', [1.5, 0.62, 0.06], [0, 1.78, -3.74], 'vent'),
           B('front', [2.5, 0.36, 0.32], [0, 1.08, -3.66], 'dark'), B('front', [0.7, 0.1, 0.06], [0, 1.08, -3.83], 'orange2'),
           C('front', 0.07, 0.07, 1.7, [0.62, 2.75, -0.92], 'dark'), C('front', 0.095, 0.095, 0.1, [0.62, 3.62, -0.92], 'black'),
           B('front', [0.62, 0.75, 0.5], [-0.62, 1.75, -0.72], 'orange2'), C('front', 0.13, 0.13, 0.5, [0, 1.0, 0], 'chrome')]
@@ -156,7 +170,7 @@ def dozer():
             v += [B(p, [0.6, 0.05, 0.07], [x, 0.87, z], 'black'), B(p, [0.6, 0.05, 0.07], [x, -0.005, z], 'black')]
     v += [B(p, [1.42, 0.56, 3.6], [0, 0.76, 0.05], 'dark'), B(p, [1.5, 0.5, 3.3], [0, 1.2, 0.1], 'yellow'), B(p, [1.6, 0.36, 1.72], [0, 1.55, cz], 'yellow2'),
           B(p, [1.06, 0.72, 1.7], [0, 1.8, -1.4], 'yellow', taper=[0.86, 0.96]), B(p, [0.7, 0.03, 1.2], [0, 2.17, -1.4], 'black'),
-          B(p, [1.26, 1.2, 0.12], [0, 1.6, -2.3], 'yellow2'), B(p, [1.0, 0.92, 0.06], [0, 1.62, -2.38], 'black'),
+          B(p, [1.26, 1.2, 0.12], [0, 1.6, -2.3], 'yellow2'), B(p, [1.0, 0.92, 0.06], [0, 1.62, -2.38], 'vent'),
           C(p, 0.06, 0.06, 0.9, [0.3, 2.6, -1.15], 'dark'), C(p, 0.085, 0.085, 0.08, [0.3, 3.07, -1.15], 'black'), C(p, 0.11, 0.11, 0.3, [-0.3, 2.3, -1.7], 'black'),
           B(p, [1.5, 0.85, 0.5], [0, 1.3, 1.98], 'yellow2'), B(p, [0.3, 0.16, 0.4], [0, 0.5, 2.1], 'black')]
     for i in range(5): v.append(B(p, [1.02, 0.05, 0.08], [0, 1.24 + i * 0.18, -2.4], 'yellow2'))
@@ -180,7 +194,7 @@ def backhoe():
     fl, cz = 1.55, -0.75; v = []; p = 'chassis'
     v += [B(p, [1.1, 0.5, 4.4], [0, 0.95, -0.9], 'dark'), B(p, [1.9, 0.2, 0.3], [0, 0.5, -2.3], 'black'), B(p, [2.0, 0.3, 0.42], [0, 0.8, 0], 'black'),
           B(p, [1.6, 0.36, 1.72], [0, 1.35, cz], 'dark'),
-          B(p, [1.2, 0.85, 1.5], [0, 1.65, -2.36], 'yellow', taper=[0.84, 0.8], lean=[0, 0.14]), B(p, [0.96, 0.6, 0.06], [0, 1.5, -3.13], 'black'),
+          B(p, [1.2, 0.85, 1.5], [0, 1.65, -2.36], 'yellow', taper=[0.84, 0.8], lean=[0, 0.14]), B(p, [0.96, 0.6, 0.06], [0, 1.5, -3.13], 'vent'),
           B(p, [1.34, 0.36, 0.32], [0, 0.98, -3.18], 'yellow2'), C(p, 0.05, 0.05, 0.9, [0.4, 2.5, -2.2], 'dark'), C(p, 0.07, 0.07, 0.08, [0.4, 2.97, -2.2], 'black'),
           B(p, [2.1, 0.6, 0.36], [0, 0.95, 1.2], 'yellow2'), B(p, [0.9, 0.5, 0.5], [0, 1.3, 1.05], 'dark'),
           B(p, [1.2, 0.6, 0.14], [0, fl + 0.33, cz + 0.5], 'dark')]
@@ -218,6 +232,48 @@ def backhoe():
               B(node, [0.42, 0.07, 0.52], [sx * 1.15, -0.06, 0], 'dark'), C(node, 0.1, 0.1, 0.26, [sx * 0.02, 0, 0], 'yellow2', rot=AZ)]
     return v
 
+# ---------------------------------------------------------------------------------------------------------------- second pass
+# Working hydraulics: [from node, x, y, z] → [to node, x, y, z]. Drawn as a barrel and rod stretched between the two
+# points every frame (src/render/rams.js), so they extend and swing with the machine. Each end gets a lug to hold it.
+def L(a, b, r=0.065, barrel=0.55): return {"a": a, "b": b, "r": r, "barrel": barrel}
+def both(a, b, **k): return [L([a[0], sx * a[1], a[2], a[3]], [b[0], sx * b[1], b[2], b[3]], **k) for sx in (-1, 1)]
+LINKS = {
+  'loader': both(['front', 0.4, 1.12, -2.05], ['boom', 0.4, -0.12, -1.5], r=0.075) + [L(['front', 0, 2.02, -1.72], ['bucket', 0, 0.72, 0.24], r=0.07)]
+            + both(['rear', 0.52, 1.02, -0.55], ['front', 0.52, 1.02, -2.25], r=0.05),
+  'dumper': both(['rear', 0.74, 0.98, 0.95], ['bed', 0.74, -0.02, -3.25], r=0.085, barrel=0.8) + both(['rear', 0.52, 1.0, 0.95], ['front', 0.52, 1.0, -0.85], r=0.05),
+  'dozer': both(['chassis', 0.72, 1.78, -1.95], ['arms', 0.72, -0.2, -2.25], r=0.065) + [L(['arms', 1.2, -0.3, -1.25], ['blade', 1.2, 0.36, 0.14], r=0.05)],
+  'backhoe': both(['chassis', 0.75, 1.08, -2.05], ['lboom', 0.75, -0.06, -1.1], r=0.055) + both(['lboom', 0.6, 0.28, -0.5], ['lbucket', 0.6, 0.5, 0.16], r=0.045)
+             + [L(['slew', 0, -0.2, 0.42], ['hboom', 0, -0.26, 1.35], r=0.07), L(['hboom', 0, 0.36, 1.05], ['dipper', 0, 0.1, -0.34], r=0.06),
+                L(['dipper', 0, 0.3, 0.45], ['hbucket', 0, 0.26, -0.06], r=0.05), L(['chassis', -0.55, 1.5, 1.15], ['legL', -0.78, 0.1, 0], r=0.05), L(['chassis', 0.55, 1.5, 1.15], ['legR', 0.78, 0.1, 0], r=0.05)],
+}
+TRACKS = {'dozer': {"parent": "chassis", "x": [-1.0, 1.0], "y": 0.42, "half": 1.65, "r": 0.47, "pads": 37, "w": 0.6}}
+def extras(name):
+    """Lugs under every ram end, hydraulic hoses, maker's plates, warning labels."""
+    v = []
+    for l in LINKS[name]:
+        for end in (l['a'], l['b']): v.append(B(end[0], [l['r'] * 2.6, l['r'] * 2.6, l['r'] * 2.6], end[1:], 'yellow2'))
+    if name == 'loader':
+        for sx in (-1, 1):
+            v += [C('boom', 0.022, 0.022, 2.7, [sx * 0.5, 0.2, -1.45], 'black', rot=AZ), C('boom', 0.022, 0.022, 2.7, [sx * 0.46, 0.2, -1.45], 'black', rot=AZ),
+                  B('rear', [0.02, 0.42, 0.95], [sx * 0.842, 2.1, 1.1], 'plate'), B('rear', [0.02, 0.2, 0.2], [sx * 0.66, 1.25, -1.2], 'warn'), B('front', [0.02, 0.2, 0.2], [sx * 0.51, 1.0, -1.75], 'warn')]
+        v += [B('rear', [0.5, 0.16, 0.02], [0, 1.22, 2.87], 'plate'), B('boom', [0.02, 0.2, 0.2], [0.705, 0, -1.2], 'warn'), B('boom', [0.02, 0.2, 0.2], [-0.705, 0, -1.2], 'warn')]
+    if name == 'dumper':
+        for sx in (-1, 1): v += [B('bed', [0.02, 0.5, 1.5], [sx * 1.45, 0.62, -2.3], 'plate'), B('front', [0.02, 0.2, 0.2], [sx * 0.76, 1.3, -0.35], 'warn'), B('bed', [0.02, 0.24, 0.24], [sx * 1.44, 0.6, -0.3], 'warn')]
+        v += [B('front', [0.7, 0.24, 0.02], [0, 2.22, -3.6], 'plate', rot=[-0.3, 0, 0]), C('rear', 0.025, 0.025, 3.6, [0.3, 1.42, 2.6], 'black', rot=AZ), C('rear', 0.025, 0.025, 3.6, [-0.3, 1.42, 2.6], 'black', rot=AZ)]
+    if name == 'dozer':
+        for sx in (-1, 1): v += [B('chassis', [0.02, 0.3, 0.75], [sx * 0.525, 1.98, -0.95], 'plate'), B('chassis', [0.02, 0.2, 0.2], [sx * 1.26, 1.3, 0.8], 'warn'), C('arms', 0.02, 0.02, 2.0, [sx * 1.3, -0.12, -1.2], 'black', rot=AZ)]
+        v += [B('blade', [0.9, 0.3, 0.02], [0, 0.0, -0.062], 'plate'), B('chassis', [0.5, 0.18, 0.02], [0, 1.32, 2.245], 'plate')]
+    if name == 'backhoe':
+        for sx in (-1, 1): v += [B('chassis', [0.02, 0.3, 0.7], [sx * 0.59, 1.75, -2.2], 'plate'), B('hboom', [0.02, 0.2, 0.2], [sx * 0.135, 0, 1.6], 'warn'), C('hboom', 0.02, 0.02, 2.3, [sx * 0.09, 0.22, 1.3], 'black', rot=AZ), C('dipper', 0.018, 0.018, 1.5, [sx * 0.07, 0.17, 0.85], 'black', rot=AZ)]
+        v += [B('dipper', [0.14, 0.22, 0.5], [0, 0.06, -0.2], 'yellow'), B('hboom', [0.02, 0.24, 0.9], [0.135, 0, 0.9], 'plate'), B('hboom', [0.02, 0.24, 0.9], [-0.135, 0, 0.9], 'plate')]
+    return v
+def drop_static(v):
+    """First-pass stand-ins that the working parts replace: fixed ram cylinders and fixed track pads."""
+    def gone(x):
+        if 'cyl' in x and x['mat'] in ('black', 'chrome') and x.get('rot') and x['rot'] != R(AX) and x['cyl'][2] >= 0.7 and x['cyl'][0] > 0.03: return True
+        return x.get('box') == [0.6, 0.05, 0.07] and x['mat'] == 'black'
+    return [x for x in v if not gone(x)]
+
 FLOOR = {'loader': (2.0, 1.55, 'rear'), 'dumper': (1.8, 1.6, 'front'), 'dozer': (1.75, 1.55, 'chassis'), 'backhoe': (1.55, 1.45, 'chassis')}
 RAILS = {'loader': (1.33, -1.2), 'dumper': (1.3, -3.08), 'dozer': (1.36, 1.25), 'backhoe': (1.2, -1.32)}
 BUILD = {'loader': loader, 'dumper': dumper, 'dozer': dozer, 'backhoe': backhoe}
@@ -240,5 +296,7 @@ for name, fn in BUILD.items():
     lx, lz = RAILS[name]                      # the handrail is the ladder's outer stile
     for c in d['controls']:
         if c['type'] == 'handrail': c['pos'] = [round((1 if c['pos'][0] > 0 else -1) * (lx + 0.06), 3), 1.5, round(lz + 0.21, 3)]; c['length'] = 1.6
-    d['visuals'] = fn()
+    d['visuals'] = drop_static(fn()) + extras(name)
+    d['links'] = LINKS[name]
+    if name in TRACKS: d['trackLoops'] = TRACKS[name]
     dump(name, d); print(name, len(d['visuals']), 'parts, cab floor', new)
