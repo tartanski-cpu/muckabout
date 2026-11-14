@@ -9,7 +9,12 @@ try {
   const host = await open('?host=1&room=54321&net=bc&worker=0', { context });
   await host.waitForFunction(() => __game.play?.net?.role === 'host', null, { timeout: 60000 });
   const client = await open('?join=54321&net=bc', { context });
-  await client.waitForFunction(() => __game.play?.net?.role === 'client' && __game.play.net.id, null, { timeout: 60000 });
+  // a tab in the background is throttled, so give host and client turns in front until the host has answered the join
+  for (let k = 0, joined = false; !joined; k++) {
+    if (k > 90) throw new Error('client never joined');
+    await host.bringToFront(); await host.waitForTimeout(400); await client.bringToFront(); await client.waitForTimeout(400);
+    joined = await client.evaluate(() => !!(globalThis.__game?.play?.net?.role === 'client' && __game.play.net.id));
+  }
   check(await client.evaluate(() => __game.terrain.mode === 'remote' && __game.remote), 'client joined; it runs no terrain or physics of its own');
   const sync = async (ms = 1500) => { await host.bringToFront(); await host.waitForTimeout(ms / 2); await client.bringToFront(); await client.waitForTimeout(ms / 2); await host.bringToFront(); await host.waitForTimeout(300); await client.bringToFront(); await client.waitForTimeout(400); };
 
