@@ -100,8 +100,9 @@ export class Game {
     this.renderer.setAnimationLoop(() => this.loop());
   }
 
-  loop() {
-    const perf = this.perf, fdt = Math.min(this.clock.getDelta(), 0.1);
+  /** One rendered frame. `fixed` (seconds) replaces the real clock: tools/video.mjs uses it to film at an exact frame rate. */
+  loop(fixed) {
+    const perf = this.perf, fdt = fixed ?? Math.min(this.clock.getDelta(), 0.1);
     this.frame++;
     if (!this.paused) {
       this.acc += fdt; let n = 0;
