@@ -1,14 +1,15 @@
 // Films the stress scene to shots/muckabout.mp4 at an exact 30 fps: the game is stepped one frame at a time with a
 // fixed time step and each frame is screenshotted, so software rendering speed does not matter.
 // Usage: npm run build && node tools/video.mjs      (needs ffmpeg on the PATH)
+//        node tools/video.mjs dozer [seconds]      one machine only, on the custom physics → shots/muckabout_dozer.mp4
 import { harness } from '../tests/e2e/lib.mjs';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 
-const FPS = 30, DIR = 'shots/frames';
+const FPS = 30, DIR = 'shots/frames', ONLY = process.argv[2], OUT = ONLY ? `shots/muckabout_${ONLY}.mp4` : 'shots/muckabout.mp4';
 rmSync(DIR, { recursive: true, force: true }); mkdirSync(DIR, { recursive: true });
 const { open, done } = await harness();
-const page = await open('?worker=0&stress=1&physics=rapier', { viewport: { width: 1280, height: 720 } });
+const page = await open(`?worker=0&stress=1&physics=${ONLY ? 'custom' : 'rapier'}`, { viewport: { width: 1280, height: 720 } });
 await page.waitForFunction(() => __game.play?.stress);
 await page.evaluate(() => {
   const g = __game; document.getElementById('help').style.display = 'none'; document.getElementById('status').style.display = 'none'; g.hud.setVisible(false); document.querySelector('#VRButton')?.remove();
@@ -30,7 +31,7 @@ await page.evaluate(() => {
   };
   window.cut = () => { cam.pos.set(0, 0, 0); };
 });
-const SHOTS = [['pile', 4], ['loader', 9], ['dumper', 5], ['dozer', 6], ['backhoe', 7], ['pile', 3]];
+const SHOTS = ONLY ? [[ONLY, Number(process.argv[3]) || 12]] : [['pile', 4], ['loader', 9], ['dumper', 5], ['dozer', 6], ['backhoe', 7], ['pile', 3]];
 let n = 0;
 for (const [name, secs] of SHOTS) {
   await page.evaluate(() => cut());
@@ -43,6 +44,6 @@ for (const [name, secs] of SHOTS) {
 }
 console.log('page errors:', page.errs.length);
 await done();
-const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(FPS), '-i', `${DIR}/f%05d.jpg`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '23', '-movflags', '+faststart', 'shots/muckabout.mp4'], { stdio: 'inherit' });
+const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(FPS), '-i', `${DIR}/f%05d.jpg`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '23', '-movflags', '+faststart', OUT], { stdio: 'inherit' });
 if (r.status === 0) rmSync(DIR, { recursive: true, force: true });
-console.log(r.status === 0 ? 'wrote shots/muckabout.mp4' : 'ffmpeg failed');
+console.log(r.status === 0 ? `wrote ${OUT}` : 'ffmpeg failed');
