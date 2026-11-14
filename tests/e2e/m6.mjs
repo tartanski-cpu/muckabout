@@ -21,7 +21,7 @@ try {
   });
   // run the host sim fast (background tabs are throttled), letting the network loop flush in between
   for (let k = 0; k < 14; k++) { await host.evaluate(() => { __game.sim(120); }); await sync(500); }
-  await sync(2500);
+  await sync(1500); await sync(1200); // short turns in the background: the host frees a seat whose player goes quiet
   const h = await host.evaluate(() => ({ pile: [16, 17, 18, 19, 20].map((x) => __game.terrain.heightAt(x, -46)), loader: __game.machine('loader').position.toArray(), boom: __game.machine('loader').fn.boom.pos, bucket: __game.machine('loader').payload(), peers: __game.play.net.peers.size }));
   const c = await client.evaluate(() => ({ pile: [16, 17, 18, 19, 20].map((x) => __game.terrain.heightAt(x, -46)), loader: __game.machine('loader').position.toArray(), boom: __game.machine('loader').fn.boom.pos, bucket: __game.machine('loader').payload(), base: __game.terrain.heightAt(16, -40) }));
   const dh = Math.max(...h.pile.map((v, i) => Math.abs(v - c.pile[i])));
@@ -34,14 +34,16 @@ try {
 
   // client climbs into the dumper and drives it: inputs go to the host, the host moves the machine
   await client.evaluate(() => { const g = __game, m = g.machine('dumper'); g.play.sit(m); m.controls.key.set(1); m.controls.park.set(0); m.controls.shuttle.set(1); m.override = { accel: 0.7 }; });
-  const z0 = await host.evaluate(() => __game.machine('dumper').position.z);
+  const [x0, z0] = await host.evaluate(() => { const p = __game.machine('dumper').position; return [p.x, p.z]; });
   for (let k = 0; k < 6; k++) { await sync(600); await host.evaluate(() => { __game.sim(60); }); }
+  await sync(1500); await sync(1500); // driving in real time
   await client.evaluate(() => { __game.machine('dumper').override = { accel: 0, brake: 1 }; }); // stop, so the comparison is of position, not of how far it travels in the interpolation delay
-  await sync(2500);
-  const drv = await host.evaluate(() => ({ driver: __game.machine('dumper').driver, z: __game.machine('dumper').position.z, running: __game.machine('dumper').engine.running, key: __game.machine('dumper').controls.key.value }));
+  await sync(1500); await sync(1200); // short turns in the background: the host frees a seat whose player goes quiet
+  const drv = await host.evaluate(() => ({ driver: __game.machine('dumper').driver, z: __game.machine('dumper').position.z, x: __game.machine('dumper').position.x, running: __game.machine('dumper').engine.running, key: __game.machine('dumper').controls.key.value }));
   const cz = await client.evaluate(() => __game.machine('dumper').position.z);
   check(drv.driver && drv.driver !== 'local' && drv.running, 'host gave the dumper seat to the client and its key turned on the host');
-  check(Math.abs(drv.z - z0) > 3, `client drove the dumper ${(Math.abs(drv.z - z0)).toFixed(1)} m on the host`);
+  const went = Math.hypot(drv.x - x0, drv.z - z0);
+  check(went > 1.5, `client drove the dumper ${went.toFixed(1)} m on the host`); // how far depends on how fast this computer runs the wall-clock part
   check(Math.abs(cz - drv.z) < 1.0, 'client sees its own dumper where the host put it');
   // the host cannot take a seat that is taken
   const taken = await host.evaluate(() => { __game.play.sit(__game.machine('dumper')); return __game.play.player.machine?.id || null; });
