@@ -94,7 +94,7 @@ class DieselProcessor extends AudioWorkletProcessor {
     const x = Math.min(1.3, this.rpm / this.maxRpm);            // speed as a fraction of rated
     // silencer: opens up with load (more gas, hotter, faster) and a little with speed
     {
-      const fc = Math.min(5200, 300 + 2900 * Math.pow(load, 1.4) + 700 * x), w = 2 * Math.PI * fc / sr, q = 0.8, al = Math.sin(w) / (2 * q), c = Math.cos(w), a0 = 1 + al, m = this.muf;
+      const fc = Math.min(5200, 210 + 2900 * Math.pow(load, 1.4) + 420 * x), w = 2 * Math.PI * fc / sr, q = 0.8, al = Math.sin(w) / (2 * q), c = Math.cos(w), a0 = 1 + al, m = this.muf;
       m.b0 = (1 - c) / 2 / a0; m.b1 = (1 - c) / a0; m.b2 = m.b0; m.a1 = -2 * c / a0; m.a2 = (1 - al) / a0;
     }
     // blow-down lasts a fixed share of the cycle, so the pulse shortens as the engine speeds up
@@ -102,8 +102,8 @@ class DieselProcessor extends AudioWorkletProcessor {
     const d1 = Math.exp(-1 / (Math.max(0.0018, period * 0.42) * sr)), k2 = 1 - Math.exp(-1 / (Math.max(0.0004, period * 0.03) * sr));
     const dKnock = Math.exp(-1 / (0.0013 * sr)), dTick = Math.exp(-1 / (0.0003 * sr));
     const kr = 1 - Math.exp(-1 / (0.02 * sr));
-    // gains for this block
-    const gEx = (0.3 + load) * (0.55 + 0.75 * x), gKnock = (1.2 + 1.5 * load) * (2.4 - 1.5 * x), jitter = 0.07 + 0.2 * (1 - x) * (1 - load); // idle is lumpier
+    // gains for this block. Tick-over is mostly exhaust; the clatter comes in with load
+    const gEx = (0.42 + 0.9 * load) * (0.55 + 0.75 * x), gKnock = (0.5 + 2.2 * load) * (1.5 - 0.5 * x), jitter = 0.07 + 0.2 * (1 - x) * (1 - load); // idle is lumpier
     const gFan = x * x, gTurbo = Math.pow(boost, 1.5), turboHz = 1500 + 6800 * Math.pow(boost, 0.8) + 600 * x;
     const pumpHz = this.rpm / 60 * 9 * 1.27, gPump = hydP * (0.35 + 0.65 * hydQ) + 0.04, gGroan = Math.max(0, hydP - 0.45) * (1.2 - hydQ * 0.7);
     const stHz = 120 + this.rpm * 2.1;
@@ -170,7 +170,7 @@ class DieselProcessor extends AudioWorkletProcessor {
       const boom = this.run(this.boom, ex) * gBoom;
       let y = ex * exOut + this.exLp * exMuff + boom + blk * gBlock + intake * 0.6 + turbo * (1 - 0.4 * cab) + fan * (1 - 0.5 * cab) + hyd + starterS;
       // remove the standing pressure the one-way pulses leave
-      this.dc += (y - this.dc) * 0.0065; y -= this.dc; // (and the lowest rumble no headset speaker can play)
+      this.dc += (y - this.dc) * 0.0028; y -= this.dc;
       out[i] = Math.tanh(y * 1.25) * 0.72;
     }
     return true;
