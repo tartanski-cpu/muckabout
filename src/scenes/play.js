@@ -143,6 +143,13 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const hit = (i) => { const d = b(i) > 0.5, was = pad.prev[i]; pad.prev[i] = d; return d && !was; };
     pad.l[0] = dz(g.axes[0]); pad.l[1] = -dz(g.axes[1]); pad.r[0] = dz(g.axes[2]); pad.r[1] = -dz(g.axes[3]);
     pad.fwd = b(7) - b(6); pad.brake = b(2);
+    // seated, hold LB and the right stick looks round (the chase camera orbits the machine) instead of working the implement
+    const lb = b(4) > 0.5, now = performance.now();
+    if (lb && !pad.lb) { pad.lbAt = now; pad.lbUsed = false; }
+    if (lb && player.machine && (pad.r[0] || pad.r[1])) {
+      S.look.yaw -= pad.r[0] * 0.045; S.look.pitch = clamp(S.look.pitch + pad.r[1] * 0.03, -1.3, 1.3); pad.lbUsed = true; pad.r[0] = pad.r[1] = 0;
+    }
+    const lbTap = !lb && pad.lb && !pad.lbUsed && now - pad.lbAt < 350; pad.lb = lb; // a short press with no looking is still throttle down
     if (pad.fwd || pad.l[0] || pad.l[1] || g.buttons.some((x) => x.value > 0.5)) bus.start();
     const m = player.machine, seat = (d) => { const i = (machines.indexOf(m) + d + machines.length) % machines.length; if (m) S.stand(); S.sit(machines[m ? i : 0]); };
     if (hit(3)) { if (m) S.stand(); else { let best = machines[0], bd = 1e9; for (const o of machines) { const d = Math.hypot(o.position.x - player.feet.x, o.position.z - player.feet.z); if (d < bd) { bd = d; best = o; } } S.sit(best); } } // Y: in / out
@@ -152,7 +159,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (hit(9)) setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);                                // Menu: ignition
     if (hit(1)) setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);                              // B: park brake
     if (hit(5)) setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));                // RB / LB: throttle
-    if (hit(4)) setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
+    if (lbTap) setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
     if (hit(0)) m.voice.horn();                                                                      // A: horn
     if (hit(11) && m.controls.swivel) m.controls.swivel.press(null);                                 // right stick click: turn the seat (backhoe)
     if (hit(13)) m.reset();                                                                          // d-pad down: put it back on its wheels
@@ -308,7 +315,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
-      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick bucket, blade or bed · ${K('RB')}/${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▼ reset; on foot, sticks walk and look<br>`
+      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick bucket, blade or bed · hold ${K('LB')} + right stick look round (orbits in chase view) · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▼ reset; on foot, sticks walk and look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }

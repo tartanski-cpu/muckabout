@@ -113,7 +113,7 @@ Key decisions:
 
 ## Gamepad (desktop)
 
-An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick bucket/blade/bed (both sticks work the hoe from the backhoe's rear seat, right stick click turns the seat), **RB/LB** throttle, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
+An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick bucket/blade/bed (both sticks work the hoe from the backhoe's rear seat, right stick click turns the seat), hold **LB** and the right stick looks round instead (in chase view it orbits the machine), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
 
 ## Sound
 

@@ -87,6 +87,12 @@ try {
   await padSet([0, 0, 0, 0], { 1: 1 }); await frame(300);
   check(await page.evaluate(() => m.controls.park.value > 0.5), 'gamepad: B sets the park brake');
   await padSet([0, 0, 0, 0], {}); await frame(100); await padSet([0, 0, 0, 0], { 1: 1 }); await frame(300);
+  // LB held: the right stick looks round and leaves the bucket alone
+  await padSet([0, 0, 0, 0], {}); await frame(100);
+  const lk0 = await page.evaluate(() => ({ yaw: P.look.yaw, tilt: m.fn.bucket.pos }));
+  await padSet([0, 0, 1, 0], { 4: 1 }); await frame(600);
+  const lk1 = await page.evaluate(() => ({ yaw: P.look.yaw, tilt: m.fn.bucket.pos }));
+  check(lk1.yaw < lk0.yaw - 0.3 && Math.abs(lk1.tilt - lk0.tilt) < 0.02, `gamepad: LB + right stick looks round without moving the bucket (yaw ${lk0.yaw.toFixed(2)} → ${lk1.yaw.toFixed(2)})`);
   await page.evaluate(() => { P.pad.fake = null; }); await frame(1500);
 
   // scripted dig and tip, fast-forwarded, driven through the override path
