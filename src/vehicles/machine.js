@@ -630,7 +630,7 @@ export class Machine {
       t.rate += (resist / dt - t.rate) * 0.3; t.moved = moved; dig += t.rate;
       if (res && res.pushed > 0.002) { // material shoved ahead of the edge: tell the scene, which throws up tumbling chunks there
         const L = t.def.corners, e = m.elements, lx = (L[2][0] + L[3][0]) / 2, ly = L[2][1], lz = (L[2][2] + L[3][2]) / 2, hw = Math.abs(L[3][0] - L[2][0]) / 2;
-        this.events.push({ type: 'churn', x: e[0] * lx + e[4] * ly + e[8] * lz + e[12], y: e[1] * lx + e[5] * ly + e[9] * lz + e[13], z: e[2] * lx + e[6] * ly + e[10] * lz + e[14],
+        this.events.push({ type: 'churn', tool: t, x: e[0] * lx + e[4] * ly + e[8] * lz + e[12], y: e[1] * lx + e[5] * ly + e[9] * lz + e[13], z: e[2] * lx + e[6] * ly + e[10] * lz + e[14],
           ax: e[0], az: e[2], hw, vx: t.vel.x, vz: t.vel.z, vol: res.pushed, full: !!c && c.field.free() < 0.05 });
       }
     }

@@ -7,7 +7,7 @@ const _o = new THREE.Object3D(), _c = new THREE.Color();
 export class ClodMesh {
   constructor(clods) {
     this.clods = clods;
-    const geo = lumpy(new THREE.BoxGeometry(0.21, 0.17, 0.2), 0.24, 11); // a chunky, knocked-about cube
+    const geo = lumpy(new THREE.BoxGeometry(0.15, 0.12, 0.14), 0.24, 11); // a chunky, knocked-about cube
     this.mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ flatShading: true }), clods.max);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false; this.mesh.count = 0;

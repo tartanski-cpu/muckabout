@@ -13,6 +13,7 @@ import { buildDecor } from '../xr/controls/decor.js';
 import { AudioBus, MachineVoice, renderEngine } from '../audio/machineAudio.js';
 import { clamp } from '../util/rng.js';
 import * as autopilot from '../game/autopilot.js';
+import { PushHeap } from '../render/pushHeap.js';
 import { makeHopper } from '../game/hopper.js';
 import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { startStress } from './stress.js';
@@ -199,17 +200,18 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     phys.step(dt);
     for (const m of machines) {
       if (!game.fast) for (const ev of m.events) m.voice.play(ev);
-      for (const ev of m.events) if (ev.type === 'churn') churn(ev);
+      for (const ev of m.events) if (ev.type === 'churn') { churn(ev); if (Math.abs(ev.hw) > 0.5) heap.kick(ev.tool); }
       if (S.net && S.net.peers.size && m.events.length) { m.netEvents ??= []; if (m.netEvents.length < 20) m.netEvents.push(...m.events.filter((e) => e.type === 'clunk' || e.type === 'clank')); }
       if (player.machine === m) { const amp = Math.min(1, m.digRate * 0.5) + m.bump; if (amp > 0.03) for (const s of ['left', 'right']) if (input.hands[s].holding) input.hands[s].pulse(amp, 30); }
     }
   });
 
-  // Material being shoved along ahead of a blade or a full bucket: tumbling chunks thrown up along the cutting edge.
+  const heap = S.heap = new PushHeap(terrain); scene.add(heap.mesh);
+  // Material being shoved along ahead of a blade or a full bucket: a bed of granules riding the heap (render/pushHeap.js), and a few chunks thrown up along the cutting edge.
   // They carry no volume (the soil itself is already heaped on the ground ahead); they are there so you can see it move.
   function churn(ev) {
     if (game.fast) return;
-    const n = Math.min(6, Math.ceil(ev.vol / 0.004)), r = Math.random, sp = Math.hypot(ev.vx, ev.vz) || 1, m = terrain.materialAt(ev.x + ev.vx / sp * 0.5, ev.z + ev.vz / sp * 0.5) || 1;
+    const n = Math.min(3, Math.ceil(ev.vol / 0.006)), r = Math.random, sp = Math.hypot(ev.vx, ev.vz) || 1, m = terrain.materialAt(ev.x + ev.vx / sp * 0.5, ev.z + ev.vz / sp * 0.5) || 1;
     for (let k = 0; k < n; k++) {
       const a = (r() * 2 - 1) * ev.hw, lift = ev.full ? 2.2 : 1.4;
       game.clods.spawn(ev.x + ev.ax * a + ev.vx / sp * 0.25, ev.y + 0.15 + r() * 0.35, ev.z + ev.az * a + ev.vz / sp * 0.25,
@@ -229,6 +231,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (right.stickPressed && player.seated && !right.holding) { player.horizonLock = player.horizonLock ? 0 : 0.8; game.hud.note = player.horizonLock ? 'HORIZON LOCK ON (right stick click)' : ''; right.pulse(0.5, 40); } // comfort: damp cab roll and pitch
     if (right.primaryPressed && player.machine) { bus.start(); player.machine.voice.horn(); }
     player.update(fdt, input.hands);
+    if (!game.fast) heap.update(fdt);
     desktopCamera();
     scene.updateMatrixWorld();
     hands.update(input.hands, fdt);
