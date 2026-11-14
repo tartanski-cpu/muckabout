@@ -130,7 +130,7 @@ describe('bulldozer', () => {
     for (let pass = 0; pass < 60 && !down; pass++, passes++) {
       let worst = 1, tipped = false;
       r.step(1500, (m) => { const up = m.bodyList[0].obj.matrixWorld.elements[5]; worst = Math.min(worst, up);
-        const lo = m.position.z < -28.5 ? -0.2 : 0.1; // blade down across the top and over the crest, carried on the way down the face
+        const lo = m.position.z < -30.5 ? -0.17 : 0.1; // a shallow cut across the top and over the crest (the blade bites properly now), carried on the way down the face
         m.inp.lift = m.fn.lift.pos > lo ? -1 : m.fn.lift.pos < lo - 0.03 ? 1 : 0;
         if (!m._back && up < 0.7) { m._back = true; tipped = true; }
         if (m.position.z > limit) m._back = true;
@@ -244,5 +244,69 @@ describe('custom vehicle model (no rigid-body solver)', () => {
     r.step(400);
     expect(Math.hypot(r.m.position.x - other.position.x, r.m.position.z - other.position.z)).toBeGreaterThan(3.5); // stopped short of it
     expect(other.position.distanceTo({ x: p.x + f.x * 12, y: other.position.y, z: p.z + f.z * 12 })).toBeLessThan(0.3);
+  });
+});
+
+describe('tools bite into the ground', () => {
+  for (const mode of ['custom', 'rapier']) {
+    it(`${mode}: a lowered dozer blade cuts a real depth and shoves the spoil ahead`, async () => {
+      const r = await rig('dozer', { x: 8, z: 12 }); r.m.setPhysics(mode); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(80);
+      const g0 = r.terrain.heightAt(8, 6); let churn = 0;
+      r.step(360, (m) => { m.inp.lift = -1; m.inp.left = m.inp.right = 0.6; churn += m.events.filter((e) => e.type === 'churn').length; });
+      const cut = g0 - Math.min(...[7, 6, 5, 4].map((z) => r.terrain.heightAt(8, z)));
+      expect(cut).toBeGreaterThan(0.25);          // it used to ride up on its own blade after about 10 cm
+      expect(churn).toBeGreaterThan(20);          // material is being pushed along ahead of the edge
+      expect(r.m.bodyList[0].obj.matrixWorld.elements[5]).toBeGreaterThan(0.9);
+    });
+  }
+  it('custom: the loader bucket digs below grade when the boom is right down', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(80);
+    r.step(160, (m) => { m.inp.boom = -1; m.inp.bucket = m.fn.bucket.pos > 0.0 ? -1 : 0; });
+    r.m.inp.boom = 0; r.m.inp.bucket = 0; const g0 = r.terrain.heightAt(10, 4);
+    r.m.inp.shuttle = 1; r.m.inp.accel = 0.8; r.step(260); r.m.inp.accel = 0;
+    let low = 9; for (let z = 2; z <= 10; z += 0.25) low = Math.min(low, r.terrain.heightAt(10, z)); // wherever along its run the bucket went in
+    const cut = g0 - low;
+    console.log('loader below-grade cut', cut.toFixed(2), 'payload', r.m.payload().toFixed(2), 'at z', r.m.position.z.toFixed(1));
+    expect(cut).toBeGreaterThan(0.2);
+    expect(r.m.payload()).toBeGreaterThan(1.5);
+  });
+});
+
+describe('the engine works for its living (what the sound follows)', () => {
+  const lift = async (fill) => {
+    const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 0.7; r.step(150);
+    const f = r.m.containers.bucket.field; if (fill) f.add(2, f.capacity * fill);
+    let fuel = 0, p = 0, rpm = 9999; r.step(50, (m) => { m.inp.boom = 1; fuel = Math.max(fuel, m.engine.load); p = Math.max(p, m.hyd.p); rpm = Math.min(rpm, m.engine.rpm); });
+    return { fuel, p, rpm, idleFuel: 0 };
+  };
+  it('lifting a full bucket loads the engine more than lifting an empty one', async () => {
+    const empty = await lift(0), full = await lift(0.95);
+    expect(full.p).toBeGreaterThan(empty.p + 0.4);
+    expect(full.fuel).toBeGreaterThan(empty.fuel + 0.15);
+    expect(full.rpm).toBeLessThan(empty.rpm - 15);
+  });
+  it('holding a ram against its stop blows the relief valve: full pressure, engine pulled down', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 0.7; r.step(150);
+    const free = r.m.engine.rpm, light = r.m.engine.load; r.step(260, (m) => { m.inp.boom = 1; });
+    expect(r.m.fn.boom.pos).toBeCloseTo(r.m.fn.boom.max, 3); expect(r.m.hyd.p).toBe(1);
+    expect(r.m.engine.load).toBeGreaterThan(light + 0.3); expect(r.m.engine.rpm).toBeLessThan(free - 30);
+    r.m.inp.boom = 0; r.step(90); expect(r.m.engine.load).toBeLessThan(light + 0.1); // lever home: it comes back up
+  });
+  it('a dozer with its blade in the ground works far harder than one tracking free', async () => {
+    const go = async (blade) => {
+      const r = await rig('dozer', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(120);
+      if (blade) r.step(120, (m) => { m.inp.lift = -1; }); r.m.inp.lift = 0;
+      let fuel = 0, n = 0; r.step(240, (m) => { m.inp.left = 0.8; m.inp.right = 0.8; if (++n > 90) fuel += m.engine.load / 150; });
+      return { fuel, rpm: r.m.engine.rpm, boost: r.m.engine.boost };
+    };
+    const free = await go(false), push = await go(true);
+    expect(push.fuel).toBeGreaterThan(free.fuel + 0.25); expect(push.rpm).toBeLessThan(free.rpm - 30); expect(push.boost).toBeGreaterThan(free.boost + 0.2);
+  });
+  it('a loader driven into the pile sags and digs in, then recovers when the pedal comes off', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(150);
+    const free = r.m.engine.rpm; r.step(160, (m) => { m.inp.boom = -1; m.inp.bucket = m.fn.bucket.pos > 0.0 ? -1 : 0; }); r.m.inp.boom = 0; r.m.inp.bucket = 0; r.step(60);
+    let low = 9999, fuel = 0; r.m.inp.shuttle = 1; r.step(200, (m) => { m.inp.accel = 1; low = Math.min(low, m.engine.rpm); fuel = Math.max(fuel, m.engine.load); });
+    expect(low).toBeLessThan(free - 80); expect(fuel).toBeGreaterThan(0.8);
+    r.m.inp.accel = 0; r.step(120); expect(r.m.engine.rpm).toBeGreaterThan(free - 40);
   });
 });

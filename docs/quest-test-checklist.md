@@ -15,7 +15,7 @@ Nothing below has been tried on a headset. Each item says what to do and what to
 6. Walk to the **loader**, grab the yellow handrail (left side of the cab). You should land in the seat looking forward.
 7. Is your head at a sensible driver's height? Press `B` to recentre. Sit down in real life and press `B` again.
 8. Can you comfortably reach: steering wheel, loader joystick (right), shuttle lever and key on the dash, throttle and park brake (left)? *Tell me which are too far, too low or in the way; positions are one line each in `machines/*.json`.*
-9. Are the labels readable? Is the placard about triggers visible on the windscreen frame?
+9. Are the labels readable? The trigger placard is gone and the instrument cluster has moved to the front right corner: is the view over the wheel clear now, in every machine? The dash readout is now up in the top right of the windscreen: readable there, or in the way?
 10. Clipboard (left of the dash): grab it, bring it to your face, let go. Does it go back?
 
 ## 3. Driving the loader
@@ -73,7 +73,7 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 ## Things I already suspect
 
 - Control positions are guesses made without seeing them in VR.
-- The engine and hydraulic sounds are tuned by numbers, not by ear.
+- The sound engine is new and tuned by measurement and spectrogram, never heard on the headset's speakers. See "Sound" below.
 - The dozer needs a careful driver at a bank crest: go over too fast and it noses down and cannot back out until you cut more.
 - The loader spills roughly a third of each bucket when loading the dumper under the scripted driver; a human can place it better, but the reach is tight.
 
@@ -85,3 +85,25 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 40. Exhaust: thin grey at idle, thick and black when you rev hard or push into a pile, a black cough on start-up. Too much, too little, wrong place?
 41. Dust off the wheels on dry ground; spray in the river; mud off a spinning tyre in the mud flats; dust where a bucketful lands.
 42. **Frame rate with all of this on**, standing near the four working machines in the stress test. It was a solid 90 before this pass.
+
+## Digging and granules (new)
+
+- Loader: lower the boom right down with the bucket flat and drive at flat ground. It should now bite about 30 cm and fill, where before it skated. Too greedy? Does the machine bog down believably?
+- Dozer: blade right down now cuts about 25 cm and the machine slows as the heap builds, down to a crawl with a big heap. Feather the blade up to keep moving. Is that the right amount of material, and the right amount of slowing?
+- Chunks should tumble in front of the cutting edge while it is pushing soil, and the bucket and bed now show a heap of lumps rather than a smooth surface. Is it clear when the bucket is full? Does the frame rate hold with a full dumper bed in view?
+
+## Sound (new engine)
+
+Listen for each of these, from the seat and standing beside the machine. For each: is it there, is it believable, is it too loud or too quiet against the rest?
+
+- Start: starter whine, the engine catching, settling to a lumpy idle with diesel clatter. Key off: it should run down, not cut dead.
+- Throttle up with no load, then back: the note should rise and fall without sounding like a synthesiser sweep.
+- Raise the empty boom, then raise it with a full bucket: the pump whine and the engine should both work noticeably harder with the load. Lowering should be nearly free.
+- Hold a lever against its stop: relief squeal, engine pulled down, and it should recover the moment you let go.
+- Drive the loader hard into the stockpile: revs sag, the exhaust barks, a puff of black smoke, the turbo whistle rises, then it steadies. Come off the pedal: it should come back up.
+- Dozer with the blade in: the same, building as the heap builds.
+- From the seat the engine should be duller and boomier than from outside; step out and it should open up. Walk away: it should get duller with distance, with a faint echo.
+- Wheeled machines: tyre roar and a transmission whine rising with speed. Dozer: track slap and squeak.
+- Each machine should sound like a different engine (the dozer biggest and slowest, the backhoe a smaller four-cylinder).
+- With all four engines running, does the frame rate hold? (Each engine is one audio worklet.)
+- On the headset's own speakers there is little bass: can you still hear the idle clearly?

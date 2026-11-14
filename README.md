@@ -86,10 +86,14 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 machines/*.json          one file per machine: masses, geometry, hydraulics, tools, containers, cab control layout
 src/terrain/             core.js (layered heightfield, relaxation, cut/deposit/compact), water.js (river + erosion),
                          containers.js, clods.js, tool.js, maps.js, worker.js, client.js (worker / inline / remote)
-src/vehicles/            physics.js (Rapier world), machine.js (generic machine from a definition)
+src/vehicles/            physics.js (Rapier world), machine.js (generic machine from a definition), powertrain.js (engine,
+                         governor, turbo: a torque balance that the pump and the drive load)
 src/xr/                  input.js, interaction.js, hands.js, player.js, controls/ (lever, joystick, wheel, key, …)
 src/render/              ground.js (height-texture displaced tiles), chips.js, water.js, clodMesh.js, containerMesh.js
-src/audio/               diesel AudioWorklet, per-machine positional voices, hydraulic clunk/clank detection
+src/audio/               dieselProcessor.js (the engine room, one AudioWorklet: diesel, turbo, fan, pump, relief valve, starter),
+                         machineAudio.js (per-machine positional voices, soil, tracks, tyres, echo), hydraulic clunk/clank detection
+tools/                   build_visuals.py, gallery.mjs, digshots.mjs, video.mjs; audiolab.mjs (the engine voice under Node, measured),
+                         audiodemo.mjs (a machine's shift rendered to shots/engine_<machine>.wav)
 src/net/                 transport.js (PeerJS / BroadcastChannel), terrainDelta.js, snapshot.js, session.js, avatar.js
 src/game/                app.js (loop, perf, audit), autopilot.js (scripted drivers), hopper.js, checklist.js
 src/scenes/              play.js (the game), stress.js (four-machine stress), ghostStress.js (terrain-only stress)
@@ -107,13 +111,22 @@ Key decisions:
 
 `window.__game` is the test surface: `sim(n, fn)` fast-forward (inline terrain only), `audit()`, `machine(id)`, `autopilot`, `play` (player, input with fake hands, checklist, hopper, net).
 
+## Sound
+
+All sound is synthesised; there are no samples. The engine note is not mixed from inputs: it follows a small engine model.
+
+- **`src/vehicles/powertrain.js`** balances torque on the flywheel every sim step. A governor with droop adds fuel as the engine falls below the speed the throttle asks for; boost lags behind fuel, and fuel is held back until boost arrives. So a sudden load makes the engine sag, puff black smoke, then pull back up as the turbo spools.
+- **What loads it** (`Machine.pre`): the hydraulic pump (pressure x flow: raising a full bucket or body takes far more pressure than an empty one, lowering takes almost none, a ram held against its stop blows the relief valve at full pressure), the torque converter on wheeled machines (most when the machine is held back, as when driving into a pile), and the hydrostatic drive on the dozer (rising with the heap in front of the blade). A machine's `functions[].lifts` says which way is up and what it carries.
+- **`src/audio/dieselProcessor.js`** plays that state: per-cylinder exhaust pulses through pipe resonators and a silencer that opens with load, combustion knock ringing the block, intake, a turbo whistle that follows boost, the fan, the pump's piston-pass whine that follows pressure, the relief squeal, the starter. Heard from the seat it is muffled with a cab boom. `engine.voice` in a machine file sets its size and pipe length.
+- `node tools/audiolab.mjs` prints level and spectrum for each engine state; `node tools/audiodemo.mjs loader [cab]` runs a real machine through a shift and writes `shots/engine_loader.wav`. `tests/engineVoice.test.js` and `tests/powertrain.test.js` hold it to its behaviour.
+
 ## Known gaps and deviations from the spec
 
 - **Not run on a Quest.** Frame rate, control reach and placement, hand fit and comfort are untested. Desktop numbers for the stress scene: terrain worker ≈ 0.6 ms a tick, main-thread sim ≈ 2 ms a frame, ~75–150 draw calls, ~230k triangles.
 - **Co-op over the internet is untested.** The session logic is tested between two browser tabs; the PeerJS link (public broker, default STUN/TURN) cannot be reached from the build machine. A client's own machine is not predicted locally, so it responds about 0.15 s late.
 - **Workboat World / SWVR code** could not be copied as-is (Workboat World is Godot; SWVR's controls depend on its vessel state). The interaction rules, grab maths, haptic values, locomotion numbers and network model are ported from SWVR. The avatar is a simple head, body and gloves.
 - **Booms, buckets, blades, beds** are kinematic parts, not Rapier joints with motors. Only the articulation hinge is a real joint.
-- **`diesel.dsp`** was not in the handover; the engine is a new AudioWorklet synth, and all sound is placeholder.
+- **`diesel.dsp`** was not in the handover; the engine is a new AudioWorklet synth (see Sound below). It is tuned by measurement and spectrogram, not yet by ear on the headset.
 - A held control lets go if your real hand strays more than 45 cm (the spec asks for a tolerance; SWVR never lets go by distance). Change `REACH.breakAway` in `src/xr/interaction.js`.
 - The scripted loader-fills-dumper run is tuned on the Rapier model; on the custom model the loader fills the bed (better, in fact) but the scripted dumper does not finish its return trip because machines block rather than nudge each other.
 - Not built: teleport locomotion, the WebGPU compute spike, particle slosh inside the bucket, control-ownership hand-off messages beyond "seat taken".

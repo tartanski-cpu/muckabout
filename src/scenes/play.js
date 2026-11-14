@@ -48,7 +48,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       if (d.out === 'exit') c.onChange = () => { if (c.value && player.machine === m) S.stand(); };
     }
     inter.add(Object.values(m.controls));
-    const placard = def.placard ? [{ parent: m.nodes[def.placard.parent], text: m.def.drive.type === 'tracks' ? 'L TRIGGER: DECELERATOR' : 'R TRIGGER: GO   L TRIGGER: BRAKE', width: 0.3, pos: def.placard.pos, rot: def.placard.rot || [0, 0, 0] }] : [];
+    const placard = []; // the trigger reminder used to hang on the windscreen frame; it was in the way (it is in the help panel instead)
     m.controlRoots = Object.values(m.controls).map((c) => c.root).concat(buildDecor(Object.values(m.controls), placard));
     machines.push(m);
   }
@@ -97,7 +97,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   function sit(m) {
     if (m.driver && m.driver !== 'local') { input.hands.left.pulse(0.8, 80); input.hands.right.pulse(0.8, 80); return; } // the other player is in it
     inter.releaseAll(input.hands); player.sit(m); S.look.yaw = 0; S.look.pitch = -0.15;
-    const d = m.def.display || { parent: m.seatDef.node, pos: [m.seatDef.eye[0] + 0.42, m.seatDef.eye[1] - 0.74, m.seatDef.eye[2] - 0.9], rot: [-0.5, -0.25, 0] };
+    // up in the top right corner of the windscreen, clear of the wheel and the view of the work
+    const d = m.def.display || { parent: m.seatDef.node, pos: [m.seatDef.eye[0] + 0.5, m.seatDef.eye[1] + 0.33, m.seatDef.eye[2] - 0.78], rot: [0.35, -0.45, 0] };
     m.nodes[d.parent].add(dash); dash.position.fromArray(d.pos); dash.rotation.fromArray(d.rot); dash.visible = true; drawDash(m);
     setHelp();
   }
@@ -158,10 +159,23 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     phys.step(dt);
     for (const m of machines) {
       if (!game.fast) for (const ev of m.events) m.voice.play(ev);
+      for (const ev of m.events) if (ev.type === 'churn') churn(ev);
       if (S.net && S.net.peers.size && m.events.length) { m.netEvents ??= []; if (m.netEvents.length < 20) m.netEvents.push(...m.events.filter((e) => e.type === 'clunk' || e.type === 'clank')); }
       if (player.machine === m) { const amp = Math.min(1, m.digRate * 0.5) + m.bump; if (amp > 0.03) for (const s of ['left', 'right']) if (input.hands[s].holding) input.hands[s].pulse(amp, 30); }
     }
   });
+
+  // Material being shoved along ahead of a blade or a full bucket: tumbling chunks thrown up along the cutting edge.
+  // They carry no volume (the soil itself is already heaped on the ground ahead); they are there so you can see it move.
+  function churn(ev) {
+    if (game.fast) return;
+    const n = Math.min(6, Math.ceil(ev.vol / 0.004)), r = Math.random, sp = Math.hypot(ev.vx, ev.vz) || 1, m = terrain.materialAt(ev.x + ev.vx / sp * 0.5, ev.z + ev.vz / sp * 0.5) || 1;
+    for (let k = 0; k < n; k++) {
+      const a = (r() * 2 - 1) * ev.hw, lift = ev.full ? 2.2 : 1.4;
+      game.clods.spawn(ev.x + ev.ax * a + ev.vx / sp * 0.25, ev.y + 0.15 + r() * 0.35, ev.z + ev.az * a + ev.vz / sp * 0.25,
+        ev.vx * 1.15 + (r() - 0.5) * 1.2, lift + r() * 1.6, ev.vz * 1.15 + (r() - 0.5) * 1.2, m, 0);
+    }
+  }
 
   // ---- per frame: hands, interaction, player, camera, audio, HUD
   const hudHolder = new THREE.Group(); scene.add(hudHolder); game.hud.attachTo(hudHolder);
@@ -194,7 +208,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       game.camera.getWorldPosition(_p); game.camera.getWorldDirection(_f); _u.set(0, 1, 0).applyQuaternion(game.camera.getWorldQuaternion(_q));
       bus.setListener(_p, _f, _u);
       if (map.riverZ) { const rx = clamp(_p.x, terrain.ox, terrain.ox + terrain.nx * terrain.cell); bus.river({ x: rx, y: 0, z: map.riverZ(rx) }); }
-      for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } m.voice.drive(s, m.position); }
+      for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } s.cab = player.machine === m; m.voice.drive(s, m.position); }
     }
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
     if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); }

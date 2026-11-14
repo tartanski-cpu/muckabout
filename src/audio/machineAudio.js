@@ -1,8 +1,9 @@
-// Machine sound, fully synthesised (placeholder quality, no samples):
-//   AudioBus      one shared AudioContext, master chain, noise buffer and the diesel worklet module
-//   MachineVoice  one machine: diesel engine voice (AudioWorklet, dieselProcessor.js), hydraulic pump whine,
-//                 relief squeal, valve clunks, end-stop clanks, dig noise, track clatter, reverse beeper, horn;
-//                 positioned in the world through a PannerNode
+// Machine sound, fully synthesised (no samples):
+//   AudioBus      one shared AudioContext, master chain, the site's echo, a noise buffer and the engine worklet module
+//   MachineVoice  one machine. The engine room (diesel, turbo, fan, hydraulic pump, relief valve, starter) is one
+//                 AudioWorklet, dieselProcessor.js, driven by what the powertrain is doing. Round it, built from
+//                 ordinary nodes: soil on steel by material, tracks, tyres and transmission, valve clunks, end-stop
+//                 clanks, reverse beeper, horn. Placed in the world through a PannerNode, dulled by distance.
 //   MachineAudio  bus + one unpositioned voice with its own simple engine governor (used by the POC page)
 import processorSource from './dieselProcessor.js?raw';
 
@@ -24,6 +25,12 @@ export class AudioBus {
     const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), nd = nb.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     this.noiseBuf = nb;
+    // the site's echo: sound coming back off the tree line and the far bank (a made-up impulse: a few slaps, then a soft tail)
+    const ir = ac.createBuffer(2, ac.sampleRate * 1.4, ac.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); let lp = 0;
+      for (let i = 0; i < d.length; i++) { const tt = i / ac.sampleRate; lp += ((Math.random() * 2 - 1) - lp) * 0.25; d[i] = lp * Math.exp(-tt * 4.2) * Math.min(1, tt / 0.05) * 0.5; }
+      for (const [tt, a] of c ? [[0.09, 0.5], [0.21, 0.3], [0.37, 0.18]] : [[0.12, 0.5], [0.17, 0.3], [0.33, 0.2]]) d[tt * ac.sampleRate | 0] += a; }
+    this.echo = ac.createConvolver(); this.echo.buffer = ir; this.echo.connect(this.master);
     for (const v of this.voices) v._build();
     ac.audioWorklet?.addModule(processorUrl()).then(() => { this.workletReady = true; }).catch((e) => console.warn('diesel worklet failed to load', e));
   }
@@ -44,7 +51,7 @@ export class AudioBus {
   loopNoise() { const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf; s.loop = true; s.start(); return s; }
   /** Listener pose from camera world position and forward/up vectors. */
   setListener(p, f, u) {
-    const l = this.ctx?.listener; if (!l) return;
+    const l = this.ctx?.listener; if (!l) return; this.ear = { x: p.x, y: p.y, z: p.z };
     if (l.positionX) { const t = this.ctx.currentTime; l.positionX.setTargetAtTime(p.x, t, 0.05); l.positionY.setTargetAtTime(p.y, t, 0.05); l.positionZ.setTargetAtTime(p.z, t, 0.05);
       l.forwardX.setTargetAtTime(f.x, t, 0.05); l.forwardY.setTargetAtTime(f.y, t, 0.05); l.forwardZ.setTargetAtTime(f.z, t, 0.05); l.upX.setTargetAtTime(u.x, t, 0.05); l.upY.setTargetAtTime(u.y, t, 0.05); l.upZ.setTargetAtTime(u.z, t, 0.05); }
     else { l.setPosition(p.x, p.y, p.z); l.setOrientation(f.x, f.y, f.z, u.x, u.y, u.z); }
@@ -52,45 +59,39 @@ export class AudioBus {
 }
 
 export class MachineVoice {
-  constructor(bus, { cylinders = 6, idleRpm = 800, maxRpm = 2200, positional = true } = {}) {
-    this.bus = bus; this.opts = { cylinders, idleRpm, maxRpm, positional };
-    this.rpm = idleRpm; this.load = 0; this.engine = null; this.built = false; this.engineOn = false;
+  constructor(bus, { cylinders = 6, idleRpm = 800, maxRpm = 2200, voice = {}, positional = true } = {}) {
+    this.bus = bus; this.opts = { cylinders, idleRpm, maxRpm, voice, positional };
+    this.rpm = idleRpm; this.load = 0; this.engine = null; this.built = false; this.boost = 0; this.last = 0;
     bus.voices.push(this); if (bus.ctx) this._build();
   }
   _build() {
     if (this.built) return; this.built = true;
     const bus = this.bus, ac = bus.ctx;
     const out = this.out = ac.createGain();
+    // distance: the air takes the top off a far machine, and a little of every voice goes to the site's echo
+    const air = this.air = ac.createBiquadFilter(); air.type = 'lowpass'; air.frequency.value = 18000; air.Q.value = 0.5;
+    out.connect(air);
     if (this.opts.positional) {
       const p = this.panner = ac.createPanner(); p.panningModel = 'equalpower'; p.distanceModel = 'inverse'; p.refDistance = 4; p.rolloffFactor = 1.2; p.maxDistance = 200;
-      out.connect(p); p.connect(bus.master);
-    } else out.connect(bus.master);
-    // hydraulic pump whine: pitch follows engine speed, level follows demand
-    const pump = this.pump = ac.createOscillator(); pump.type = 'sawtooth';
-    const pumpLp = ac.createBiquadFilter(); pumpLp.type = 'lowpass'; pumpLp.frequency.value = 1400;
-    this.pumpGain = ac.createGain(); this.pumpGain.gain.value = 0;
-    pump.connect(pumpLp); pumpLp.connect(this.pumpGain); this.pumpGain.connect(out); pump.start();
-    // oil hiss through the valve block
-    const hissBp = ac.createBiquadFilter(); hissBp.type = 'bandpass'; hissBp.frequency.value = 3200; hissBp.Q.value = 0.8;
-    this.hissGain = ac.createGain(); this.hissGain.gain.value = 0;
-    bus.loopNoise().connect(hissBp); hissBp.connect(this.hissGain); this.hissGain.connect(out);
-    // relief valve squeal: a narrow, slightly wobbling whistle
-    const sq = ac.createOscillator(); sq.type = 'sawtooth'; sq.frequency.value = 1750;
-    const wob = ac.createOscillator(); wob.frequency.value = 23; const wobG = ac.createGain(); wobG.gain.value = 35;
-    wob.connect(wobG); wobG.connect(sq.frequency); wob.start();
-    const sqBp = ac.createBiquadFilter(); sqBp.type = 'bandpass'; sqBp.frequency.value = 1750; sqBp.Q.value = 9;
-    this.squealGain = ac.createGain(); this.squealGain.gain.value = 0;
-    sq.connect(sqBp); sqBp.connect(this.squealGain); this.squealGain.connect(out); sq.start();
-    // digging / spilling soil; the band moves with the material
-    const digBp = this.digBp = ac.createBiquadFilter(); digBp.type = 'bandpass'; digBp.frequency.value = 500; digBp.Q.value = 0.6;
-    this.digGain = ac.createGain(); this.digGain.gain.value = 0;
-    bus.loopNoise().connect(digBp); digBp.connect(this.digGain); this.digGain.connect(out);
-    // track clatter: noise gated by a square LFO whose rate follows track speed
-    const clBp = ac.createBiquadFilter(); clBp.type = 'bandpass'; clBp.frequency.value = 1300; clBp.Q.value = 1.5;
-    const clGate = ac.createGain(); clGate.gain.value = 0.5; this.clatterGain = ac.createGain(); this.clatterGain.gain.value = 0;
-    const clLfo = this.clatterLfo = ac.createOscillator(); clLfo.type = 'square'; clLfo.frequency.value = 4; const clDepth = ac.createGain(); clDepth.gain.value = 0.5;
-    clLfo.connect(clDepth); clDepth.connect(clGate.gain); clLfo.start();
-    bus.loopNoise().connect(clBp); clBp.connect(clGate); clGate.connect(this.clatterGain); this.clatterGain.connect(out);
+      air.connect(p); p.connect(bus.master);
+      this.send = ac.createGain(); this.send.gain.value = 0.1; p.connect(this.send); this.send.connect(bus.echo);
+    } else air.connect(bus.master);
+    const noiseBand = (type, f, q) => { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; const g = ac.createGain(); g.gain.value = 0; bus.loopNoise().connect(b); b.connect(g); return [b, g]; };
+    // digging / spilling soil; the band moves with the material, and a heavy fall of soil has a low rumble under it
+    [this.digBp, this.digGain] = noiseBand('bandpass', 500, 0.6); this.digGain.connect(out);
+    [, this.rumbleGain] = noiseBand('lowpass', 170, 0.7); this.rumbleGain.connect(out);
+    // tracks: each pad slapping down (a gate whose rate follows track speed), over the grind of the running gear
+    const gate = ac.createGain(); gate.gain.value = 0.5; this.clatterGain = ac.createGain(); this.clatterGain.gain.value = 0;
+    const lfo = this.clatterLfo = ac.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 4; const depth = ac.createGain(); depth.gain.value = 0.5;
+    lfo.connect(depth); depth.connect(gate.gain); lfo.start();
+    const [, slap] = noiseBand('bandpass', 1300, 1.5), [, thump] = noiseBand('bandpass', 210, 1.2); slap.gain.value = 1; thump.gain.value = 1.4;
+    slap.connect(gate); thump.connect(gate); gate.connect(this.clatterGain); this.clatterGain.connect(out);
+    [this.squeakBp, this.squeakGain] = noiseBand('bandpass', 2900, 18); this.squeakGain.connect(out);
+    // wheels: tyre roar, and the whine of the transmission rising with road speed
+    [this.rollLp, this.rollGain] = noiseBand('lowpass', 220, 0.9); this.rollGain.connect(out);
+    this.whine = ac.createOscillator(); this.whine.type = 'triangle'; this.whine2 = ac.createOscillator(); this.whine2.type = 'sine';
+    this.whineGain = ac.createGain(); this.whineGain.gain.value = 0; this.whine.connect(this.whineGain); this.whine2.connect(this.whineGain); this.whineGain.connect(out);
+    this.whine.start(); this.whine2.start();
     // reverse beeper
     const bp = ac.createOscillator(); bp.type = 'square'; bp.frequency.value = 1050; const bGate = ac.createGain(); bGate.gain.value = 0.5;
     const bLfo = ac.createOscillator(); bLfo.type = 'square'; bLfo.frequency.value = 1.4; const bDepth = ac.createGain(); bDepth.gain.value = 0.5;
@@ -99,41 +100,56 @@ export class MachineVoice {
   }
   _engine() {
     if (this.engine || !this.bus.workletReady) return;
-    const ac = this.bus.ctx, { cylinders, idleRpm } = this.opts;
-    this.engine = new AudioWorkletNode(ac, 'diesel', { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { cylinders, idleRpm } });
-    this.engineGain = ac.createGain(); this.engineGain.gain.value = 0;
+    const ac = this.bus.ctx, { cylinders, idleRpm, maxRpm, voice } = this.opts;
+    this.engine = new AudioWorkletNode(ac, 'diesel', { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { cylinders, idleRpm, maxRpm, ...voice } });
+    this.engineGain = ac.createGain(); this.engineGain.gain.value = 0.9;
     this.engine.connect(this.engineGain); this.engineGain.connect(this.out);
-    this.engine.port.postMessage({ on: false });
+    this.par = {}; for (const k of ['rpm', 'load', 'boost', 'fire', 'starter', 'hydP', 'hydQ', 'relief', 'cab']) this.par[k] = this.engine.parameters.get(k);
   }
 
   /**
-   * Drive from a machine's state: {running, cranking, rpm, load, demand, relief, dig, spill, tracks, reverse, digMat}.
-   * pos: world position {x, y, z} of the machine (ignored for unpositioned voices).
+   * Drive from Machine.audioState(): {running, cranking, rpm, load, boost, hydP, hydQ, relief, dig, spill, speed, wheels,
+   * tracks, reverse, digMat, cab}. boost, hydP and hydQ are optional (the POC page has no powertrain): they are then
+   * estimated from load, demand and relief. pos: world position of the machine (ignored for unpositioned voices).
    */
   drive(s, pos) {
     const ac = this.bus.ctx; if (!ac || !this.built) return;
-    const t = ac.currentTime; this._engine();
-    if (this.panner && pos) { const p = this.panner; if (p.positionX) { p.positionX.setTargetAtTime(pos.x, t, 0.05); p.positionY.setTargetAtTime(pos.y, t, 0.05); p.positionZ.setTargetAtTime(pos.z, t, 0.05); } else p.setPosition(pos.x, pos.y, pos.z); }
-    const on = s.running || s.cranking;
-    if (this.engine) {
-      if (on !== this.engineOn) { this.engineOn = on; this.engine.port.postMessage({ on }); this.engineGain.gain.setTargetAtTime(on ? 0.9 : 0, t, on ? 0.15 : 0.25); }
-      this.engine.parameters.get('rpm').setTargetAtTime(s.cranking ? 240 : s.rpm, t, 0.03);
-      this.engine.parameters.get('load').setTargetAtTime(s.cranking ? 0.5 : s.load, t, 0.05);
+    const t = ac.currentTime, dt = Math.min(0.1, Math.max(0, t - this.last)); this.last = t; this._engine();
+    const set = (p, v, tc = 0.05) => p.setTargetAtTime(v, t, tc);
+    if (this.panner && pos) {
+      const p = this.panner; if (p.positionX) { set(p.positionX, pos.x); set(p.positionY, pos.y); set(p.positionZ, pos.z); } else p.setPosition(pos.x, pos.y, pos.z);
+      const l = this.bus.ear, d = l ? Math.hypot(pos.x - l.x, pos.y - l.y, pos.z - l.z) : 0;
+      set(this.air.frequency, 18000 / (1 + d / 28), 0.2); set(this.send.gain, s.cab ? 0.04 : 0.1 + Math.min(0.25, d / 200), 0.2);
     }
-    const live = s.running ? 1 : 0;
-    this.pump.frequency.setTargetAtTime(Math.max(200, s.rpm) / 60 * 9, t, 0.05); // nine-piston pump
-    this.pumpGain.gain.setTargetAtTime(live * (s.demand * 0.03 + s.relief * 0.02), t, 0.06);
-    this.hissGain.gain.setTargetAtTime(live * s.demand * 0.02, t, 0.05);
-    this.squealGain.gain.setTargetAtTime(live * s.relief * 0.05, t, s.relief > 0 ? 0.12 : 0.04);
-    this.digBp.frequency.setTargetAtTime(DIG_TONE[s.digMat || 0] || 500, t, 0.1);
-    this.digGain.gain.setTargetAtTime(Math.min(1, s.dig * 0.9 + s.spill * 0.5) * 0.5, t, 0.06);
-    this.clatterLfo.frequency.setTargetAtTime(2 + (s.tracks || 0) * 9, t, 0.1);
-    this.clatterGain.gain.setTargetAtTime(Math.min(1, (s.tracks || 0) * 1.2) * 0.12, t, 0.08);
-    this.beepGain.gain.setTargetAtTime(s.reverse ? 0.05 : 0, t, 0.02);
+    const live = s.running ? 1 : 0, demand = s.demand || 0, relief = s.relief || 0;
+    this.boost += ((s.load || 0) * live - this.boost) * Math.min(1, dt / 0.7);                    // stand-in turbo when the caller has none
+    if (this.engine) {
+      const P = this.par;
+      set(P.rpm, s.rpm || 0, 0.03); set(P.fire, live, 0.02); set(P.starter, s.cranking ? 1 : 0, 0.03);
+      set(P.load, s.cranking ? 0 : s.load || 0); set(P.boost, s.boost ?? this.boost);
+      set(P.hydP, live * (s.hydP ?? Math.min(1, demand * 0.45 + relief * 0.55))); set(P.hydQ, live * (s.hydQ ?? demand));
+      set(P.relief, live * relief, relief > 0 ? 0.1 : 0.04); set(P.cab, s.cab ? 1 : 0, 0.15);
+    }
+    set(this.digBp.frequency, DIG_TONE[s.digMat || 0] || 500, 0.1);
+    set(this.digGain.gain, Math.min(1, s.dig * 0.9 + s.spill * 0.5) * 0.5, 0.06);
+    set(this.rumbleGain.gain, Math.min(1, s.spill * 0.8 + s.dig * 0.35) * 0.5, 0.08);
+    const trk = s.tracks || 0;
+    set(this.clatterLfo.frequency, 2 + trk * 9, 0.1); set(this.clatterGain.gain, Math.min(1, trk * 1.2) * 0.12, 0.08);
+    set(this.squeakBp.frequency, 2500 + 500 * Math.sin(t * 2.3), 0.1); set(this.squeakGain.gain, Math.min(1, trk) * 0.05 * (0.5 + 0.5 * Math.sin(t * 5.1)), 0.05);
+    const road = s.wheels ? s.speed || 0 : 0;
+    set(this.rollLp.frequency, 160 + road * 45, 0.1); set(this.rollGain.gain, Math.min(1, road / 6) * 0.35, 0.1);
+    set(this.whine.frequency, 150 + road * 85, 0.08); set(this.whine2.frequency, (150 + road * 85) * 2.52, 0.08);
+    set(this.whineGain.gain, live * Math.min(1, road / 1.5) * (0.006 + 0.012 * (s.load || 0)), 0.1);
+    set(this.beepGain.gain, s.reverse ? 0.05 : 0, 0.02);
   }
 
   /** Play a HydraulicFeel event. */
-  play(ev) { if (ev.type === 'clank') this.clank(ev.strength); else if (ev.type === 'clunk') this.clunk(ev.strength); }
+  play(ev) {
+    if (ev.type === 'clank') this.clank(ev.strength); else if (ev.type === 'clunk') this.clunk(ev.strength);
+    else if (!this.bus.running || !this.built) return;
+    else if (ev.type === 'start') { this._tone(70, 38, 0.35, 0.5); this._burst(260, 0.8, 0.3, 0.3); }             // it catches: a cough down the stack
+    else if (ev.type === 'stop') { this._tone(52, 30, 0.5, 0.4); this._burst(900, 1.5, 0.05, 0.12); }             // fuel cut: the shudder as it stops
+  }
   _burst(freq, q, dur, gain, type = 'bandpass') {
     const ac = this.bus.ctx, t = ac.currentTime, s = ac.createBufferSource(); s.buffer = this.bus.noiseBuf;
     const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
@@ -161,8 +177,10 @@ export class MachineVoice {
   }
   horn() {
     const ac = this.bus.ctx; if (!ac || !this.built) return;
-    const t = ac.currentTime, g = ac.createGain(); g.gain.value = 0.12; g.connect(this.out);
-    for (const f of [330, 415]) { const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(g); o.start(t); o.stop(t + 0.45); }
+    const t = ac.currentTime, g = ac.createGain(), f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.7;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.04); g.gain.setValueAtTime(0.3, t + 0.42); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    f.connect(g); g.connect(this.out);
+    for (const hz of [311, 370, 313]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = hz; o.connect(f); o.start(t); o.stop(t + 0.62); }
   }
 }
 
@@ -187,7 +205,7 @@ export async function renderEngine({ seconds = 1, rpm = 800, load = 0, cylinders
   const sr = 48000, ac = new OfflineAudioContext(1, sr * seconds, sr);
   await ac.audioWorklet.addModule(processorUrl());
   const node = new AudioWorkletNode(ac, 'diesel', { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { cylinders, idleRpm: rpm } });
-  node.parameters.get('rpm').value = rpm; node.parameters.get('load').value = load;
+  for (const [k, v] of Object.entries({ rpm, load, boost: load * 0.8, fire: 1 })) node.parameters.get(k).value = v;
   node.connect(ac.destination);
   const d = (await ac.startRendering()).getChannelData(0);
   let sum = 0, peak = 0, finite = true;

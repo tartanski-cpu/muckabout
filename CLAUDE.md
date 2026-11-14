@@ -6,6 +6,7 @@ WebXR earthmoving sandbox for Meta Quest. Spec and milestones: `docs/mvp-spec.md
 - Machines are data: change tuning and cab layout in `machines/*.json`, not in code. `src/vehicles/machine.js` is the one generic machine.
 - Keep `window.__game` working (`sim`, `audit`, `machine`, `autopilot`, `play`): every browser test drives the game through it. `sim()` needs inline terrain (`?worker=0`).
 - Volume must balance: anything that moves soil has to show up in `game.audit()`. The tests check it to 0.1 %.
+- Sound follows the engine model: change what loads the engine in `src/vehicles/powertrain.js` and `Machine.pre`, not by mixing inputs into the audio. `node tools/audiolab.mjs` measures the voice without a browser; `node tools/audiodemo.mjs loader` writes a WAV to listen to.
 - Sim code stays deterministic (fixed dt, seeded RNG, no `Math.random` in the sim; audio may use it).
 - Draw calls are the Quest's main cost: merge static geometry (see `machine.js` visuals and `xr/controls/decor.js`); the budget is 150.
 - Tests drive cab controls with fake hands (`input.setFake`) pinned to the cab; wait on frames and sim time, not wall-clock time (software GL is slow).

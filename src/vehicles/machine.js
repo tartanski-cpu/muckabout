@@ -11,9 +11,10 @@ import { CutTool, ContainerRig } from '../terrain/tool.js';
 import { ContainerField } from '../terrain/containers.js';
 import { MATERIALS, NMAT } from '../terrain/materials.js';
 import { HydraulicFeel } from '../audio/hydraulicFeel.js';
+import { Powertrain } from './powertrain.js';
 import { clamp } from '../util/rng.js';
 
-const G = 9.81;
+const G = 9.81, ROCK_ID = 6;
 const V = () => new THREE.Vector3();
 const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n = V(), _c = V(), _v = V(), _p = V(), _a = V(), _m4 = new THREE.Matrix4(), _m5 = new THREE.Matrix4();
 const _trk = new THREE.Object3D();
@@ -228,7 +229,7 @@ export class Machine {
     this.contacts = [];
     for (const c of def.contacts || []) {
       const nd = this.nodeList.find((n) => n.def.name === c.node), body = nd ? nd.body : this.bodies[c.node];
-      this.contacts.push({ def: c, node: this.nodes[c.node], body, pos: new THREE.Vector3().fromArray(c.pos), local: V(), k: c.k ?? this.mass * G / 0.08, mu: c.mu ?? 0.5, N: 0 });
+      this.contacts.push({ def: c, node: this.nodes[c.node], body, pos: new THREE.Vector3().fromArray(c.pos), local: V(), k: c.k ?? this.mass * G / 0.08, mu: c.mu ?? 0.5, N: 0, tool: false });
     }
     // ---- visuals: one merged mesh per parent node (plus one for its glass)
     const byParent = new Map();
@@ -269,6 +270,8 @@ export class Machine {
       const nd = this.nodeList.find((n) => n.def.name === t.node);
       this.tools.push({ def: t, cut: new CutTool(`${this.id}.${t.name}`, t.corners, t.ahead ?? 0.35), node: this.nodes[t.node], body: nd.body, container: t.container ? this.containers[t.container] : null, rate: 0, prev: V(), vel: V(), has: false });
     }
+    // a bucket or blade must bite, not prop the machine up: its skid points only bear on ground that cannot be dug (bare rock)
+    for (const c of this.contacts) c.tool = this.tools.some((t) => t.node === c.node);
     // ---- seat
     const seat = def.seat || { node: this.bodyList[0].name, eye: [0, 2.5, 0] };
     this.seat = new THREE.Group(); this.seat.position.fromArray(seat.eye); this.nodes[seat.node].add(this.seat);
@@ -277,7 +280,8 @@ export class Machine {
     // ---- state
     this.inp = { steer: 0, accel: 0, brake: 0, shuttle: 0, throttle: 0, park: 1, key: 0, left: 0, right: 0, decel: 0, horn: 0 };
     for (const f of this.fnList) this.inp[f.input ?? f.name] = 0;
-    this.engine = { running: false, crank: 0, rpm: 0, load: 0 };
+    this.engine = { running: false, crank: 0, rpm: 0, load: 0, boost: 0, smoke: 0 };
+    this.pt = new Powertrain({ ...def.engine, power: def.drive.power }); this.shaft = 0; this.hyd = { p: 0, q: 0 };
     this.digRate = 0; this.spillRate = 0; this.bump = 0; this.speed = 0; this.tick = 0; this.events = [];
     this.driver = null; // who is in the seat (multiplayer / AI)
     // ---- geometry for the custom (non-Rapier) vehicle model
@@ -339,7 +343,9 @@ export class Machine {
     const oppose = (v, a) => v - Math.sign(v) * Math.min(Math.abs(v), a * dt); // decelerate toward zero, never past it
     if (dr.type === 'tracks') {
       const tgt = this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
-      k.vl += clamp(tgt.L - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R - k.vr, -amax * dt, amax * dt);
+      // a loaded blade lugs the machine down: the deeper the cut and the bigger the heap ahead, the slower it crawls
+      const lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / (dr.digLug ?? 16), 1.5)) : 1;
+      k.vl += clamp(tgt.L * lug - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R * lug - k.vr, -amax * dt, amax * dt);
       const push = toolMoving > 0.05 ? dig : 0, hold = dr.maxForce / this.mass; // the blade's load and the hill can overpower the tracks
       for (const side of ['vl', 'vr']) { let v = k[side]; v = oppose(v, Math.max(0, push - hold * 0.35)); if (Math.abs(slope) > grip) v += (slope - Math.sign(slope) * grip) * dt; k[side] = v; }
       k.v = (k.vl + k.vr) / 2; k.psi += (k.vr - k.vl) / k.W * 0.3 * dt; // tracks scrub sideways when they turn: far slower than the speed difference alone suggests
@@ -386,7 +392,8 @@ export class Machine {
     for (const ct of this.contacts) {
       this._refLocal(ct.body, ct.local, _p);
       const wx = ox + c * _p.x + s * _p.z, wz = oz - s * _p.x + c * _p.z, need = T.heightAt(wx, wz) - _p.y;
-      ct.N = 0; if (need > a + b * _p.x + cc * _p.z + 0.01) { add(_p.x, _p.z, need, 6); lifted = true; ct.N = this.mass * G / 4; }
+      ct.N = 0; if (ct.tool && T.materialAt(wx, wz) !== ROCK_ID) continue;
+      if (need > a + b * _p.x + cc * _p.z + 0.01) { add(_p.x, _p.z, need, 6); lifted = true; ct.N = this.mass * G / 4; }
     }
     if (lifted) { [a, b, cc] = fit(); for (const w of this.wheels) { const h = a + b * w.pos.x + cc * w.pos.z; if (h - (T.heightAt(w.gx, w.gz) - (w.pos.y - w.r)) > 0.03) { w.grounded = false; w.N = 0; } } }
     k.vy -= G * dt; k.y += k.vy * dt;
@@ -421,18 +428,31 @@ export class Machine {
     const inp = this.inp, e = this.engine, ed = this.def.engine;
     this.tick++; this.events.length = 0;
     // engine: key → crank → run
-    if (inp.key > 0.5 && !e.running) { e.crank += dt; if (e.crank > 0.9) { e.running = true; e.rpm = ed.idleRpm * 0.7; this.events.push({ type: 'start' }); } } else if (inp.key <= 0.5) { if (e.running) this.events.push({ type: 'stop' }); e.running = false; e.crank = 0; }
+    if (inp.key > 0.5 && !e.running) { e.crank += dt; if (e.crank > 0.9) { e.running = true; this.events.push({ type: 'start' }); } } else if (inp.key <= 0.5) { if (e.running) this.events.push({ type: 'stop' }); e.running = false; e.crank = 0; }
     const demand = e.running ? clamp(Math.max(inp.throttle, this.def.drive.type === 'tracks' ? 1 - inp.decel : inp.accel), 0, 1) : 0;
     const want = e.running ? ed.idleRpm + (ed.maxRpm - ed.idleRpm) * (this.def.drive.type === 'tracks' ? Math.max(0.25, inp.throttle) * (1 - 0.8 * inp.decel) : demand) : 0;
-    const target = want - e.load * 170;
-    e.rpm += (target - e.rpm) * Math.min(1, dt * (target > e.rpm ? 2.4 : 1.6));
+    // the engine answers to the torque the pump and the drive took from it last step (powertrain.js)
+    const pt = this.pt.step(dt, { running: e.running, cranking: e.crank > 0, target: want, load: this.shaft });
+    e.rpm = pt.rpm; e.load = pt.fuel; e.boost = pt.boost; e.smoke = pt.smoke;
     const flow = e.running ? 0.4 + 0.6 * clamp((e.rpm - ed.idleRpm) / (ed.maxRpm - ed.idleRpm), 0, 1) : 0;
     this.flow = flow; this.demand = demand;
 
     // hydraulic functions
+    let hq = 0, hw = 0; // oil asked for, and oil x pressure: what the pump has to be turned against
     for (const f of this.fnList) {
       const cmd = clamp(inp[f.input ?? f.name] || 0, -1, 1) * (f.sign ?? 1);
       f.cmd = cmd;
+      if (!f.manual && e.running && Math.abs(cmd) > 0.05) {
+        const L = f.lifts, a = Math.abs(cmd), span = (f.max - f.min) * 0.002; let pr = 0.28;
+        if (L) { // raising weight takes pressure, the more the fuller the bucket or body; lowering it takes next to none
+          let fill = 0; if (L.carries) { let v = 0, cap = 0; for (const c of L.carries) { v += this.containers[c].field.volume(); cap += this.containers[c].field.capacity; } fill = cap ? Math.min(1, v / cap) : 0; }
+          pr = !L.dir || cmd * L.dir > 0 ? L.self + (0.92 - L.self) * fill : 0.12;
+          if (L.carries && this.digRate > 0) pr += Math.min(0.3, this.digRate * 0.1);      // crowding into the pile
+        }
+        if (f.loadSlows && cmd * f.loadSlows > 0) pr += Math.min(0.5, this.digRate * 0.25); // forcing the edge into the ground
+        if ((cmd < 0 && f.pos <= f.min + span) || (cmd > 0 && f.pos >= f.max - span)) pr = 1; // against the stop: everything goes over the relief valve
+        hq += a; hw += a * Math.min(1, pr);
+      }
       let rate = f.manual ? f.rate : f.rate * flow; // a seat swivels by hand; everything else needs oil flow
       if (f.loadSlows && cmd * f.loadSlows > 0) rate /= 1 + this.digRate * 1.5; // forcing the tool into the ground is slower
       f.pos = clamp(f.pos + cmd * rate * dt, f.min, f.max);
@@ -442,6 +462,7 @@ export class Machine {
     // articulation: rate-limited hydraulic steer
     for (const j of this.joints) {
       const d = j.def, goal = clamp(-(inp[d.input] || 0), -1, 1) * d.max;
+      if (e.running && Math.abs(goal - j.target) > 0.01) { hq += 0.5; hw += 0.5 * 0.4; }
       j.target += clamp(goal - j.target, -d.rate * flow * dt, d.rate * flow * dt);
       j.joint.configureMotorPosition(j.target, d.stiffness ?? 6e6, d.damping ?? 9e5);
     }
@@ -473,8 +494,14 @@ export class Machine {
     } else this.gear = 0;
     // brakes: pedal, park brake, and a light automatic hold when the accelerator is released
     this.brake = dr.type === 'wheels' ? Math.max(inp.brake, inp.park > 0.5 ? 1 : 0, inp.accel < 0.05 || this.gear === 0 ? 0.35 : 0) : (inp.park > 0.5 || !e.running ? 1 : inp.brake);
-    // engine load for the next step: driving, hydraulics, digging
-    e.load = clamp(inp.accel * 0.3 * Math.abs(this.gear || 0) + this.feel.demand * 0.3 + this.feel.relief * 0.45 + Math.min(1, this.digRate) * 0.6 + (this.trackTarget ? (Math.abs(inp.left) + Math.abs(inp.right)) * 0.15 : 0), 0, 1);
+    // shaft torque for the engine's next step. Pump: displacement x pressure. Wheels: a torque converter, which takes
+    // most when the machine is held back (pushing into the pile) and least when it runs free. Tracks: hydrostatic.
+    const Tr = this.pt.Tr, x = e.rpm / ed.maxRpm, cap = this.rigs.reduce((a, r) => a + r.field.capacity, 0), full = cap ? Math.min(1, this.payload() / cap) : 0;
+    this.hyd.q = Math.min(1, hq); this.hyd.p = hq > 0 ? hw / hq : 0;
+    let shaft = Tr * (0.03 + (ed.hydShare ?? 0.55) * Math.min(1.15, hw));
+    if (dr.type === 'wheels') { const sr = clamp(Math.abs(sp) / (Math.max(dr.maxSpeed[0], 1) * Math.max(0.3, x)), 0, 1); shaft += inp.accel * Math.abs(this.gear) * Tr * 1.05 * x * x * (1 - 0.72 * sr * sr) * (1 + 0.3 * full); }
+    else if (this.trackTarget) shaft += Tr * (Math.abs(inp.left) + Math.abs(inp.right)) / 2 * (0.2 + 0.72 * clamp(this.digRate / 22, 0, 1));
+    this.shaft = e.running ? shaft : 0;
   }
 
   poseNodes() {
@@ -539,7 +566,7 @@ export class Machine {
       const rb = c.body.rb, t = rb.translation(), r = rb.rotation();
       _p.copy(c.local).applyQuaternion(_q.set(r.x, r.y, r.z, r.w)); _p.x += t.x; _p.y += t.y; _p.z += t.z;
       const x = terrain.heightAt(_p.x, _p.z) - _p.y;
-      if (x <= 0) { c.N = 0; continue; }
+      if (x <= 0 || (c.tool && terrain.materialAt(_p.x, _p.z) !== ROCK_ID)) { c.N = 0; continue; }
       const v = rb.velocityAtPoint(_p), kc = 2 * Math.sqrt(c.k * this.mass) * 0.5;
       const N = Math.max(0, c.k * Math.min(x, 0.4) - kc * v.y); c.N = N;
       const kill = this.mass / this.contacts.length / h * 0.4, lim = c.mu * N;
@@ -599,6 +626,11 @@ export class Machine {
         moved += res.pushed; resist = res.resist;
       }
       t.rate += (resist / dt - t.rate) * 0.3; t.moved = moved; dig += t.rate;
+      if (res && res.pushed > 0.002) { // material shoved ahead of the edge: tell the scene, which throws up tumbling chunks there
+        const L = t.def.corners, e = m.elements, lx = (L[2][0] + L[3][0]) / 2, ly = L[2][1], lz = (L[2][2] + L[3][2]) / 2, hw = Math.abs(L[3][0] - L[2][0]) / 2;
+        this.events.push({ type: 'churn', x: e[0] * lx + e[4] * ly + e[8] * lz + e[12], y: e[1] * lx + e[5] * ly + e[9] * lz + e[13], z: e[2] * lx + e[6] * ly + e[10] * lz + e[14],
+          ax: e[0], az: e[2], hw, vx: t.vel.x, vz: t.vel.z, vol: res.pushed, full: !!c && c.field.free() < 0.05 });
+      }
     }
     this.digRate = dig;
     let spill = 0; for (const r of this.rigs) spill += r.spillRate; this.spillRate = spill;
@@ -613,7 +645,7 @@ export class Machine {
   netState() {
     const b = []; for (const body of this.bodyList) { const p = body.obj.position, q = body.obj.quaternion; b.push(p.x, p.y, p.z, q.x, q.y, q.z, q.w); }
     const f = this.fnList.map((x) => x.pos), w = this.wheels.map((x) => x.steer), e = this.engine;
-    return { b, f, w, e: [e.rpm, e.load, e.running ? 1 : 0, e.crank > 0 ? 1 : 0, this.gear, this.speed, this.feel.demand, this.feel.relief, Math.min(1, this.digRate), Math.min(1, this.spillRate)] };
+    return { b, f, w, e: [e.rpm, e.load, e.running ? 1 : 0, e.crank > 0 ? 1 : 0, this.gear, this.speed, this.feel.demand, this.feel.relief, Math.min(1, this.digRate), Math.min(1, this.spillRate), e.boost, this.hyd.p, this.hyd.q] };
   }
   /** Client side: pose this machine from (interpolated) host state instead of simulating it. */
   applyNet(s, dt) {
@@ -621,7 +653,7 @@ export class Machine {
     this.bodyList.forEach((body, i) => { body.obj.position.set(s.b[i * 7], s.b[i * 7 + 1], s.b[i * 7 + 2]); body.obj.quaternion.set(s.b[i * 7 + 3], s.b[i * 7 + 4], s.b[i * 7 + 5], s.b[i * 7 + 6]); });
     this.fnList.forEach((f, i) => { f.pos = s.f[i]; });
     const e = this.engine; e.rpm = s.e[0]; e.load = s.e[1]; e.running = s.e[2] > 0.5; e.crank = s.e[3] > 0.5 ? 0.5 : 0; this.gear = Math.round(s.e[4]); this.speed = s.e[5];
-    this.net = { demand: s.e[6], relief: s.e[7], dig: s.e[8], spill: s.e[9] };
+    this.net = { demand: s.e[6], relief: s.e[7], dig: s.e[8], spill: s.e[9] }; e.boost = s.e[10] ?? 0; this.hyd.p = s.e[11] ?? 0; this.hyd.q = s.e[12] ?? 0;
     this.poseNodes();
     this.wheels.forEach((w, i) => { w.steer = s.w[i]; w.spin += this.speed * dt / w.r; w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); });
     this.root.updateMatrixWorld(true);
@@ -645,6 +677,7 @@ export class Machine {
   audioState() {
     const n = this.puppet ? this.net : null;
     return { running: this.engine.running, cranking: !this.engine.running && this.engine.crank > 0, rpm: this.engine.rpm, load: this.engine.load, demand: n ? n.demand : this.feel.demand, relief: n ? n.relief : this.feel.relief, dig: n ? n.dig : Math.min(1, this.digRate), spill: n ? n.spill : Math.min(1, this.spillRate),
+      boost: this.engine.boost, hydP: this.hyd.p, hydQ: this.hyd.q, speed: Math.abs(this.speed), wheels: this.def.drive.type === 'wheels',
       tracks: this.def.drive.type === 'tracks' ? Math.abs(this.speed) : 0, reverse: this.gear < 0 && this.engine.running };
   }
 }

@@ -28,8 +28,9 @@ export class Effects {
         m.nodes[ex.parent].localToWorld(_p.fromArray(ex.pos));
         const rev = Math.max(0, (e.rpm - st.rpm) / Math.max(dt, 1e-3)) / 1500, load = e.load, rpmK = e.rpm / m.def.engine.maxRpm;
         if (e.running && !st.was) for (let k = 0; k < 22; k++) this._smoke(_p, 1, 1.4, 0.9);                 // start-up cough
-        st.acc += dt * (3 + 34 * load * load + 60 * Math.min(1, rev) + 6 * rpmK) * (e.running ? 1 : 0.5);
-        while (st.acc >= 1) { st.acc -= 1; this._smoke(_p, Math.min(1, load * 0.9 + rev * 0.8), 1 + rpmK, 0.25 + 0.55 * Math.min(1, load + rev)); }
+        const soot = e.smoke || 0; // over-fuelled while the turbo catches up: the black puff of an engine hit with load
+        st.acc += dt * (3 + 26 * load * load + 45 * soot + 30 * Math.min(1, rev) + 6 * rpmK) * (e.running ? 1 : 0.5);
+        while (st.acc >= 1) { st.acc -= 1; this._smoke(_p, Math.min(1, load * 0.55 + soot * 0.9 + rev * 0.3), 1 + rpmK, 0.25 + 0.55 * Math.min(1, load + rev)); }
       }
       st.rpm = e.rpm; st.was = e.running;
       // ---- wheels and tracks

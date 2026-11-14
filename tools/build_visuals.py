@@ -50,7 +50,8 @@ def cab(p, cx, cz, fl, col, col2, column=True, seat=True, steps=None):
         o += [B(p, [0.3, 0.32, 0.3], [cx, fl + 0.18, cz + 0.2], 'black'), B(p, [0.52, 0.12, 0.5], [cx, fl + 0.5, cz + 0.18], 'seat'),
               B(p, [0.5, 0.64, 0.1], [cx, fl + 0.9, cz + 0.47], 'seat', rot=[0.12, 0, 0]), B(p, [0.26, 0.18, 0.08], [cx, fl + 1.3, cz + 0.52], 'seat')]
     # the next level down: instruments, pedals, armrests, wipers, door handle, grab bars, extinguisher
-    o += [B(p, [0.3, 0.2, 0.02], [cx + 0.2, fl + 0.78, cz - 0.4], 'gauges', rot=[-0.5, 0, 0]), B(p, [0.34, 0.24, 0.03], [cx + 0.2, fl + 0.775, cz - 0.39], 'black', rot=[-0.5, 0, 0]),
+    o += [B(p, [0.22, 0.14, 0.02], [cx + 0.6, fl + 0.82, cz - 0.685], 'gauges', rot=[-0.3, -0.6, 0]), B(p, [0.25, 0.17, 0.03], [cx + 0.61, fl + 0.82, cz - 0.705], 'black', rot=[-0.3, -0.6, 0]),  # small cluster in the front right corner: clear of the wheel
+         
           B(p, [0.12, 0.03, 0.2], [cx + 0.2, fl + 0.07, cz - 0.55], 'grey', rot=[0.5, 0, 0]), B(p, [0.12, 0.03, 0.2], [cx - 0.2, fl + 0.07, cz - 0.55], 'grey', rot=[0.5, 0, 0]),
           B(p, [1.3, 0.02, 1.2], [cx, fl + 0.012, cz], 'grey'),
           B(p, [0.03, 0.03, 0.7], [cx - 0.3, fl + 0.95, cz - 0.83], 'black', rot=[0, 0, 0.9]), B(p, [0.03, 0.03, 0.7], [cx + 0.3, fl + 0.95, cz - 0.83], 'black', rot=[0, 0, 0.9]),
