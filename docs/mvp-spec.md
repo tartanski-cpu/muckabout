@@ -1,8 +1,8 @@
-# muckshift — MVP spec
+# Muck About — MVP spec
 
 **What it is:** a WebXR earthmoving sandbox for standalone Meta Quest. You drive real-feeling machines from inside the cab, using physical levers and wheels, on a small patch of fully deformable ground. Players: David and his son, in VR only. No desktop controls (keep a debug-only keyboard path for development).
 
-**Starting point:** the muckshift proof of concept (`src/poc/loader.js`). It proved the fun: a wheel loader on a heightfield, a slumping rule, flying clods that turn back into ground, haptics, and procedural sound. Treat it as a reference for feel and tuning, not as the architecture. The MVP is a rewrite with a proper structure.
+**Starting point:** the Muck About proof of concept (`src/poc/loader.js`). It proved the fun: a wheel loader on a heightfield, a slumping rule, flying clods that turn back into ground, haptics, and procedural sound. Treat it as a reference for feel and tuning, not as the architecture. The MVP is a rewrite with a proper structure.
 
 > Note: the spec refers to a `src/diesel.dsp` AudioWorklet engine sound. It was not in the POC archive handed over; the POC's audio is plain WebAudio oscillators inside `loader.js`.
 

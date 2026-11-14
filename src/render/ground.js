@@ -4,24 +4,33 @@ import * as THREE from 'three';
 import { CHUNK } from '../terrain/core.js';
 import { MATERIALS, GRASS_COLOR, NMAT } from '../terrain/materials.js';
 
+// Per material: x = speckle (gravel grit), y = strata on steep cut faces (clay), z = ripples (sand)
+const DETAIL = [[0, 0, 0], [0.2, 0.3, 0], [0.15, 0.25, 0], [0.15, 1.0, 0], [0.1, 0.1, 1.0], [1.0, 0, 0], [0.5, 0.6, 0], [0.35, 0.45, 0]];
+
 const VERT = /* glsl */`
 uniform highp sampler2D uH; uniform highp sampler2D uInfo;
 uniform vec3 uOrigin; // ox, oz, cell
-uniform vec3 uPalette[${NMAT}]; uniform vec3 uGrass;
+uniform vec2 uSize;   // nx, nz
+uniform vec3 uPalette[${NMAT}]; uniform vec3 uDetail[${NMAT}]; uniform vec3 uGrass;
 attribute float skirt;
-varying vec3 vWorld; varying vec3 vColor;
+varying vec3 vWorld; varying vec3 vColor; varying vec3 vSmooth; varying vec4 vDetail; // xyz = detail weights, w = grass
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
-  ivec2 tc = ivec2(position.xz);
+  ivec2 tc = ivec2(position.xz), hi = ivec2(uSize) - 1;
   float h = texelFetch(uH, tc, 0).r;
+  // a smooth normal from the neighbouring heights, blended with the facet normal in the fragment shader
+  float hl = texelFetch(uH, clamp(tc + ivec2(-1, 0), ivec2(0), hi), 0).r, hr = texelFetch(uH, clamp(tc + ivec2(1, 0), ivec2(0), hi), 0).r;
+  float hd = texelFetch(uH, clamp(tc + ivec2(0, -1), ivec2(0), hi), 0).r, hu = texelFetch(uH, clamp(tc + ivec2(0, 1), ivec2(0), hi), 0).r;
+  vSmooth = vec3(hl - hr, 2.0 * uOrigin.z, hd - hu);
   vec4 info = texelFetch(uInfo, tc, 0);
   int m = int(info.r * 255.0 + 0.5);
   vec3 col = uPalette[m];
+  float grass = m == 1 ? 1.0 - info.g : 0.0;
   if (m == 1) col = mix(uGrass, col, info.g);                 // undisturbed topsoil is grass
   else col *= mix(1.0, 0.86, info.g);                         // worked ground is a little darker
-  col *= mix(1.0, 0.62, info.b);                              // wet
-  col *= 0.88 + 0.24 * hash(position.xz);
-  vColor = col;
+  col *= mix(1.0, 0.6, info.b);                               // wet
+  col *= 0.9 + 0.2 * hash(position.xz);
+  vColor = col; vDetail = vec4(uDetail[m], grass);
   vec3 w = vec3(uOrigin.x + position.x * uOrigin.z, h - skirt, uOrigin.y + position.z * uOrigin.z);
   vWorld = w;
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
@@ -29,14 +38,28 @@ void main() {
 const FRAG = /* glsl */`
 uniform vec3 uSun; uniform vec3 uSunColor; uniform vec3 uSky; uniform vec3 uGroundLight;
 uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar;
-varying vec3 vWorld; varying vec3 vColor;
+varying vec3 vWorld; varying vec3 vColor; varying vec3 vSmooth; varying vec4 vDetail;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
 void main() {
-  vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
-  if (n.y < 0.0) n = -n;
+  vec3 nf = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  if (nf.y < 0.0) nf = -nf;
+  vec3 n = normalize(mix(nf, normalize(vSmooth), 0.5));       // still chunky, but rolling ground reads as ground
+  float steep = 1.0 - n.y, dist = length(vWorld - cameraPosition), near = 1.0 - smoothstep(25.0, 60.0, dist);
+  float n1 = vnoise(vWorld.xz * 0.33), n2 = vnoise(vWorld.xz * 2.1 + 7.0), n3 = vnoise(vWorld.xz * 9.0);
+  vec3 col = vColor * (0.9 + 0.2 * n1);                                                   // broad mottling
+  col = mix(col, col * vec3(0.78, 0.92, 0.66), vDetail.w * smoothstep(0.45, 0.75, n2) * 0.7);   // darker clumps in the grass
+  col = mix(col, col * vec3(1.12, 1.06, 0.8), vDetail.w * smoothstep(0.6, 0.9, n1) * 0.5);      // and dry patches
+  col *= 1.0 + vDetail.x * (n3 - 0.5) * 0.9 * near;                                       // grit
+  float band = smoothstep(0.3, 0.5, abs(fract(vWorld.y * 2.3 + n1 * 0.7) - 0.5));         // strata show where clay is cut steep
+  col *= 1.0 - vDetail.y * smoothstep(0.08, 0.5, steep) * (0.28 * band + 0.1);
+  col *= 1.0 + vDetail.z * 0.07 * sin(vWorld.x * 6.0 + vWorld.z * 2.6 + n1 * 7.0) * near; // wind ripples in sand
+  col *= 1.0 - 0.22 * smoothstep(0.12, 0.6, steep);                                       // steep faces sit a little in shade
   float d = max(dot(n, uSun), 0.0);
   vec3 light = uSunColor * d + mix(uGroundLight, uSky, n.y * 0.5 + 0.5);
-  vec3 col = vColor * light;
-  float fog = smoothstep(uFogNear, uFogFar, length(vWorld - cameraPosition));
+  col *= light;
+  float fog = smoothstep(uFogNear, uFogFar, dist);
   gl_FragColor = vec4(mix(col, uFogColor, fog), 1.0);
   #include <colorspace_fragment>
 }`;
@@ -54,6 +77,7 @@ export class Ground {
       uniforms: {
         uH: { value: this.hTex }, uInfo: { value: this.infoTex }, uOrigin: { value: new THREE.Vector3(ox, oz, cell) },
         uPalette: { value: MATERIALS.map((m) => new THREE.Vector3(...m.color)) }, uGrass: { value: new THREE.Vector3(...GRASS_COLOR) },
+        uDetail: { value: DETAIL.map((d) => new THREE.Vector3(...d)) }, uSize: { value: new THREE.Vector2(nx, nz) },
         uSun: { value: env.sunDir }, uSunColor: { value: env.sunColor }, uSky: { value: env.skyLight }, uGroundLight: { value: env.groundLight },
         uFogColor: { value: env.fogColor }, uFogNear: { value: env.fogNear }, uFogFar: { value: env.fogFar },
       },

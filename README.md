@@ -1,4 +1,4 @@
-# muckshift
+# Muck About
 
 A WebXR earthmoving sandbox for standalone Meta Quest: drive machines from inside the cab with physical levers and wheels, on fully deformable ground. Spec and milestones: [docs/mvp-spec.md](docs/mvp-spec.md).
 

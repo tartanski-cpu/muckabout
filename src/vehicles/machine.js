@@ -22,8 +22,60 @@ const AX = { x: V().set(1, 0, 0), y: V().set(0, 1, 0), z: V().set(0, 0, 1) };
 // Draw calls are the main cost on a Quest (each is drawn once per eye), so a machine's boxes are merged into one
 // vertex-coloured mesh per moving part instead of one mesh per box.
 const COLORS = { yellow: 0xf0b21a, yellow2: 0xd2940f, dark: 0x3a3a3c, black: 0x19191b, tyre: 0x1f1f20, hub: 0xd9a015, steel: 0x6d6e70, chrome: 0xb4b8bc, grey: 0x8a8d90, seat: 0x2b2b2b, red: 0xc9381e, orange: 0xd9541e, orange2: 0xb5441a,
-  green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a, lamp: 0xfff3c4, tail: 0xb01414, amber: 0xff9a1a, rust: 0x7a4a2c, rim: 0xe2a516, cream: 0xd8ccb0 };
-const PAINT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a, lamp: 0xfff3c4, tail: 0xb01414, amber: 0xff9a1a, rust: 0x7a4a2c, rim: 0xe2a516, cream: 0xd8ccb0, hazard: 0xffffff };
+// Pixel paint, in the style set for SWVR's interiors (docs/PIXEL_STYLE.md there): 64 × 64 px tiles at 64 px per metre,
+// crisp pixels, greyscale averaging mid-grey and multiplying the part's own colour, so one "painted steel plate" tile
+// serves yellow, orange and black alike. Detail lives in the pixels (panel seams, rivets, scratches, tread plate,
+// hazard stripes), not in geometry. Four tiles in one 256 × 64 texture; each part carries a `tile` index and
+// cube-projected UVs in metres, so pixels are square and the same size on every face.
+const TILE = { hazard: 1, grey: 2, black: 3, tyre: 3, track: 3, seat: 3, dark: 3, lamp: 3, tail: 3, amber: 3 };
+function pixelAtlas() {
+  const W = 256, H = 64, d = new Uint8Array(W * H * 4), h2 = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + s * 1274126177) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const put = (t, x, y, r, g = r, b = r) => { const k = (((y & 63) * W) + t * 64 + (x & 63)) * 4; d[k] = r; d[k + 1] = g; d[k + 2] = b; };
+  // alpha = how rusty this pixel can get (the shader decides where on the machine rust actually shows)
+  const rust = (t, x, y, a) => { const k = (((y & 63) * W) + t * 64 + (x & 63)) * 4; if (a > d[k + 3]) d[k + 3] = a; };
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    put(0, x, y, 124 + Math.round(h2(x, y, 1) * 10));                                                   // painted plate
+    const stripe = ((x + y) >> 4) & 1, n = Math.round(h2(x, y, 2) * 8);                                 // hazard stripes (own colours, half brightness)
+    if (stripe) put(1, x, y, 120 + n, 94 + n, 10); else put(1, x, y, 16 + n, 16 + n, 18 + n);
+    put(2, x, y, 116 + Math.round(h2(x, y, 3) * 10));                                                   // tread plate
+    put(3, x, y, 122 + Math.round(h2(x, y, 4) * 14));                                                   // rubber / dark steel
+  }
+  // plate: seams with a highlight beside them, a rivet in each corner, scratches, chips, a couple of rain streaks
+  for (let i = 0; i < 64; i++) { put(0, i, 0, 86); put(0, 0, i, 86); put(0, i, 1, 150); put(0, 1, i, 150); put(0, i, 32, 108); }
+  for (const [rx, ry] of [[5, 5], [58, 5], [5, 58], [58, 58], [5, 37], [58, 37], [5, 27], [58, 27]]) { put(0, rx, ry, 84); put(0, rx + 1, ry, 96); put(0, rx, ry + 1, 96); put(0, rx + 1, ry + 1, 104); put(0, rx - 1, ry - 1, 158); }
+  for (let k = 0; k < 9; k++) { const x0 = 6 + Math.floor(h2(k, 1, 5) * 46), y0 = 6 + Math.floor(h2(k, 2, 5) * 50), len = 3 + Math.floor(h2(k, 3, 5) * 6), dy = h2(k, 4, 5) > 0.5 ? 1 : 0; for (let q = 0; q < len; q++) put(0, x0 + q, y0 + q * dy, 154); }
+  for (let k = 0; k < 14; k++) { const x0 = 3 + Math.floor(h2(k, 1, 6) * 58), y0 = h2(k, 2, 6) > 0.5 ? 2 + Math.floor(h2(k, 3, 6) * 5) : 33 + Math.floor(h2(k, 3, 6) * 4); put(0, x0, y0, 92); if (h2(k, 4, 6) > 0.4) put(0, x0 + 1, y0, 98); if (h2(k, 5, 6) > 0.6) put(0, x0, y0 + 1, 100); }
+  for (const sx of [19, 44]) for (let y = 34; y < 34 + 14; y++) put(0, sx, y, 114);
+  // tread plate: raised diamonds; dark steel: a few bright specks and faint lines
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const a = (x + y) % 8, b = (x - y + 64) % 8; if ((a === 0 && b < 4) || (b === 4 && a > 3)) put(2, x, y, 164); else if ((a === 1 && b < 4) || (b === 5 && a > 3)) put(2, x, y, 92); }
+  for (let k = 0; k < 40; k++) put(3, Math.floor(h2(k, 1, 7) * 64), Math.floor(h2(k, 2, 7) * 64), 150);
+  for (let x = 0; x < 64; x++) { put(3, x, 0, 104); put(3, x, 21, 112); put(3, x, 42, 112); }
+  // rust and wear, as heavy plant gets it: blooms at seams, rivets and chips, each with a streak washed down the panel
+  // (row 0 is the bottom of the tile, so "down" is toward lower y); scuffed bare metal; pitting on the dark steel
+  for (const tile of [0, 3]) for (let k = 0; k < (tile ? 16 : 30); k++) {
+    const seam = h2(k, 1, 20 + tile) < 0.55;
+    const cx = seam ? (h2(k, 2, 20 + tile) < 0.5 ? 1 + Math.floor(h2(k, 3, 20 + tile) * 3) : Math.floor(h2(k, 3, 20 + tile) * 64)) : Math.floor(h2(k, 2, 20 + tile) * 64);
+    const cy = seam ? (h2(k, 2, 20 + tile) < 0.5 ? Math.floor(h2(k, 4, 20 + tile) * 64) : (h2(k, 5, 20 + tile) < 0.5 ? 1 : 33) + Math.floor(h2(k, 4, 20 + tile) * 3)) : Math.floor(h2(k, 3, 20 + tile) * 64);
+    const r = 1 + Math.floor(h2(k, 6, 20 + tile) * 2.6);
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r + 0.5 && h2(cx + x, cy + y, 30 + k) > 0.22) rust(tile, cx + x, cy + y, 150 + Math.floor(h2(x, y, k) * 105));
+    const len = 3 + Math.floor(h2(k, 7, 20 + tile) * 9);
+    for (let q = 1; q <= len; q++) { rust(tile, cx, cy - r - q, Math.round(190 * (1 - q / (len + 1)))); if (q < len / 2 && h2(k, q, 40) > 0.5) rust(tile, cx + 1, cy - r - q, Math.round(120 * (1 - q / len))); }
+  }
+  for (const [rx, ry] of [[5, 5], [58, 5], [5, 58], [58, 58], [5, 37], [58, 37]]) { rust(0, rx, ry - 1, 210); rust(0, rx + 1, ry - 1, 170); for (let q = 2; q < 7; q++) rust(0, rx, ry - q, 200 - q * 26); } // weeping rivets
+  for (let k = 0; k < 7; k++) { const x0 = 8 + Math.floor(h2(k, 1, 50) * 48), y0 = 8 + Math.floor(h2(k, 2, 50) * 48); for (let q = 0; q < 2 + Math.floor(h2(k, 3, 50) * 3); q++) { put(0, x0 + q, y0, 178); if (h2(k, q, 51) > 0.5) put(0, x0 + q, y0 + 1, 166); } } // scuffs down to bare metal
+  const t = new THREE.DataTexture(d, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.NoColorSpace; t.needsUpdate = true;
+  return t;
+}
+const PAINT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, map: pixelAtlas() });
+PAINT.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tile;\nvarying float vTile;').replace('#include <uv_vertex>', '#include <uv_vertex>\nvTile = tile;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vTile;')
+    .replace('#include <common>', '#include <common>\nfloat pHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }\nfloat pNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(pHash(i), pHash(i + vec2(1.0, 0.0)), f.x), mix(pHash(i + vec2(0.0, 1.0)), pHash(i + vec2(1.0, 1.0)), f.x), f.y); }')
+    // rust shows in patches (a slow noise over the machine, snapped to the pixel grid), not on every panel alike
+    .replace('#include <map_fragment>', 'vec4 px = texture2D(map, vec2((fract(vMapUv.x) * 0.96875 + 0.015625 + floor(vTile + 0.5)) * 0.25, fract(vMapUv.y)));\nfloat patch_ = smoothstep(0.42, 0.62, pNoise(floor(vMapUv * 64.0) / 64.0 * 1.1 + 3.7));\nfloat rust_ = px.a * (0.25 + 0.75 * patch_);\ndiffuseColor.rgb = mix(diffuseColor.rgb * px.rgb * 2.0, vec3(0.33, 0.15, 0.06) * (0.6 + px.r * 1.4), step(0.45, rust_) * 0.9);');
+};
 const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
 const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
 /** Geometry placed at pos/rot and painted one colour, ready for merging. */
@@ -33,7 +85,15 @@ function part(geo, color, pos, rot) {
   _mc.setHex(COLORS[color] ?? 0xff00ff);
   const n = g.attributes.position.count, col = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) { col[i * 3] = _mc.r; col[i * 3 + 1] = _mc.g; col[i * 3 + 2] = _mc.b; }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.deleteAttribute('uv');
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  // cube-projected UVs in metres (1 unit = one 64 px tile = 1 m), per triangle, from where the part sits on its node
+  const P = g.attributes.position, uv = new Float32Array(n * 2), tile = new Float32Array(n).fill(TILE[color] || 0);
+  for (let i = 0; i < n; i += 3) {
+    const ax = P.getX(i), ay = P.getY(i), az = P.getZ(i), ux = P.getX(i + 1) - ax, uy = P.getY(i + 1) - ay, uz = P.getZ(i + 1) - az, vx = P.getX(i + 2) - ax, vy = P.getY(i + 2) - ay, vz = P.getZ(i + 2) - az;
+    const nx = Math.abs(uy * vz - uz * vy), ny = Math.abs(uz * vx - ux * vz), nz = Math.abs(ux * vy - uy * vx);
+    for (let q = i; q < i + 3; q++) { const x = P.getX(q), y = P.getY(q), z = P.getZ(q); if (nx >= ny && nx >= nz) { uv[q * 2] = z; uv[q * 2 + 1] = y; } else if (ny >= nz) { uv[q * 2] = x; uv[q * 2 + 1] = z; } else { uv[q * 2] = x; uv[q * 2 + 1] = y; } }
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setAttribute('tile', new THREE.BufferAttribute(tile, 1));
   return g;
 }
 let wheelGeoCache = new Map();

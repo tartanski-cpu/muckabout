@@ -1,12 +1,12 @@
 // Message transports for co-op. One host, a few clients, reliable ordered messages (plain objects, typed arrays allowed).
 //   PeerTransport       WebRTC data channels through PeerJS and its public broker, as SWVR does (src/net/transport.ts):
-//                       room code = 5 digits, host peer id `muckshift-room-<code>`, reliable channel, binary serialisation
+//                       room code = 5 digits, host peer id `muckabout-room-<code>`, reliable channel, binary serialisation
 //                       (PeerJS's 'json' mode silently drops messages over 16 KB).
 //   BroadcastTransport  same API over a BroadcastChannel: two tabs of one browser. Used by the scripted two-player test
 //                       and handy for trying co-op on one desktop. No network involved.
 // API: host(code) / join(code) → Promise; send(msg, to?) ; onMessage(msg, from) ; onPeer(id) ; onLeave(id)
 
-const ROOM = (code) => `muckshift-room-${code}`;
+const ROOM = (code) => `muckabout-room-${code}`;
 export const newRoomCode = () => String(10000 + Math.floor(Math.random() * 90000));
 
 class Base { constructor() { this.onMessage = () => {}; this.onPeer = () => {}; this.onLeave = () => {}; this.isHost = false; this.id = null; this.state = 'idle'; } }

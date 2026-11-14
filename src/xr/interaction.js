@@ -5,7 +5,7 @@
 //   3. grip on a grab control takes it; poking (or trigger on) a press control presses it;
 //   4. with nothing in reach, a short pointer ray (the blue laser) picks buttons and switches; trigger presses them.
 // A hand that is holding or hovering a grab control is "busy": locomotion must ignore its grip and stick.
-// Difference from SWVR: a held control is let go if the real hand strays past `breakAway` (the muckshift
+// Difference from SWVR: a held control is let go if the real hand strays past `breakAway` (the Muck About
 // spec asks for a tolerance; it is generous so normal seated use never trips it).
 import * as THREE from 'three';
 

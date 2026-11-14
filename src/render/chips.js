@@ -5,15 +5,31 @@ import { CHUNK } from '../terrain/core.js';
 import { MATERIALS, GRASS_COLOR, TOPSOIL } from '../terrain/materials.js';
 import { hash2 } from '../util/rng.js';
 
-const RANGE = 22, CAP = 7000;
-const _o = new THREE.Object3D();
+const RANGE = 24, CAP = 9000;
+const _o = new THREE.Object3D(), STONE = [0.5, 0.49, 0.46];
+/** Knock a regular solid about so no two faces match: stones and clods rather than dice. */
+function lumpy(g, amount, seed) {
+  const p = g.attributes.position, seen = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const key = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
+    if (!seen.has(key)) seen.set(key, 1 + (hash2(seen.size, seed, 3) - 0.5) * 2 * amount);
+    const k = seen.get(key); p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.8, p.getZ(i) * k);
+  }
+  g.computeVertexNormals(); return g;
+}
+export { lumpy };
 
 export class Chips {
   constructor(terrain) {
     this.t = terrain; this.cnx = Math.ceil(terrain.nx / CHUNK); this.cnz = Math.ceil(terrain.nz / CHUNK);
-    const shard = new THREE.TetrahedronGeometry(0.075, 0), clump = new THREE.DodecahedronGeometry(0.07, 0);
-    const tuft = new THREE.ConeGeometry(0.05, 0.22, 4).translate(0, 0.1, 0);
-    const mk = (g) => { const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ flatShading: true }), CAP); m.count = 0; m.frustumCulled = false; m.setColorAt(0, new THREE.Color(1, 1, 1)); return m; };
+    const shard = lumpy(new THREE.TetrahedronGeometry(0.075, 0), 0.35, 3), clump = lumpy(new THREE.DodecahedronGeometry(0.07, 0), 0.3, 5);
+    // a grass tuft: three thin blades fanned out, each a tapering strip (far better than a cone, same cost)
+    const blades = []; for (let b = 0; b < 3; b++) { const a = b * 2.1 + 0.3, lean = 0.05 + b * 0.03, w = 0.022, h = 0.2 + b * 0.05, c = Math.cos(a), s = Math.sin(a);
+      blades.push(-w * c, 0, -w * s, w * c, 0, w * s, lean * -s, h, lean * c); }
+    const tuft = new THREE.BufferGeometry(); tuft.setAttribute('position', new THREE.Float32BufferAttribute(blades, 3)); tuft.computeVertexNormals();
+    { const nn = tuft.attributes.normal; for (let i = 0; i < nn.count; i++) nn.setXYZ(i, 0, 1, 0); } // lit like the ground they stand on
+    // blades are unlit (a two-sided lit blade goes black on its back face); stones and clods are lit
+    const mk = (g) => { const m = new THREE.InstancedMesh(g, g === tuft ? new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }) : new THREE.MeshLambertMaterial({ flatShading: true }), CAP); m.count = 0; m.frustumCulled = false; m.setColorAt(0, new THREE.Color(1, 1, 1)); return m; };
     this.meshes = [null, mk(shard), mk(clump), mk(tuft)]; // index = chip type
     this.group = new THREE.Group(); this.group.add(this.meshes[1], this.meshes[2], this.meshes[3]);
     this.lists = new Map(); this.dirty = new Set(); this.near = []; this.nearKey = ''; this.rebuild = true;
@@ -24,11 +40,15 @@ export class Chips {
     for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) {
       const gi = ci * CHUNK + i, gj = cj * CHUNK + j, c = gj * t.nx + gi, m = t.info[c * 4]; if (!m) continue;
       const worked = t.info[c * 4 + 1] > 0, r = hash2(gi, gj, m);
-      let type = MATERIALS[m].chip, dens = type === 1 ? 0.55 : 0.16, col = MATERIALS[m].color;
-      if (m === TOPSOIL && !worked) { dens = 0.11; col = GRASS_COLOR; } else if (m === TOPSOIL) { type = 2; dens = 0.12; }
+      let type = MATERIALS[m].chip, dens = type === 1 ? 0.7 : 0.22, col = MATERIALS[m].color, big = 1;
+      if (m === TOPSOIL && !worked) { dens = 0.42; col = GRASS_COLOR; if (r > 0.415) { type = 1; col = STONE; big = 1.6; } } // grass, with the odd stone
+      else if (m === TOPSOIL) { type = 2; dens = 0.2; }
+      else if (worked && type === 2) dens = 0.34;                 // freshly worked soil is cloddy
+      else if (m === 4) { type = 1; dens = 0.05; col = STONE; }   // a few pebbles on sand
       if (!type || r > dens) continue;
       const a = hash2(gi, gj, 7), b = hash2(gi, gj, 13), k = 0.7 + 0.5 * a;
-      tmp[type].push(t.ox + (gi + a - 0.5) * t.cell, t.h[c] + (type === 3 ? 0 : 0.015), t.oz + (gj + b - 0.5) * t.cell, 0.7 + b * 0.9, a * 6.283, col[0] * k, col[1] * k, col[2] * k);
+      const g2 = type === 3 ? [0.8 + 0.45 * b, 1.08, 0.75 + 0.3 * a] : [1, 1, 1]; // grass varies in tone
+      tmp[type].push(t.ox + (gi + a - 0.5) * t.cell, t.h[c] + (type === 3 ? -0.01 : 0.012), t.oz + (gj + b - 0.5) * t.cell, (0.6 + b * 1.1) * big, a * 6.283, col[0] * k * g2[0], col[1] * k * g2[1], col[2] * k * g2[2]);
     }
     return tmp.map((l, type) => {
       if (!l) return null;

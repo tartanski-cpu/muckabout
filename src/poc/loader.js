@@ -1,4 +1,4 @@
-// muckshift — proof of concept: drive a wheel loader from the cab in VR and move dirt.
+// Muck About — proof of concept: drive a wheel loader from the cab in VR and move dirt.
 // Kept as the feel/tuning reference for the MVP rewrite (see docs/mvp-spec.md). Changes from
 // the original single-file POC are limited to harness hooks: perf timers, wrist HUD, a
 // stress mode, a pause switch and a volume audit for the scripted test.

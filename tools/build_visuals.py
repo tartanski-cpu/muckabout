@@ -55,6 +55,15 @@ def cab(p, cx, cz, fl, col, col2, column=True, seat=True, steps=None):
         o += [B(p, [0.46, 0.05, 0.26], [x, y, z], 'grey'), B(p, [0.04, 0.05, 0.3], [x - 0.24 * (1 if x < 0 else -1), y, z], 'black')]
     return o
 
+def ladder(p, x, z, top, bottom=0.5):
+    """Boarding steps on one side: two stiles and deep tread-plate rungs, from near the ground up to `top`."""
+    sx = 1 if x > 0 else -1; o = []; h = top - bottom + 0.1
+    for dz in (-0.21, 0.21): o.append(B(p, [0.05, h, 0.05], [x, bottom + h / 2 - 0.05, z + dz], 'black'))
+    y = bottom
+    while y < top - 0.05:
+        o.append(B(p, [0.24, 0.045, 0.42], [x - sx * 0.1, y, z], 'grey')); y += 0.36
+    return o + [B(p, [0.3, 0.05, 0.46], [x - sx * 0.13, top, z], 'grey')]
+
 def teeth(p, n, half, y, z, length=0.26, forward=-1):
     return [B(p, [0.1, 0.07, length], [-half + 0.12 + i * (2 * half - 0.24) / (n - 1), y, z + forward * length / 2], 'chrome', taper=[0.7, 1]) for i in range(n)]
 
@@ -84,7 +93,8 @@ def loader():
               B('rear', [0.74, 0.44, 0.08], [sx * 1.05, 1.42, -0.9], 'yellow', rot=[0.5, 0, 0]), B('rear', [0.74, 0.44, 0.08], [sx * 1.05, 1.42, 1.0], 'yellow', rot=[-0.5, 0, 0]),
               B('rear', [0.42, 0.5, 0.9], [sx * 0.92, 1.25, 1.55], 'yellow2'), B('rear', [0.22, 0.14, 0.05], [sx * 0.85, 1.62, 2.86], 'tail'),
               B('rear', [0.64, 0.05, 1.0], [sx * 1.12, 1.98, cz], 'grey'), B('rear', [0.6, 0.3, 0.9], [sx * 1.1, 1.8, cz], 'yellow2')]
-    v += cab('rear', 0, cz, fl, 'yellow', 'yellow2', steps=[(-1.2, 0.8, -0.75), (-1.2, 1.2, -0.75), (-1.2, 1.6, -0.75)])
+    v += cab('rear', 0, cz, fl, 'yellow', 'yellow2') + ladder('rear', -1.33, -1.2, 1.95) + ladder('rear', 1.33, -1.2, 1.95)
+    v += [B('rear', [2.32, 0.3, 0.03], [0, 1.2, 2.845], 'hazard'), B('rear', [0.03, 0.3, 0.5], [-1.16, 1.2, 2.58], 'hazard'), B('rear', [0.03, 0.3, 0.5], [1.16, 1.2, 2.58], 'hazard')]
     v += [B('front', [1.0, 0.52, 2.3], [0, 0.93, -2.6], 'yellow2'), B('front', [2.0, 0.3, 0.42], [0, 0.75, -3.0], 'black'), B('front', [1.08, 0.2, 0.22], [0, 1.45, -2.25], 'yellow2')]
     for sx in (-1, 1):
         v += [B('front', [0.17, 1.15, 0.7], [sx * 0.62, 1.72, -1.78], 'yellow', lean=[0, -0.22]), B('front', [0.74, 0.08, 1.7], [sx * 1.05, 1.62, -3.0], 'yellow'),
@@ -114,7 +124,8 @@ def dumper():
         v += [B('front', [0.78, 0.08, 2.0], [sx * 1.1, 1.72, -1.8], 'orange'), B('front', [0.78, 0.46, 0.08], [sx * 1.1, 1.52, -2.86], 'orange', rot=[0.5, 0, 0]),
               B('front', [0.78, 0.46, 0.08], [sx * 1.1, 1.52, -0.74], 'orange', rot=[-0.5, 0, 0]), B('front', [0.28, 0.17, 0.05], [sx * 0.86, 1.56, -3.77], 'lamp'),
               B('front', [0.12, 0.1, 0.05], [sx * 1.12, 1.56, -3.76], 'amber')]
-    v += cab('front', 0, cz, fl, 'orange', 'orange2', steps=[(-1.22, 0.9, -3.05), (-1.22, 1.32, -3.05)])
+    v += cab('front', 0, cz, fl, 'orange', 'orange2') + ladder('front', -1.3, -3.08, 1.72) + ladder('front', 1.3, -3.08, 1.72)
+    v += [B('front', [2.52, 0.2, 0.03], [0, 1.08, -3.83], 'hazard'), B('rear', [2.0, 0.22, 0.03], [0, 1.02, 4.9], 'hazard'), B('rear', [2.0, 0.3, 0.06], [0, 1.02, 4.86], 'dark')]
     v += [B('rear', [1.1, 0.5, 4.7], [0, 1.15, 2.45], 'dark'), B('rear', [2.1, 0.26, 0.38], [0, 0.8, 1.9], 'black'), B('rear', [2.1, 0.26, 0.38], [0, 0.8, 3.5], 'black'),
           B('rear', [1.0, 0.2, 0.1], [0, 1.25, 4.83], 'dark')]
     for sx in (-1, 1):
@@ -150,7 +161,8 @@ def dozer():
           B(p, [1.5, 0.85, 0.5], [0, 1.3, 1.98], 'yellow2'), B(p, [0.3, 0.16, 0.4], [0, 0.5, 2.1], 'black')]
     for i in range(5): v.append(B(p, [1.02, 0.05, 0.08], [0, 1.24 + i * 0.18, -2.4], 'yellow2'))
     for sx in (-1, 1): v += [B(p, [0.04, 0.4, 1.2], [sx * 0.52, 1.75, -1.4], 'black'), B(p, [0.2, 0.12, 0.05], [sx * 0.5, 1.5, 2.24], 'tail')]
-    v += cab(p, 0, cz, fl, 'yellow', 'yellow2', steps=[(-1.0, 1.02, 1.2)])
+    v += cab(p, 0, cz, fl, 'yellow', 'yellow2') + ladder(p, -1.36, 1.25, 1.0, bottom=0.42) + ladder(p, 1.36, 1.25, 1.0, bottom=0.42)
+    v += [B(p, [1.52, 0.26, 0.03], [0, 1.02, 2.245], 'hazard')]
     a = 'arms'
     for sx in (-1, 1):
         v += [B(a, [0.18, 0.3, 2.75], [sx * 1.42, -0.32, -1.2], 'yellow'), C(a, 0.16, 0.16, 0.24, [sx * 1.42, -0.32, 0.1], 'yellow2', rot=AX),
@@ -178,7 +190,8 @@ def backhoe():
               B(p, [0.62, 0.44, 0.08], [sx * 0.95, 1.5, -0.74], 'yellow', rot=[0.5, 0, 0]), B(p, [0.62, 0.44, 0.08], [sx * 0.95, 1.5, 0.74], 'yellow', rot=[-0.5, 0, 0]),
               B(p, [0.5, 0.42, 0.8], [sx * 0.86, 0.78, -1.25], 'yellow2' if sx < 0 else 'dark'), B(p, [0.17, 0.12, 0.05], [sx * 0.42, 1.86, -3.08], 'lamp'),
               B(p, [0.18, 0.12, 0.05], [sx * 0.8, 1.2, 1.4], 'tail'), B(p, [0.4, 0.2, 0.06], [sx * 0.9, 0.7, -2.3], 'yellow2')]
-    v += cab(p, 0, cz, fl, 'yellow', 'yellow2', seat=False, steps=[(-0.98, 1.0, -1.25)])
+    v += cab(p, 0, cz, fl, 'yellow', 'yellow2', seat=False) + ladder(p, -1.2, -1.32, 1.5) + ladder(p, 1.2, -1.32, 1.5)
+    v += [B(p, [2.12, 0.2, 0.03], [0, 0.95, 1.39], 'hazard')]
     v += [B('seat', [0.3, 0.3, 0.3], [0, -0.42, 0.06], 'black'), B('seat', [0.5, 0.12, 0.46], [0, -0.2, 0.1], 'seat'),
           B('seat', [0.5, 0.62, 0.1], [0, 0.2, 0.36], 'seat', rot=[0.12, 0, 0]), B('seat', [0.26, 0.18, 0.08], [0, 0.6, 0.41], 'seat')]
     for sx in (-1, 1):
@@ -206,6 +219,7 @@ def backhoe():
     return v
 
 FLOOR = {'loader': (2.0, 1.55, 'rear'), 'dumper': (1.8, 1.6, 'front'), 'dozer': (1.75, 1.55, 'chassis'), 'backhoe': (1.55, 1.45, 'chassis')}
+RAILS = {'loader': (1.33, -1.2), 'dumper': (1.3, -3.08), 'dozer': (1.36, 1.25), 'backhoe': (1.2, -1.32)}
 BUILD = {'loader': loader, 'dumper': dumper, 'dozer': dozer, 'backhoe': backhoe}
 for name, fn in BUILD.items():
     d = load(name); new, first, cabBody = FLOOR[name]
@@ -223,5 +237,8 @@ for name, fn in BUILD.items():
             for c in b.get('colliders', []):
                 if c['size'] == [1.7, 1.8, 1.7]: c['pos'][1] = round(c['pos'][1] + dy, 4)
     d['cabFloor'] = new
+    lx, lz = RAILS[name]                      # the handrail is the ladder's outer stile
+    for c in d['controls']:
+        if c['type'] == 'handrail': c['pos'] = [round((1 if c['pos'][0] > 0 else -1) * (lx + 0.06), 3), 1.5, round(lz + 0.21, 3)]; c['length'] = 1.6
     d['visuals'] = fn()
     dump(name, d); print(name, len(d['visuals']), 'parts, cab floor', new)

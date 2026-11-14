@@ -1,4 +1,4 @@
-# muckshift
+# Muck About
 
 WebXR earthmoving sandbox for Meta Quest. Spec and milestones: `docs/mvp-spec.md`. Terrain design: `docs/terrain-design.md`. State and known gaps: `README.md`. What the owner checks on the headset: `docs/quest-test-checklist.md`.
 
