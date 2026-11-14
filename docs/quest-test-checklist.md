@@ -114,3 +114,11 @@ Listen for each of these, from the seat and standing beside the machine. For eac
 - Vehicles are cel shaded with a dark outline; nothing else is. Is the outline the right weight up close in the cab and from 20 m? Any flicker or gaps at panel corners? Does the frame rate hold with four machines in view (the outline draws each machine part twice)?
 - Pushed soil: the granules ahead of the blade should travel with it, roll forward, and sink into the heap about two seconds after you stop. Granule size right?
 
+## Getting about (new)
+
+- On foot, squeeze a grip on thin air and pull: the world should move with your hand, in all three directions, straight through the machines. Let go: you stay at the height you pulled yourself to. Push the left stick to walk: you settle back onto the ground.
+- Both grips: pull and twist to turn yourself. Comfortable, or does it need a dead zone?
+- A grip squeezed near a handrail or a control should still take hold of it, not the world. Any place where you grab the world when you meant to grab a lever?
+- Seated: push the left stick sideways for a 30° turn in the seat (B recentres). The left stick's forward and back still works the boom, blade or bed; its sideways push no longer curls the bucket or tilts the blade (the right stick does). Is that the right trade?
+- On foot the right stick still snap-turns.
+

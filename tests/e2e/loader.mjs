@@ -95,6 +95,25 @@ try {
   check(lk1.yaw < lk0.yaw - 0.3 && Math.abs(lk1.tilt - lk0.tilt) < 0.02, `gamepad: right stick alone looks round without moving the bucket (yaw ${lk0.yaw.toFixed(2)} → ${lk1.yaw.toFixed(2)})`);
   await page.evaluate(() => { P.pad.fake = null; }); await frame(1500);
 
+  // seated: the left stick pushed sideways snap-turns the player in the seat and leaves the bucket alone
+  const st0 = await page.evaluate(() => ({ yaw: __game.rig.rotation.y, tilt: m.fn.bucket.pos }));
+  await page.evaluate(() => hand('left', at('steer', -0.4, 0.3, 0.3), false, { stick: [1, 0] })); await frame(300);
+  const st1 = await page.evaluate(() => ({ yaw: __game.rig.rotation.y, tilt: m.fn.bucket.pos }));
+  check(Math.abs(st1.yaw - st0.yaw + Math.PI / 6) < 0.01 && Math.abs(st1.tilt - st0.tilt) < 0.02, 'seated: left stick sideways snap-turns 30° in the seat');
+  await page.evaluate(() => hand('left', null)); await frame(100);
+  // on foot: grab the world. A grip squeezed on thin air and pulled 0.5 m back and 0.3 m down moves the player 0.5 m forward and 0.3 m up
+  await page.evaluate(() => { P.stand(); }); await frame(200);
+  const rigHand = (x, y, z, grip) => page.evaluate(([x, y, z, grip]) => P.input.setFake('right', { pos: new __game.THREE.Vector3(x, y, z), grip, parent: __game.rig }), [x, y, z, grip]);
+  const f0 = await page.evaluate(() => P.player.feet.toArray());
+  await rigHand(0.2, 1.2, -0.4, true); await frame(200); await rigHand(0.2, 0.9, 0.1, true); await frame(300);
+  const f1 = await page.evaluate(() => P.player.feet.toArray()), yaw = await page.evaluate(() => P.player.yaw);
+  const fwd = (f1[0] - f0[0]) * -Math.sin(yaw) + (f1[2] - f0[2]) * -Math.cos(yaw);
+  check(Math.abs(fwd - 0.5) < 0.05 && Math.abs(f1[1] - f0[1] - 0.3) < 0.05, `grab the world: pulling the hand back and down moves the player forward and up (${fwd.toFixed(2)} m, ${(f1[1] - f0[1]).toFixed(2)} m)`);
+  await rigHand(0.2, 0.9, 0.1, false); await frame(300);
+  check(Math.abs((await page.evaluate(() => P.player.feet.y)) - f1[1]) < 0.02, 'grab the world: the height you pulled yourself to stays when you let go');
+  await page.evaluate(() => P.input.setFake('right', null));
+
+
   // scripted dig and tip, fast-forwarded, driven through the override path
   await page.evaluate(() => { __game.paused = true; m.reset(5, 4, 0); m.controls.steer.set(0); m.controls.throttle.set(1); m.controls.shuttle.set(0); __game.sim(60); });
   const v0 = await page.evaluate(() => __game.audit());

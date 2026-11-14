@@ -126,8 +126,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       const rear = m.fn.swivel && m.fn.swivel.pos > 1.5, map = (rear ? m.def.sticksRear : m.def.sticks) || {};
       for (const [h, key] of [[left, 'left'], [right, 'right']]) {
         const sm = map[key]; if (!sm || !h.tracked || (key === 'left' && inp.assist > 0.5 && !rear)) continue; // with stick assist on, the left stick drives instead
-        const [sx, sy] = stickOf(h);
-        if (sm.x && sx) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + sx * sm.x[1], -1, 1);
+        const [sx, sy] = stickOf(h), turns = key === 'left' && !rear; // facing forward, the left stick's sideways push turns you in the seat instead (xr/player.js)
+        if (sm.x && sx && !turns) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + sx * sm.x[1], -1, 1);
         if (sm.y && sy) inp[sm.y[0]] = clamp((inp[sm.y[0]] || 0) + sy * sm.y[1], -1, 1);
       }
       if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && (keys.size || pad.on))) assist(m, left, right);
@@ -241,6 +241,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (right.secondaryPressed) player.recentre();
     if (right.stickPressed && player.seated && !right.holding) { player.horizonLock = player.horizonLock ? 0 : 0.8; game.hud.note = player.horizonLock ? 'HORIZON LOCK ON (right stick click)' : ''; right.pulse(0.5, 40); } // comfort: damp cab roll and pitch
     if (right.primaryPressed && player.machine) { bus.start(); player.machine.voice.horn(); }
+    player.noSeatTurn = !!player.machine && (player.machine.inp.assist > 0.5 || (player.machine.fn.swivel && player.machine.fn.swivel.pos > 1.5)); // the left stick is busy driving, or working the hoe
     player.update(fdt, input.hands);
     if (!game.fast) heap.update(fdt);
     desktopCamera();
@@ -325,7 +326,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   function setHelp() {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
-    el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Walk with the left stick, snap-turn with the right. Grab the yellow handrail to climb in. `
+    el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Grab the yellow handrail to climb in. `
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
