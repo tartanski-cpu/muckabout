@@ -430,7 +430,9 @@ export class Machine {
     // engine: key → crank → run
     if (inp.key > 0.5 && !e.running) { e.crank += dt; if (e.crank > 0.9) { e.running = true; this.events.push({ type: 'start' }); } } else if (inp.key <= 0.5) { if (e.running) this.events.push({ type: 'stop' }); e.running = false; e.crank = 0; }
     const demand = e.running ? clamp(Math.max(inp.throttle, this.def.drive.type === 'tracks' ? 1 - inp.decel : inp.accel), 0, 1) : 0;
-    const want = e.running ? ed.idleRpm + (ed.maxRpm - ed.idleRpm) * (this.def.drive.type === 'tracks' ? Math.max(0.25, inp.throttle) * (1 - 0.8 * inp.decel) : demand) : 0;
+    // tracked machines: the hand throttle sets the revs, and pushing the drive levers brings them up from a low setting
+    const base = Math.max(0.25, inp.throttle), trackRev = base + (1 - base) * 0.5 * Math.min(1, Math.max(Math.abs(inp.left || 0), Math.abs(inp.right || 0)));
+    const want = e.running ? ed.idleRpm + (ed.maxRpm - ed.idleRpm) * (this.def.drive.type === 'tracks' ? trackRev * (1 - 0.8 * inp.decel) : demand) : 0;
     // the engine answers to the torque the pump and the drive took from it last step (powertrain.js)
     const pt = this.pt.step(dt, { running: e.running, cranking: e.crank > 0, target: want, load: this.shaft });
     e.rpm = pt.rpm; e.load = pt.fuel; e.boost = pt.boost; e.smoke = pt.smoke;
@@ -500,7 +502,7 @@ export class Machine {
     this.hyd.q = Math.min(1, hq); this.hyd.p = hq > 0 ? hw / hq : 0;
     let shaft = Tr * (0.03 + (ed.hydShare ?? 0.55) * Math.min(1.15, hw));
     if (dr.type === 'wheels') { const sr = clamp(Math.abs(sp) / (Math.max(dr.maxSpeed[0], 1) * Math.max(0.3, x)), 0, 1); shaft += inp.accel * Math.abs(this.gear) * Tr * 1.05 * x * x * (1 - 0.72 * sr * sr) * (1 + 0.3 * full); }
-    else if (this.trackTarget) shaft += Tr * (Math.abs(inp.left) + Math.abs(inp.right)) / 2 * (0.2 + 0.72 * clamp(this.digRate / 22, 0, 1));
+    else if (this.trackTarget) shaft += Tr * (Math.abs(inp.left) + Math.abs(inp.right)) / 2 * (0.42 + 0.6 * clamp(this.digRate / 22, 0, 1)) // tracking alone is real work for the engine; a loaded blade more than doubles it;
     this.shaft = e.running ? shaft : 0;
   }
 
