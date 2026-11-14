@@ -21,7 +21,8 @@ const AX = { x: V().set(1, 0, 0), y: V().set(0, 1, 0), z: V().set(0, 0, 1) };
 
 // Draw calls are the main cost on a Quest (each is drawn once per eye), so a machine's boxes are merged into one
 // vertex-coloured mesh per moving part instead of one mesh per box.
-const COLORS = { yellow: 0xf0b21a, dark: 0x3a3a3c, tyre: 0x1f1f20, hub: 0xd9a015, steel: 0x6d6e70, seat: 0x2b2b2b, red: 0xc9381e, orange: 0xd9541e, green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a };
+const COLORS = { yellow: 0xf0b21a, yellow2: 0xd2940f, dark: 0x3a3a3c, black: 0x19191b, tyre: 0x1f1f20, hub: 0xd9a015, steel: 0x6d6e70, chrome: 0xb4b8bc, grey: 0x8a8d90, seat: 0x2b2b2b, red: 0xc9381e, orange: 0xd9541e, orange2: 0xb5441a,
+  green: 0x4f7d3a, white: 0xe8e3d8, blue: 0x2f5f9e, track: 0x26262a, lamp: 0xfff3c4, tail: 0xb01414, amber: 0xff9a1a, rust: 0x7a4a2c, rim: 0xe2a516, cream: 0xd8ccb0 };
 const PAINT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
 const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
@@ -36,11 +37,23 @@ function part(geo, color, pos, rot) {
   return g;
 }
 let wheelGeoCache = new Map();
+/** A chunky earthmover tyre: barrel, chamfered shoulders, two staggered rows of lugs, dished rim, hub and wheel nuts. One mesh. */
 function wheelMesh(r, w) {
   const key = r + '/' + w; let geo = wheelGeoCache.get(key);
   if (!geo) {
-    const parts = [part(new THREE.CylinderGeometry(r, r, w, 14).rotateZ(Math.PI / 2), 'tyre', [0, 0, 0]), part(new THREE.CylinderGeometry(r * 0.55, r * 0.55, w + 0.02, 10).rotateZ(Math.PI / 2), 'hub', [0, 0, 0])];
-    for (let n = 0; n < 7; n++) { const a = (n / 7) * Math.PI * 2; parts.push(part(new THREE.BoxGeometry(w + 0.04, 0.09, 0.16), 'tyre', [0, Math.cos(a) * r, Math.sin(a) * r], [-a, 0, 0])); } // lugs so you can see it turning
+    const X = (g) => g.rotateZ(Math.PI / 2), parts = [part(X(new THREE.CylinderGeometry(r * 0.97, r * 0.97, w * 0.72, 18)), 'tyre', [0, 0, 0])];
+    for (const sd of [-1, 1]) {
+      parts.push(part(X(new THREE.CylinderGeometry(sd > 0 ? r * 0.97 : r * 0.8, sd > 0 ? r * 0.8 : r * 0.97, w * 0.14, 18)), 'tyre', [-sd * w * 0.43, 0, 0])); // shoulder
+      parts.push(part(X(new THREE.CylinderGeometry(r * 0.6, r * 0.6, 0.03, 14)), 'rim', [sd * (w * 0.5 + 0.005), 0, 0]));   // dished rim, proud of the sidewall so it reads from the side
+      parts.push(part(X(new THREE.CylinderGeometry(r * 0.42, r * 0.42, 0.03, 14)), 'yellow2', [sd * (w * 0.5 + 0.02), 0, 0]));
+      parts.push(part(X(new THREE.CylinderGeometry(r * 0.2, r * 0.24, 0.07, 8)), 'dark', [sd * (w * 0.5 + 0.06), 0, 0]));
+      for (let n = 0; n < 6; n++) { const a = n / 6 * Math.PI * 2; parts.push(part(new THREE.BoxGeometry(0.03, 0.045, 0.045), 'chrome', [sd * (w * 0.5 + 0.045), Math.cos(a) * r * 0.32, Math.sin(a) * r * 0.32], [a, 0, 0])); }
+    }
+    const lugs = Math.max(10, Math.round(r * 18)); // staggered lugs so you can see it turning
+    for (let n = 0; n < lugs; n++) for (const sd of [-1, 1]) {
+      const a = ((n + (sd > 0 ? 0.5 : 0)) / lugs) * Math.PI * 2;
+      parts.push(part(new THREE.BoxGeometry(w * 0.5, 0.07, r * 0.2), 'tyre', [sd * w * 0.24, Math.cos(a) * r * 0.985, Math.sin(a) * r * 0.985], [-a, sd * 0.35, 0]));
+    }
     geo = mergeGeometries(parts); wheelGeoCache.set(key, geo);
   }
   return new THREE.Mesh(geo, PAINT);
@@ -129,6 +142,10 @@ export class Machine {
     for (const v of def.visuals || []) {
       const glass = v.mat === 'glass', key = v.parent + (glass ? '|glass' : '');
       const geo = v.box ? new THREE.BoxGeometry(...v.box) : new THREE.CylinderGeometry(v.cyl[0], v.cyl[1], v.cyl[2], v.cyl[3] ?? 8);
+      if (v.box && (v.taper || v.lean)) { // sloped hoods and raked panels: scale and/or shift the top face
+        const pa = geo.attributes.position, tx = v.taper ? v.taper[0] : 1, tz = v.taper ? v.taper[1] : 1, lx = v.lean ? v.lean[0] : 0, lz = v.lean ? v.lean[1] : 0;
+        for (let i = 0; i < pa.count; i++) if (pa.getY(i) > 0) pa.setXYZ(i, pa.getX(i) * tx + lx, pa.getY(i), pa.getZ(i) * tz + lz);
+      }
       if (!byParent.has(key)) byParent.set(key, { parent: v.parent, glass, parts: [] });
       byParent.get(key).parts.push(part(geo, v.mat || 'yellow', v.pos, v.rot));
     }
