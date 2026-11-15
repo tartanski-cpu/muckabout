@@ -7,8 +7,9 @@ const tp = (m, x, y, z, out, o) => {
 
 /** A floor rectangle that cuts whatever it sweeps through. corners: [backL, backR, lipL, lipR] local xyz. */
 export class CutTool {
-  constructor(id, corners, ahead = 0.35) {
-    this.id = id; this.local = corners.flat(); this.ahead = ahead;
+  /** heap: for a blade, how high (m above the edge) the heap it pushes may stand before the surplus spills round its ends. */
+  constructor(id, corners, ahead = 0.35, heap = 0) {
+    this.id = id; this.local = corners.flat(); this.ahead = ahead; this.heap = heap;
     this.prev = new Float64Array(12); this.cur = new Float64Array(12); this.has = false;
     this.last = null; this.resist = 0; this.rate = 0;
   }
@@ -21,7 +22,7 @@ export class CutTool {
       // skip when the whole floor is well above the ground: nothing to cut
       let low = false;
       for (let q = 0; q < 12; q += 3) if (this.cur[q + 1] < terrain.heightAt(this.cur[q], this.cur[q + 2]) + 0.5) { low = true; break; }
-      if (low) terrain.cut(this.id, this.has ? this.prev : this.cur, this.cur, capacity, this.ahead);
+      if (low) terrain.cut(this.id, this.has ? this.prev : this.cur, this.cur, capacity, this.ahead, this.heap);
     }
     this.prev.set(this.cur); this.has = true;
     return res;

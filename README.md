@@ -115,6 +115,12 @@ Key decisions:
 
 An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick looks round (in chase view it orbits the machine), hold **LB** and the right stick works the bucket/blade/bed instead (from the backhoe's rear seat the left stick works the hoe too; right stick click turns the seat), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
 
+## Hand tools
+
+`src/game/handTools.js`: a shovel, two grading stakes with a level string line, and a tow chain, lying beside where you start. Grip to pick up. The shovel's blade is a small cutting edge like a bucket's: it takes soil from the ground and throws it off as clods, and its load is in the volume audit. The line runs level with the first stake's foot, with droppers coloured by how the ground stands against it. A hook let go at the end of a machine hitches there; a taut chain pulls on both machines (`Machine.tow`), and a hitched machine with its park brake off rolls free. Not replicated in co-op.
+
+Machines are drawn smoothly between simulation steps (`Game._blendPoses`): the sim runs at 60 steps a second whatever the display rate.
+
 ## The bog
 
 The middle terrace of the main map has a patch of **bog** (`map.bog` in `src/terrain/maps.js`; a small one on the test map too): a ninth soil material, deep wet mud. A wheel or track on it squeezes the mud out to the sides until it stands up to a metre deep in a rut (`TerrainCore._sink`), so nothing is compressed away and the volume audit still balances; being mud that stands at hardly any slope, the ruts close up again. It has little grip and drags hard, so wheeled machines crawl and the tracked dozer does better. It digs, carries, tips and slumps like any other soil.

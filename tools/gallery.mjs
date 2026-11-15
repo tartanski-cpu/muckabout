@@ -15,7 +15,7 @@ for (const id of ids.filter((i) => !want.length || want.includes(i))) {
     await page.evaluate(([from, to]) => { __game.play.overview = { from, to }; }, [from, to]); await page.waitForTimeout(500);
     await page.screenshot({ path: `shots/gallery_${id}_${view}.png` });
   }
-  await page.evaluate((id) => { const g = __game; g.play.overview = null; g.play.sit(g.machine(id)); g.play.look.pitch = -0.38; g.play.look.yaw = 0; }, id); await page.waitForTimeout(600);
+  await page.evaluate((id) => { const g = __game; g.play.overview = null; for (const a of g.play._demo[id]) a.root.visible = false; g.play.sit(g.machine(id)); g.play.look.pitch = -0.38; g.play.look.yaw = 0; }, id); await page.waitForTimeout(600);
   await page.screenshot({ path: `shots/gallery_${id}_cab.png` });
   await page.evaluate(() => __game.play.stand());
 }

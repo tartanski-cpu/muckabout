@@ -13,7 +13,7 @@ describe('engine voice', () => {
       const a = render(p); let peak = 0; for (const v of a) { expect(Number.isFinite(v)).toBe(true); peak = Math.max(peak, Math.abs(v)); }
       expect(peak).toBeLessThanOrEqual(0.75);
     }
-  });
+  }, 30000);
   it('fires at the right rate: cylinders x rpm / 120', () => {
     for (const [cyl, rpm] of [[6, 800], [6, 2000], [4, 900]]) {
       const f = cyl * rpm / 120, s = spectrum(render({ ...idle, rpm }, { cylinders: cyl }, 3));

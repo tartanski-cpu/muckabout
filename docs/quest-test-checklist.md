@@ -130,3 +130,17 @@ Listen for each of these, from the seat and standing beside the machine. For eac
 - It is soil like the rest: dig it with the loader or the hoe, carry it, tip it somewhere else. A heap of it should slump almost flat. Tipping gravel or clay into the bog to make a firm crossing should work, as at the ford.
 - Does the frame rate hold while a machine churns through it?
 
+## Hand tools (new)
+
+They lie on the ground beside where you start (shovel, two stakes, a chain with two hooks). Grip to pick one up; let go to put it down.
+
+- Shovel: hold it and push the blade into the ground ahead of you. It should take a shovelful (a lump shows on the blade, and you feel it in the controller). Turn it over, or squeeze the trigger, to throw the soil off. Is the reach right? Is the blade angle comfortable, or does it need to dip more or less? Let go: it should stand in the ground.
+- Grading stakes: carry the red-topped one to where the ground is right and let go; it plants itself. Plant the blue one some metres away. A pink level line runs between them at the height of the red stake's top, with droppers to the ground every half metre: green where the ground is level with the red stake's foot, red where it is high, blue where it is low. Readable from a cab? Is 4 cm the right tolerance for green?
+- Tow chain: carry a hook to the back of one machine and let go near the middle of its rear; it should hitch. Hitch the other hook to the front of a machine stuck in the bog, release that machine's park brake, then drive the first one off. The chain is 7 m. Does it take up smoothly, or snatch? Does the stuck machine come out?
+- Any time you grab the world when you meant to grab a tool, or a tool when you meant a lever?
+
+## Comfort (new)
+
+- Turning any vehicle: the world should now sweep past smoothly at the headset's frame rate. Before, the machines moved 60 times a second under a 90 Hz display, which looked like a low frame rate. Is the judder gone on the wheeled machines and on the dozer? On both physics models?
+- Steering wheels are higher, nearer and clear of the dash; the dozer's track levers are 12 cm higher; the wipers are gone from every windscreen. Reach and height right now?
+

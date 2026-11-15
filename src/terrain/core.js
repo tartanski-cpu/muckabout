@@ -135,7 +135,9 @@ export class TerrainCore {
 
   /**
    * Swept cut. cmd.p0 / cmd.p1: previous and current corners [backL, backR, lipL, lipR] as flat xyz arrays (12 numbers).
-   * cmd.capacity: m³ the tool's container can still take. Excess is windrowed `ahead` metres beyond the lip.
+   * cmd.capacity: m³ the tool's container can still take. Excess is windrowed `ahead` metres beyond the lip, and, if
+   * cmd.heap is given (a blade: it has no bucket to dig a face with), only up to that many metres above the edge;
+   * beyond that it spills round the ends of the edge.
    * Returns { taken: Float64Array(NMAT) m³, pushed, resist }.
    */
   cut(cmd) {
@@ -145,7 +147,7 @@ export class TerrainCore {
     let mv = 0;
     for (let q = 0; q < 12; q += 3) mv = Math.max(mv, Math.hypot(p1[q] - p0[q], p1[q + 1] - p0[q + 1], p1[q + 2] - p0[q + 2]));
     const steps = Math.max(1, Math.min(10, Math.ceil(mv / (cell * 0.5))));
-    const P = new Float64Array(12), ahead = cmd.ahead ?? 0.35;
+    const P = new Float64Array(12), ahead = cmd.ahead ?? 0.35, heapMax = cmd.heap || 0;
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
       for (let q = 0; q < 12; q++) P[q] = p0[q] + (p1[q] - p0[q]) * t;
@@ -180,7 +182,14 @@ export class TerrainCore {
           const take = Math.min(v, cap); if (take > 0) { taken[om] += take; cap -= take; v -= take; }
           if (v > 0) { // windrow ahead of the lip, at this cell's position across the blade
             const lx = P[6] + (P[9] - P[6]) * a, lz = P[8] + (P[11] - P[8]) * a;
-            this.deposit(lx + pdx * ahead, lz + pdz * ahead, om, v); pushed += v;
+            let tx = lx + pdx * ahead, tz = lz + pdz * ahead;
+            // a blade holds only so high a heap: once the heap ahead stands `heap` above the cutting edge, what more
+            // is cut spills round the nearer end of the blade and is left beside it as a windrow
+            if (heapMax && this.heightAt(tx, tz) > P[7] + heapMax) {
+              const ex = P[9] - P[6], ez = P[11] - P[8], el = Math.hypot(ex, ez) || 1, side = a < 0.5 ? -1 : 1;
+              tx = (side < 0 ? P[6] : P[9]) + side * ex / el * 0.55 + pdx * 0.1; tz = (side < 0 ? P[8] : P[11]) + side * ez / el * 0.55 + pdz * 0.1;
+            }
+            this.deposit(tx, tz, om, v); pushed += v;
           }
         }
       }

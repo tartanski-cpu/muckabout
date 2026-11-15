@@ -15,6 +15,7 @@ import { clamp } from '../util/rng.js';
 import * as autopilot from '../game/autopilot.js';
 import { PushHeap } from '../render/pushHeap.js';
 import { Avatar } from '../net/avatar.js';
+import { HandTools } from '../game/handTools.js';
 import { makeHopper } from '../game/hopper.js';
 import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { startStress } from './stress.js';
@@ -198,7 +199,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
 
   game.updaters.push((dt) => {
     if (game.remote) { if (player.machine) readControls(player.machine); return; } // co-op client: the host simulates; we only read our own controls
+    if (!game.smooth.length) game.smooth = machines.flatMap((m) => m.bodyList.map((b) => b.obj)); // the machines' bodies are drawn smoothly between simulation steps
     for (const m of machines) readControls(m);
+    if (S.tools) S.tools.step(dt);
     phys.step(dt);
     for (const m of machines) {
       if (!game.fast) for (const ev of m.events) m.voice.play(ev);
@@ -336,6 +339,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   }
   const sp = map.spawn.player || [(map.spawn[kinds[0]] || [0, 0])[0] - 5, (map.spawn[kinds[0]] || [0, 0])[1] + 3, 0];
   player.place(sp[0], sp[1], sp[2] || 0);
+  // hand tools on the ground beside where you start: shovel, grading stakes, tow chain (game/handTools.js)
+  const tools = S.tools = new HandTools(game, inter, sp[0] + 1.6, sp[1] - 1.2);
+  game.frameUpdaters.push((fdt) => tools.update(fdt));
   setHelp();
   return S;
 }

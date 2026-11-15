@@ -273,7 +273,7 @@ export class Machine {
     this.tools = [];
     for (const t of def.tools || []) {
       const nd = this.nodeList.find((n) => n.def.name === t.node);
-      this.tools.push({ def: t, cut: new CutTool(`${this.id}.${t.name}`, t.corners, t.ahead ?? 0.35), node: this.nodes[t.node], body: nd.body, container: t.container ? this.containers[t.container] : null, rate: 0, prev: V(), vel: V(), has: false });
+      this.tools.push({ def: t, cut: new CutTool(`${this.id}.${t.name}`, t.corners, t.ahead ?? 0.35, t.heap ?? (t.container ? 0 : 0.9)), node: this.nodes[t.node], body: nd.body, container: t.container ? this.containers[t.container] : null, rate: 0, prev: V(), vel: V(), has: false });
     }
     // a bucket or blade must bite, not prop the machine up: its skid points only bear on ground that cannot be dug (bare rock)
     for (const c of this.contacts) c.tool = this.tools.some((t) => t.node === c.node);
@@ -286,6 +286,7 @@ export class Machine {
     this.inp = { steer: 0, accel: 0, brake: 0, shuttle: 0, throttle: 0, park: 1, key: 0, left: 0, right: 0, decel: 0, horn: 0 };
     for (const f of this.fnList) this.inp[f.input ?? f.name] = 0;
     this.engine = { running: false, crank: 0, rpm: 0, load: 0, boost: 0, smoke: 0 };
+    this.tow = null; // {fx, fz (N, world), px, py, pz (world point), body}: set each step by a taut tow chain
     this.pt = new Powertrain({ ...def.engine, power: def.drive.power }); this.shaft = 0; this.hyd = { p: 0, q: 0 };
     this.digRate = 0; this.spillRate = 0; this.bump = 0; this.speed = 0; this.tick = 0; this.events = [];
     this.driver = null; // who is in the seat (multiplayer / AI)
@@ -346,20 +347,24 @@ export class Machine {
     const dig = Math.min(this.digRate * 2.2, 7), rr = G * (0.02 + 0.22 * soft);
     let toolMoving = 0; for (const t of this.tools) toolMoving = Math.max(toolMoving, Math.hypot(t.vel.x, t.vel.z));
     const oppose = (v, a) => v - Math.sign(v) * Math.min(Math.abs(v), a * dt); // decelerate toward zero, never past it
+    // a tow chain (game/handTools.js): the pull along the machine's heading, as an acceleration
+    const towAlong = this.tow ? (this.tow.fx * -Math.sin(k.psi) + this.tow.fz * -Math.cos(k.psi)) / this.mass : 0;
     if (dr.type === 'tracks') {
-      const tgt = this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
+      const free = this.tow && this.brake < 0.3 && (!this.trackTarget || Math.abs(this.trackTarget.L) + Math.abs(this.trackTarget.R) < 0.05); // towed, levers at rest: the tracks run free
+      const tgt = free ? { L: k.vl * 0.98, R: k.vr * 0.98 } : this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
       const bogged = 1 - 0.6 * clamp((soft - 0.5) / 0.7, 0, 1); // tracks keep going in deep mud where wheels stop, but only at a crawl
       // a loaded blade lugs the machine down: the deeper the cut and the bigger the heap ahead, the slower it crawls
       const lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / (dr.digLug ?? 16), 1.5)) : 1;
       k.vl += clamp(tgt.L * lug * bogged - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R * lug * bogged - k.vr, -amax * dt, amax * dt);
       const push = toolMoving > 0.05 ? dig : 0, hold = dr.maxForce / this.mass; // the blade's load and the hill can overpower the tracks
       for (const side of ['vl', 'vr']) { let v = k[side]; v = oppose(v, Math.max(0, push - hold * 0.35)); if (Math.abs(slope) > grip) v += (slope - Math.sign(slope) * grip) * dt; k[side] = v; }
+      k.vl += towAlong * dt; k.vr += towAlong * dt;
       k.v = (k.vl + k.vr) / 2; k.psi += (k.vr - k.vl) / k.W * 0.3 * dt; // tracks scrub sideways when they turn: far slower than the speed difference alone suggests
     } else {
       let a = clamp(this.tractive / this.mass * 0.75, -grip, grip);
-      k.v += (a + slope) * dt;
+      k.v += (a + slope + towAlong) * dt;
       k.v = oppose(k.v, Math.min(this.brake * 7, grip) + rr + (toolMoving > 0.05 ? dig : 0) + Math.abs(k.v) * 0.22);
-      if (this.brake > 0.3 && Math.abs(k.v) < 0.25 && Math.abs(slope) < grip) k.v = 0; // brakes hold on anything the tyres can grip
+      if (this.brake > 0.3 && Math.abs(k.v) < 0.25 && Math.abs(slope) < grip && Math.abs(towAlong) < 2.5) k.v = 0; // brakes hold on anything the tyres can grip (a hard pull on a tow chain drags it all the same)
       const vmax = dr.maxSpeed; k.v = clamp(k.v, -vmax[1] * 1.1, vmax[0] * 1.1);
       if (this.joints[0]) { k.gamma = this.joints[0].target; k.psi += k.v * Math.sin(k.gamma) / (k.LF + k.LR * Math.cos(k.gamma)) * dt; }
       else { let st = 0, n = 0; for (const w of this.wheels) if (w.def.steer) { st += w.steer; n++; } k.psi += k.v * Math.tan(n ? st / n : 0) / k.L * dt; }
@@ -502,6 +507,8 @@ export class Machine {
     } else this.gear = 0;
     // brakes: pedal, park brake, and a light automatic hold when the accelerator is released
     this.brake = dr.type === 'wheels' ? Math.max(inp.brake, inp.park > 0.5 ? 1 : 0, inp.accel < 0.05 || this.gear === 0 ? 0.35 : 0) : (inp.park > 0.5 || !e.running ? 1 : inp.brake);
+    // on a taut tow chain with the park brake off it rolls free, engine running or not: that is how you tow it
+    if (this.tow && inp.park <= 0.5) this.brake = inp.brake;
     // shaft torque for the engine's next step. Pump: displacement x pressure. Wheels: a torque converter, which takes
     // most when the machine is held back (pushing into the pile) and least when it runs free. Tracks: hydrostatic.
     const Tr = this.pt.Tr, x = e.rpm / ed.maxRpm, cap = this.rigs.reduce((a, r) => a + r.field.capacity, 0), full = cap ? Math.min(1, this.payload() / cap) : 0;
@@ -526,6 +533,7 @@ export class Machine {
     if (this.kin.custom) return; // the custom model moved it already
     const terrain = this.terrain, dr = this.def.drive;
     for (const b of this.bodyList) { b.rb.resetForces(true); b.rb.resetTorques(true); }
+    if (this.tow) this.tow.body.rb.addForceAtPoint({ x: this.tow.fx, y: 0, z: this.tow.fz }, { x: this.tow.px, y: this.tow.py, z: this.tow.pz }, true); // a tow chain pulling at its hitch
     let driven = 0; for (const w of this.wheels) if (w.grounded && w.def.driven !== false) driven++;
     const perWheel = driven ? this.tractive / driven : 0;
     for (const w of this.wheels) {
@@ -556,7 +564,9 @@ export class Machine {
       let Fl, Fs = -vs * kill * (w.side ? 0.55 : 1);
       if (w.side) { // track contact: hydrostatic drive holds a target speed
         const tv = this.trackTarget ? this.trackTarget[w.side] : 0, fmax = dr.maxForce / (this.wheels.length / 2);
-        Fl = this.trackTarget && !(this.brake > 0.5) ? clamp((tv - vf) * kill * 0.6, -fmax, fmax) : clamp(-vf * kill, -fmax * 1.5, fmax * 1.5);
+        const free = this.tow && this.brake < 0.3 && (!this.trackTarget || Math.abs(this.trackTarget.L) + Math.abs(this.trackTarget.R) < 0.05);
+        // towed with the levers at rest, the tracks run free against a little drag
+        Fl = free ? clamp(-vf * kill * 0.03, -fmax, fmax) : this.trackTarget && !(this.brake > 0.5) ? clamp((tv - vf) * kill * 0.6, -fmax, fmax) : clamp(-vf * kill, -fmax * 1.5, fmax * 1.5);
         w.spin += (this.trackTarget ? tv : vf) * h / w.r;
       } else {
         Fl = w.def.driven !== false ? perWheel : 0;

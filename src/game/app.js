@@ -46,6 +46,7 @@ export class Game {
     if (o.water) { this.water = new WaterMesh(this.terrain, this.env); this.water.onReady = (m) => this.scene.add(m); if (this.water.mesh) this.scene.add(this.water.mesh); }
     this.clods = new Clods({ rng: this.rng, max: 1500 });
     this.rigs = []; // ContainerRig list (clod targets)
+    this.smooth = []; // Object3Ds drawn between simulation steps (see _blendPoses)
     this.containerMeshes = [];
     this.clods.setTargets(this.terrain, this.rigs);
     this.clodMesh = new ClodMesh(this.clods); this.scene.add(this.clodMesh.mesh);
@@ -77,9 +78,28 @@ export class Game {
     }
   }
 
+  /**
+   * Smooth motion between simulation steps. The sim runs at a fixed 60 steps a second, but a headset draws 72, 90 or
+   * 120 frames: without this, some frames see a step and some do not, and anything that moves with a machine (above
+   * all the player sitting in it, as it turns) judders. Objects listed in `smooth` (the machines' bodies) are drawn
+   * part way between their last two simulated poses, by how far the clock is into the next step. The true pose is put
+   * back before the simulation runs again, so the simulation never sees the in-between one.
+   */
+  _truePoses() {
+    if (!this._blended) return; this._blended = false;
+    for (const o of this.smooth) { const s = o.userData.smooth; if (s) { o.position.copy(s.p1); o.quaternion.copy(s.q1); } }
+  }
+  _blendPoses(k) {
+    if (this.remote || !this.smooth.length) return;
+    for (const o of this.smooth) { const s = o.userData.smooth; if (!s || !s.ready) continue; o.position.lerpVectors(s.p0, s.p1, k); o.quaternion.slerpQuaternions(s.q0, s.q1, k); }
+    this._blended = true;
+  }
+
   /** One fixed simulation step. */
   step(dt) {
     const perf = this.perf;
+    this._truePoses();
+    for (const o of this.smooth) { const s = o.userData.smooth ??= { p0: new THREE.Vector3(), q0: new THREE.Quaternion(), p1: new THREE.Vector3(), q1: new THREE.Quaternion(), ready: false }; s.p0.copy(o.position); s.q0.copy(o.quaternion); }
     perf.begin('vehicles');
     for (const u of this.updaters) u(dt);
     perf.end('vehicles');
@@ -94,6 +114,8 @@ export class Game {
     this.terrain.tick();
     perf.end('terrain');
     this.simTime += dt;
+    // (not across a reset or a teleport, nor for an object that joined the list during this step)
+    for (const o of this.smooth) { const s = o.userData.smooth; if (!s) continue; s.ready = s.p0.distanceToSquared(o.position) < 4; s.p1.copy(o.position); s.q1.copy(o.quaternion); }
   }
 
   start() {
@@ -108,6 +130,7 @@ export class Game {
       this.acc += fdt; let n = 0;
       while (this.acc >= DT && n < 3) { this.step(DT); this.acc -= DT; n++; }
       if (this.acc > DT) this.acc = 0; // fell behind: drop the backlog rather than spiral
+      if (fixed === undefined) this._blendPoses(Math.min(1, this.acc / DT));
     }
     for (const u of this.frameUpdaters) u(fdt);
     perf.begin('upload');

@@ -28,7 +28,7 @@ export class Clods {
 
   /** Feed a continuous outflow; emits whole clods and carries the remainder. key identifies the source. */
   pour(key, x, y, z, vx, vy, vz, mat, vol, spread = 0.5) {
-    let slot = this.pending.get(key); if (!slot) this.pending.set(key, slot = new Float64Array(8));
+    let slot = this.pending.get(key); if (!slot) this.pending.set(key, slot = new Float64Array(16)); // one per material, with room to spare
     slot[mat] += vol; this.pendingVol += vol;
     while (slot[mat] >= CLOD_VOL) {
       slot[mat] -= CLOD_VOL; this.pendingVol -= CLOD_VOL;

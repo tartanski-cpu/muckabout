@@ -31,8 +31,9 @@ export class InteractionSystem {
       h.busy = false; h.holding = s.held; h.pointing = false; s.line.visible = false;
       if (!h.tracked) { this._drop(h, s); continue; }
       if (s.held) {
+        // let go if the grip opens, or the hand strays from a fixed control (a thing you carry goes wherever the hand goes)
         const c = s.held;
-        if (!h.gripDown || !c.enabled || c.grabPoint(_p).distanceTo(h.pos) > REACH.breakAway) { c.grabEnd(h); s.held = null; h.holding = null; if (h.gripDown) h.pulse(0.5, 50); }
+        if (!h.gripDown || !c.enabled || (!c.carried && c.grabPoint(_p).distanceTo(h.pos) > REACH.breakAway)) { c.grabEnd(h); s.held = null; h.holding = null; if (h.gripDown) h.pulse(0.5, 50); }
         else { c.grabMove(h); h.busy = true; continue; }
       }
       if (s.pressing && !h.triggerDown && (s.byRay || s.pressing.distanceTo(h.tip) > REACH.pokeRadius * 1.6)) { s.pressing.release(h); s.pressing = null; }

@@ -325,3 +325,18 @@ describe('bog', () => {
     }
   });
 });
+
+describe('the heap in front of a blade', () => {
+  it('stays about blade height on a long push: the surplus spills round the ends into windrows, and the soil balances', async () => {
+    const r = await rig('dozer', { x: 10, z: 16 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(90);
+    const v0 = await r.total(), g0 = r.terrain.heightAt(10, 16);
+    r.step(110, (m) => { m.inp.lift = -1; }); r.m.inp.lift = 0;
+    let peak = 0, side = 0;
+    r.step(1500, (m, i) => { m.inp.left = 0.8; m.inp.right = 0.8; if (i % 10 === 0) for (let d = 2; d < 6; d += 0.5) peak = Math.max(peak, r.terrain.heightAt(m.position.x, m.position.z - d) - g0); });
+    const z = r.m.position.z; for (let dz = 1; dz < 8; dz += 0.5) side = Math.max(side, r.terrain.heightAt(10 + 2.4, z + dz) - g0, r.terrain.heightAt(10 - 2.4, z + dz) - g0);
+    expect(16 - z).toBeGreaterThan(6);                                   // it did push a long way
+    expect(peak).toBeLessThan(1.3);                                      // no bow wave up at the driver's eyes
+    expect(side).toBeGreaterThan(0.12);                                  // windrows left beside the cut
+    expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-6);
+  });
+});
