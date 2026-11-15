@@ -28,7 +28,7 @@ const packField = (f) => { const n = f.fill.length, fill = new Uint8Array(n); fo
 export async function startHost(game, S, transport, code) {
   S.THREE = game.THREE;
   await transport.host(code);
-  const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map(), silence: 12, drops: 0, admits: 0, max: MAX_PLAYERS };
+  const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map(), silence: 12, drops: 0, admits: 0, max: MAX_PLAYERS, replaced: new Set() };
   const writer = new TerrainDeltaWriter(game.terrain); game.terrain.onChunks((c) => writer.markChunks(c));
   // record clod spawns for the clients
   const spawn = game.clods.spawn.bind(game.clods);
@@ -42,14 +42,17 @@ export async function startHost(game, S, transport, code) {
     // A player dropped for going quiet (headset off, wifi blip) whose link is still up is let straight back in on its
     // next message, and brought up to date as a newcomer is. It used to be ignored for good: in the room, seeing the
     // host, unable to drive or be seen, and a fresh join was the only way back.
+    // A link its player has already replaced with a new one can still deliver a last message or two: ignore it, or it
+    // is let back in and stands about as a ghost with the same player's look until it times out.
+    if (net.replaced.has(from)) return;
     if (!net.peers.has(from)) {
       // full: a player coming back on a new link (`was`) takes its old place, anyone else is turned away
-      if (msg.t === 'hello' && msg.was && net.peers.has(msg.was)) drop(msg.was);
+      if (msg.t === 'hello' && msg.was && msg.was !== from) { net.replaced.add(msg.was); drop(msg.was); }
       if (net.peers.size >= net.max - 1) { if (msg.t === 'hello') transport.send({ t: 'full', max: net.max }, from); return; }
     }
     const back = !net.peers.has(from), peer = admit(from); peer.last = now();
     if (msg.t === 'hello' || back) {
-      if (msg.was && msg.was !== from) drop(msg.was); // the same player on a new link: free the old one's seat now
+      if (msg.was && msg.was !== from) { net.replaced.add(msg.was); drop(msg.was); } // the same player on a new link: free the old one's seat now
       const w = game.terrain.water;
       transport.send({ t: 'welcome', id: from, map: game.terrain.mapName, terrain: writer.full(), water: w ? encodeWater(w) : null }, from);
       for (const r of game.rigs) net.sentRev.delete(r.key); // resend every container to the newcomer
