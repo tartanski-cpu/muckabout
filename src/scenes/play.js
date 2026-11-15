@@ -5,6 +5,7 @@ import { DEFS } from '../../machines/index.js';
 import { Physics } from '../vehicles/physics.js';
 import { Machine } from '../vehicles/machine.js';
 import { XRInput, stickOf } from '../xr/input.js';
+import { MouseHand } from '../xr/mouseHand.js';
 import { InteractionSystem } from '../xr/interaction.js';
 import { Hands } from '../xr/hands.js';
 import { Player } from '../xr/player.js';
@@ -29,9 +30,9 @@ const _p = new THREE.Vector3(), _f = new THREE.Vector3(), _u = new THREE.Vector3
 export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   const { terrain, scene } = game, map = terrain.map;
   const phys = await Physics.create(), input = new XRInput(game.renderer, game.rig), inter = new InteractionSystem(scene);
-  const hands = new Hands(scene), player = new Player(game, input), bus = new AudioBus();
+  const hands = new Hands(scene), player = new Player(game, input), bus = new AudioBus(), mouse = new MouseHand(game, input, inter);
   const machines = [], keys = new Set();
-  const S = { phys, input, inter, hands, player, bus, machines, keys, chase: false, look: { yaw: 0, pitch: -0.15 }, renderEngine };
+  const S = { phys, input, inter, hands, player, bus, machines, keys, mouse, chase: false, look: { yaw: 0, pitch: -0.15 }, renderEngine };
 
   for (const kind of kinds) {
     const def = DEFS[kind]; if (!map.spawn[kind]) continue;
@@ -244,7 +245,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   // ---- per frame: hands, interaction, player, camera, audio, HUD
   const hudHolder = new THREE.Group(); scene.add(hudHolder); game.hud.attachTo(hudHolder);
   game.frameUpdaters.push((fdt) => {
-    input.update(); pollPad();
+    mouse.update(); input.update(); pollPad();
     inter.update(input.hands, fdt);
     const { left, right } = input.hands;
     if (left.primaryPressed) game.hud.toggle();
@@ -286,12 +287,14 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
   });
 
-  // ---- desktop debug: keyboard + mouse look
+  // ---- PC: the mouse works the controls under it (xr/mouseHand.js); anywhere else, dragging looks round
   let drag = false;
   const el = game.renderer.domElement;
-  el.addEventListener('pointerdown', () => { drag = true; bus.start(); });
-  addEventListener('pointerup', () => { drag = false; });
-  addEventListener('pointermove', (e) => { if (drag) { S.look.yaw -= e.movementX * 0.004; S.look.pitch = clamp(S.look.pitch - e.movementY * 0.004, -1.3, 1.3); } });
+  el.addEventListener('pointerdown', (e) => { bus.start(); if (!mouse.down(e)) drag = true; else el.setPointerCapture?.(e.pointerId); });
+  addEventListener('pointerup', () => { drag = false; mouse.up(); });
+  el.addEventListener('pointerleave', () => mouse.leave());
+  el.addEventListener('wheel', (e) => { if (mouse.wheel(e)) e.preventDefault(); }, { passive: false });
+  addEventListener('pointermove', (e) => { mouse.move(e); if (drag) { S.look.yaw -= e.movementX * 0.004; S.look.pitch = clamp(S.look.pitch - e.movementY * 0.004, -1.3, 1.3); } });
   game.renderer.xr.addEventListener('sessionstart', () => { bus.start(); S.chase = false; if (game.camera.parent !== game.rig) game.rig.add(game.camera); setTimeout(() => player.recentre(), 500); });
   game.renderer.xr.addEventListener('sessionend', () => { inter.releaseAll(input.hands); game.camera.position.set(0, 0, 0); game.camera.rotation.set(0, 0, 0); });
   addEventListener('keyup', (e) => keys.delete(e.code));
@@ -342,7 +345,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Grab the yellow handrail to climb in. `
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
-      + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
+      + `<b>PC:</b> point at a lever, switch, key or the wheel and it lights up; drag it (up pushes forward), click a switch or button; on foot, click a handrail to climb in. Drag anywhere else to look round.<br>`
+      + `<b>Keys:</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
       + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ reset; on foot, sticks walk and look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`

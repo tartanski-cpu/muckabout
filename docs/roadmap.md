@@ -63,6 +63,11 @@ Nothing has run on a Quest yet. Work through `docs/quest-test-checklist.md` befo
 
 ### 0b. Three players, PC and VR
 
+**Progress:**
+- Done: three players. The host takes up to four and turns a fifth away; clients drop the figure of a player who has left. `tests/e2e/coop3.mjs`.
+- Done: the mouse works cab controls and handrails through the VR interaction code. `tests/e2e/pc.mjs`.
+- Still to do: client prediction, hand tools in co-op, the PC graphics tier, the start page, carried hand tools with the mouse tested, and the three-player MVP job test.
+
 Done early, because the friends cannot play at all without it, and every later chapter is cheaper if it is built for three players and two kinds of seat from the start.
 
 - **Three players:** co-op is host plus one today (`src/net/session.js`). Grow it to host plus two, with the drop-and-rejoin tests (`tests/e2e/coop.mjs`, `tests/e2e/peer.mjs`) extended to three.

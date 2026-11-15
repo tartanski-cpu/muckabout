@@ -60,7 +60,9 @@ Everything in the cab is physical: reach, squeeze the grip, move your hand. The 
 
 The job is on the clipboard in every cab: cut a road down the terraces, build a crossing (mud for bulk, gravel on top; mud alone washes out), get the dumper and loader across, haul 20 m³ of sand back to the hopper.
 
-**Desktop debug keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
+**On a PC, the mouse** works the cab's own controls (`src/xr/mouseHand.js`, driving the same interaction code as a VR hand): point at a lever, joystick, switch, key or the wheel and it lights up; drag it (mouse up pushes forward, in the seat's frame wherever you look) or click it. On foot, click a handrail to climb in. Dragging where there is no control looks round. `tests/e2e/pc.mjs` drives a loader this way with real mouse events.
+
+**Desktop keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
 
 **Playing together (up to four):** one presses *Host a game* on the start page and reads out the five-digit room number; the others type it and press *Join*. The host runs the world; the others see it about 0.15 s behind. A fifth is told the room is full. First into a seat owns that machine. If a player drops out (headset off, wifi blip, page reload) they are put back by themselves: the dash says RECONNECTING until they are, and a seat they were in is given back. If the host reloads its page it reopens the same room (the number is in its address) and the other player finds it again.
 
