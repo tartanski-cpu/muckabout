@@ -131,6 +131,12 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
         if (sm.x && sx && !turns) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + sx * sm.x[1], -1, 1);
         if (sm.y && sy) inp[sm.y[0]] = clamp((inp[sm.y[0]] || 0) + sy * sm.y[1], -1, 1);
       }
+      // Backhoe pattern. The hoe's joysticks and stick maps are written in the ISO (excavator) pattern: left hand swing
+      // and dipper, right hand boom and bucket. Backhoe loaders traditionally use the SAE pattern, which swaps boom
+      // and dipper between the hands (left: swing and boom; right: dipper and bucket), so that is the default; the
+      // ISO PATTERN switch in the cab puts it back. The desktop keys are named for what they move and are not swapped.
+      const hs = m.def.handSwap;
+      if (hs && !(inp.pattern > 0.5)) { const v = inp[hs[0]]; inp[hs[0]] = inp[hs[1]]; inp[hs[1]] = v; }
       if (inp.assist > 0.5 || (!game.renderer.xr.isPresenting && (keys.size || pad.on))) assist(m, left, right);
     }
     if (m.driver && m.driver !== 'local' && m.remoteInp) Object.assign(inp, m.remoteInp); // co-op: the other player is driving this one

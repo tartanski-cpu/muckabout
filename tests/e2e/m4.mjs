@@ -32,5 +32,15 @@ try {
   check(drift < 1e-3, `volume conserved (${(drift * 100).toExponential(1)} %)`);
   const calls = await page.evaluate(() => __game.perf.snapshot().counters.find((c) => c.name === 'calls').value);
   check(calls <= 150, `draw calls within budget with four machines (${calls})`);
+  // the hoe's joysticks: SAE backhoe pattern by default (left hand: swing and boom; right hand: dipper and bucket), ISO at the cab switch
+  const pat = await page.evaluate(() => { const g = __game, m = g.machine('backhoe'), c = m.controls; m.override = { key: 1, park: 1, throttle: 1 }; g.sim(120);
+    const pull = (stick, y, n = 40) => { const b0 = m.fn.hoeBoom.pos, d0 = m.fn.dipper.pos; for (let i = 0; i < n; i++) { c[stick].value.x = 0; c[stick].value.y = y; g.sim(1); } c[stick].value.y = 0; g.sim(2); return { boom: m.fn.hoeBoom.pos - b0, dipper: m.fn.dipper.pos - d0 }; };
+    m.fn.hoeBoom.pos = 0.4; m.fn.dipper.pos = 1.4; g.sim(2);
+    const saeL = pull('hoeLeft', -1), saeR = pull('hoeRight', 1); c.pattern.set(1); g.sim(2);
+    const isoL = pull('hoeLeft', -1), isoR = pull('hoeRight', -1); c.pattern.set(0);
+    return { saeL, saeR, isoL, isoR }; });
+  check(pat.saeL.boom > 0.1 && Math.abs(pat.saeL.dipper) < 0.01, `backhoe pattern (SAE, default): left stick pulled back raises the boom (${pat.saeL.boom.toFixed(2)} rad)`);
+  check(pat.saeR.dipper < -0.1 && Math.abs(pat.saeR.boom) < 0.01, 'backhoe pattern (SAE): right stick pushed forward sends the dipper out');
+  check(pat.isoL.dipper > 0.1 && Math.abs(pat.isoL.boom) < 0.01 && pat.isoR.boom > 0.1 && Math.abs(pat.isoR.dipper) < 0.01, 'ISO PATTERN switch: left stick back brings the dipper in, right stick back raises the boom');
   check(page.errs.length === 0, 'no page errors' + (page.errs.length ? ':\n  ' + page.errs.join('\n  ') : ''));
 } finally { await done(); }

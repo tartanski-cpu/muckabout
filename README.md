@@ -115,6 +115,10 @@ Key decisions:
 
 An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick looks round (in chase view it orbits the machine), hold **LB** and the right stick works the bucket/blade/bed instead (from the backhoe's rear seat the left stick works the hoe too; right stick click turns the seat), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
 
+## Backhoe control pattern
+
+From the rear seat the hoe is worked in the **SAE backhoe pattern** by default: left hand swing and boom, right hand dipper and bucket. The `ISO PATTERN` switch in the cab gives the excavator pattern, with boom and dipper on the other hands. The machine file is written in ISO; `handSwap` names the two functions SAE exchanges (`readControls` in `src/scenes/play.js`). The front loader lever is the usual single lever: back raises, forward lowers, left rolls back, right dumps.
+
 ## Hand tools
 
 `src/game/handTools.js`: a shovel, two grading stakes with a level string line, and a tow chain, lying beside where you start. Grip to pick up. The shovel's blade is a small cutting edge like a bucket's: it takes soil from the ground and throws it off as clods, and its load is in the volume audit. The line runs level with the first stake's foot, with droppers coloured by how the ground stands against it. A hook let go at the end of a machine hitches there; a taut chain pulls on both machines (`Machine.tow`), and a hitched machine with its park brake off rolls free. Not replicated in co-op.

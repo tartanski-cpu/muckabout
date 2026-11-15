@@ -144,3 +144,9 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - Turning any vehicle: the world should now sweep past smoothly at the headset's frame rate. Before, the machines moved 60 times a second under a 90 Hz display, which looked like a low frame rate. Is the judder gone on the wheeled machines and on the dozer? On both physics models?
 - Steering wheels are higher, nearer and clear of the dash; the dozer's track levers are 12 cm higher; the wipers are gone from every windscreen. Reach and height right now?
 
+## Backhoe control pattern (changed)
+
+- From the rear seat the hoe's joysticks are now in the SAE backhoe pattern: left hand swing (left/right) and boom (back = up), right hand dipper (forward = out) and bucket (left = curl, right = dump). Is that what you expected from a real backhoe loader?
+- The ISO PATTERN switch between the two sticks swaps boom and dipper between the hands (the excavator layout). Does it flip cleanly?
+- The controller thumbsticks follow the same pattern as the levers.
+
