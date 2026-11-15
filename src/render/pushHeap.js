@@ -33,7 +33,7 @@ export class PushHeap {
     let s = this.states.get(tool);
     if (!s) {
       if (this.states.size >= TOOLS) return;
-      // per granule: x y z, vx vy vz, spin, size, rest (seconds lying still), on (0 = waiting to be fed in)
+      // per granule: x y z, vx, age (s), vz, spin, size, seconds lying where there is no heap, on (0 = waiting to be fed in)
       s = { act: 0, kick: 0, px: null, pz: 0, p: new Float32Array(PER_TOOL * 10), fresh: 3 }; this.states.set(tool, s);
     }
     s.kick = 0.3;
@@ -74,20 +74,33 @@ export class PushHeap {
       //   blade's ends than at its middle, so the heap is pushed out in a bow; and soil near the face is squeezed
       //   sideways, more the nearer the ends, so it flows round them and is left behind as the windrows.
       // They are fed in only at the foot of the blade, as fast as it is cutting, so the field grows from the blade.
-      let feed = pushing ? Math.ceil(count * dt * (0.5 + bs) * 2) : 0;
+      let feed = s.kick > -0.3 ? Math.ceil(count * dt * (0.5 + bs) * 3) : 0; // while soil is being cut, moving or not
+      // heap: soil that has been moved (the terrain marks ground it has disturbed) and stands above the floor the edge is cutting.
+      // Untouched ground beside a trench is higher than the trench's floor too, but it is not heap.
+      const info = T.info, heap = (hx, hz) => T.heightAt(hx, hz) - floor > 0.07 && (!info || info[T.cellAt(hx, hz) * 4 + 1] > 60);
       // how far ahead of the face the heap reaches, down its middle
-      let reach = 0.6; for (let a = 0.3; a < 3.4; a += 0.3) if (T.heightAt(cx + fx * a, cz + fz * a) - floor > 0.07) reach = a + 0.3;
+      let reach = 0.6; for (let a = 0.3; a < 3.4; a += 0.3) if (heap(cx + fx * a, cz + fz * a)) reach = a + 0.3;
       const drag = 1 - Math.exp(-7 * dt);
       for (let i = 0; i < count; i++) {
         const k = i * 10;
         let x = P[k], y = P[k + 1], z = P[k + 2], vx = P[k + 3], vz = P[k + 5];
         let d = (x - cx) * fx + (z - cz) * fz, u = (x - cx) * ax + (z - cz) * az;
         const behind = d < -0.3 && Math.abs(u) < hw;
-        const lost = !P[k + 9] || behind || d > 5 || d < -4 || Math.abs(u) > hw + 3 || P[k + 8] > 0.7;
+        const old = P[k + 4] > 3 + 3 * ((i * 17) % 13) / 12; // each is turned under after a few seconds and comes up somewhere else: bare patches fill
+        const lost = !P[k + 9] || behind || old || d > 5 || d < -4 || Math.abs(u) > hw + 3 || P[k + 8] > 0.4;
         if (lost) {
           if (feed <= 0) { if (!P[k + 9]) continue; }
           else {
-            feed--; u = (rnd() * 2 - 1) * hw; d = 0.06 + rnd() * 0.3;
+            // a third come up at the foot of the blade; the rest anywhere there is heap to lie on, so the field is the
+            // heap's own shape and covers all of it
+            feed--;
+            if (rnd() < 0.33) { u = (rnd() * 2 - 1) * hw; d = 0.06 + rnd() * 0.3; }
+            else {
+              u = (rnd() * 2 - 1) * (hw + 1.2); d = -0.6 + rnd() * (reach + 1.0);
+              if (d < 0.06 && Math.abs(u) < hw) d = 0.06 + rnd() * 0.3;
+              if (!heap(cx + ax * u + fx * d, cz + az * u + fz * d)) { feed++; continue; }
+            }
+            P[k + 4] = 0;
             x = cx + ax * u + fx * d; z = cz + az * u + fz * d; vx = bvx; vz = bvz;
             const q = rnd();
             P[k + 6] = rnd() * 6.3; P[k + 7] = 0.55 + 1.35 * q * q * q; P[k + 8] = 0; P[k + 9] = 1;
@@ -120,10 +133,10 @@ export class PushHeap {
         y += (h + lie + well - y) * Math.min(1, dt * 12);
         if (y < h + lie) y = h + lie;
         // lying still where there is no heap: soon fed back in at the blade
-        P[k + 8] = sp < 0.1 && h - floor < 0.05 ? P[k + 8] + dt : 0;
+        P[k + 8] = heap(x, z) ? 0 : P[k + 8] + dt;
+        if (pushing) P[k + 4] += dt;
         P[k + 6] += sp * dt * 6;
-        const vy = 0;
-        P[k] = x; P[k + 1] = y; P[k + 2] = z; P[k + 3] = vx; P[k + 4] = vy; P[k + 5] = vz;
+        P[k] = x; P[k + 1] = y; P[k + 2] = z; P[k + 3] = vx; P[k + 5] = vz;
         if (!draw) continue;
         const sc = grow * P[k + 7], sp6 = P[k + 6];
         _o.position.set(x, y - sink, z); _o.rotation.set(sp6, i * 1.7, sp6 * 0.6 + i);
