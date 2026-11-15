@@ -3,7 +3,7 @@
 import { TerrainCore, CHUNK } from './core.js';
 import { MAPS } from './maps.js';
 import { MATERIALS, ROCK } from './materials.js';
-import { applyTerrainDelta, decodeWater } from '../net/terrainDelta.js';
+import { applyTerrainDelta, decodeWater, repackAll } from '../net/terrainDelta.js';
 
 export class TerrainClient {
   /** @param {{map:string, mode?:'inline'|'worker', water?:boolean}} o */
@@ -119,6 +119,13 @@ export class TerrainClient {
     if (m.water) { this.water = m.water; for (const l of this.waterListeners) l(m.water); }
   }
   /** Co-op client: apply a terrain delta / water message from the host. */
+  /** Co-op client: the first call keeps the map as built; later calls put it back, ready to take a host's whole site
+   *  again (a welcome only lists what differs from the map as built, so stale digging would otherwise stay). */
+  resetRemote() {
+    if (!this._base) { this._base = { h: this.h.slice(), info: this.info.slice() }; return; }
+    this.h.set(this._base.h); this.info.set(this._base.info);
+    const chunks = repackAll(this); for (const l of this.listeners) l(chunks);
+  }
   applyRemote(bytes) { const chunks = applyTerrainDelta(this, bytes); if (chunks.length) for (const l of this.listeners) l(chunks); }
   applyRemoteWater(bytes) {
     const w = this.water; if (!w) return;

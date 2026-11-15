@@ -62,7 +62,7 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 
 **Desktop debug keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
 
-**Two players:** one presses *Host a game* on the start page and reads out the five-digit room number; the other types it and presses *Join*. The host's headset runs the world; the other player sees it about 0.15 s behind. First into a seat owns that machine.
+**Two players:** one presses *Host a game* on the start page and reads out the five-digit room number; the other types it and presses *Join*. The host's headset runs the world; the other player sees it about 0.15 s behind. First into a seat owns that machine. If a player drops out (headset off, wifi blip, page reload) they are put back by themselves: the dash says RECONNECTING until they are, and a seat they were in is given back. If the host reloads its page it reopens the same room (the number is in its address) and the other player finds it again.
 
 ## Light and effects
 
@@ -156,7 +156,7 @@ All sound is synthesised; there are no samples. The engine note is not mixed fro
 ## Known gaps and deviations from the spec
 
 - **Not run on a Quest.** Frame rate, control reach and placement, hand fit and comfort are untested. Desktop numbers for the stress scene: terrain worker ≈ 0.6 ms a tick, main-thread sim ≈ 2 ms a frame, ~75–150 draw calls, ~230k triangles.
-- **Co-op over the internet is untested.** The session logic is tested between two browser tabs; the PeerJS link (public broker, default STUN/TURN) cannot be reached from the build machine. A client's own machine is not predicted locally, so it responds about 0.15 s late.
+- **Co-op over the internet is only partly tested.** `tests/e2e/coop.mjs` drops and rejoins a player every way it can between two browser tabs; `tests/e2e/peer.mjs` runs real PeerJS and WebRTC against a matchmaking server on the build machine (`?broker=host:port`), including that server going away and coming back. PeerJS's public server, a home router and two headsets are not reachable from here. If the public server is down nobody new can join until it is back; players already in carry on. A client's own machine is not predicted locally, so it responds about 0.15 s late.
 - **Workboat World / SWVR code** could not be copied as-is (Workboat World is Godot; SWVR's controls depend on its vessel state). The interaction rules, grab maths, haptic values, locomotion numbers and network model are ported from SWVR. The avatar is a simple head, body and gloves.
 - **Booms, buckets, blades, beds** are kinematic parts, not Rapier joints with motors. Only the articulation hinge is a real joint.
 - **`diesel.dsp`** was not in the handover; the engine is a new AudioWorklet synth (see Sound below). It is tuned by measurement and spectrogram, not yet by ear on the headset.

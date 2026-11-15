@@ -39,12 +39,19 @@ const join = q.get('join'), hosting = flag('host', false);
   status.textContent = `${game.terrain.mode} terrain · ${game.opts.map} map`;
   if (hosting || join) {
     const { makeTransport, newRoomCode } = await import('./net/transport.js'), { startHost, startClient } = await import('./net/session.js');
-    const transport = makeTransport(q.get('net') || 'peer'), code = join || q.get('room') || newRoomCode();
+    const transport = makeTransport(q.get('net') || 'peer', q.get('broker')), code = join || q.get('room') || newRoomCode();
+    if (hosting && !q.get('room')) { const u = new URL(location.href); u.searchParams.set('room', code); history.replaceState(null, '', u); } // a reload of the host's page reopens the same room
     status.textContent = hosting ? 'opening room…' : `joining room ${code}…`;
     try {
       if (hosting) { await startHost(game, game.scene_, transport, code); status.textContent = `hosting · room ${code} · tell the other player this number`; }
       else { await startClient(game, game.scene_, transport, code); status.textContent = `joined room ${code}`; }
-      const el = document.getElementById('netStatus'); if (el) el.textContent = hosting ? `Room ${code}` : `In room ${code}`;
+      const el = document.getElementById('netStatus'), net = game.scene_.net;
+      const say = () => {
+        const t = hosting ? `Room ${code} · ${net.peers.size ? net.peers.size + ' joined' : 'nobody else here yet'}${transport.reachable === false ? ' · reconnecting to the matchmaking server' : ''}`
+          : net.lost ? `Lost room ${code}: reconnecting…` : `In room ${code}`;
+        if (el && el.textContent !== t) el.textContent = t; if (!hosting && net.lost) status.textContent = t;  else if (!hosting) status.textContent = `joined room ${code}`;
+      };
+      say(); setInterval(say, 1000);
     } catch (e) { status.textContent = 'co-op failed: ' + e.message; console.warn(e); }
   }
 })().catch((e) => { status.textContent = 'failed to start: ' + e.message; console.error(e); });

@@ -88,6 +88,17 @@ export function applyTerrainDelta(mirror, bytes) {
   return out;
 }
 
+/** Every chunk of a mirror, packed for the renderer (after the whole ground was put back at once). */
+export function repackAll(mirror) {
+  const { h, info, nx, nz } = mirror, cnx = nx / CHUNK, cnz = nz / CHUNK, out = [];
+  for (let cj = 0; cj < cnz; cj++) for (let ci = 0; ci < cnx; ci++) {
+    const ph = new Float32Array(CHUNK * CHUNK), pi = new Uint8Array(CHUNK * CHUNK * 4);
+    for (let j = 0; j < CHUNK; j++) { const src = (cj * CHUNK + j) * nx + ci * CHUNK; ph.set(h.subarray(src, src + CHUNK), j * CHUNK); pi.set(info.subarray(src * 4, (src + CHUNK) * 4), j * CHUNK * 4); }
+    out.push({ id: cj * cnx + ci, h: ph, info: pi });
+  }
+  return out;
+}
+
 /** Water snapshot → bytes: per cell depth (cm, u8) and flow (i8 × 0.05 m/s), with dry runs collapsed. */
 export function encodeWater(w) {
   const n = w.nx * w.nz, out = new Uint8Array(n * 3 + 16); let o = 0, k = 0;

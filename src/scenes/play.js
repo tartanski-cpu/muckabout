@@ -91,7 +91,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (m.gradeOn) { c.fillStyle = '#9fe08a'; c.font = 'bold 15px monospace'; c.fillText('AUTO LEVEL', 150, 122); c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace'; }
     c.fillText(e.running ? `${e.rpm.toFixed(0)} rpm` : e.crank > 0 ? 'cranking…' : 'ENGINE OFF', 12, 58);
     c.fillStyle = '#9fd4ff'; c.font = 'bold 15px monospace'; c.fillText(S.physics === 'custom' ? 'CUSTOM PHYSICS' : 'RAPIER PHYSICS', 12, 122); c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
-    if (S.net) { c.fillStyle = S.net.lost ? '#ff7a5a' : '#9fd4ff'; c.font = 'bold 16px monospace'; c.fillText(S.net.lost ? 'LINK LOST' : `ROOM ${S.net.code}`, 150, 58); c.fillStyle = '#ffd25a'; }
+    if (S.net) { c.fillStyle = S.net.lost ? '#ff7a5a' : '#9fd4ff'; c.font = 'bold 16px monospace'; c.fillText(S.net.lost ? 'RECONNECTING' : `ROOM ${S.net.code}`, 150, 58); c.fillStyle = '#ffd25a'; }
     const load = m.payload(), cap = m.rigs.reduce((s, r) => s + r.field.capacity, 0);
     if (cap) { c.fillStyle = '#2b3a40'; c.fillRect(12, 70, 232, 12); c.fillStyle = '#c98a3a'; c.fillRect(12, 70, 232 * clamp(load / cap, 0, 1), 12);
       c.fillStyle = '#9fe08a'; c.font = 'bold 18px monospace'; c.fillText(`LOAD ${load.toFixed(2)} m³`, 12, 108); }

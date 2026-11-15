@@ -21,7 +21,7 @@ export async function harness() {
     // the scripted runs were tuned on the Rapier model; a test that wants the custom one says so in its URL
     if (!/save=/.test(path) && !/poc/.test(path)) path += (path.includes('?') ? '&' : '?') + 'save=0'; // tests start from the map as built unless they ask for the saved site
     if (!/physics=/.test(path) && !/poc|scene=stress/.test(path)) path += (path.includes('?') ? '&' : '?') + 'physics=' + (process.env.PHYSICS || 'rapier'); // PHYSICS=custom runs the same scenarios on the other model
-    await page.goto(base + path);
+    await page.goto(base + path, { timeout: 120000 }); // a third page is slow to load while two others render in software
     await page.waitForFunction((w) => window[w] && (window[w].ready !== false), wait, { timeout: 60000 });
     page.errs = errs;
     return page;

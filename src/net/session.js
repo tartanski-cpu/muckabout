@@ -27,18 +27,23 @@ const packField = (f) => { const n = f.fill.length, fill = new Uint8Array(n); fo
 export async function startHost(game, S, transport, code) {
   S.THREE = game.THREE;
   await transport.host(code);
-  const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map() };
+  const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map(), silence: 12, drops: 0, admits: 0 };
   const writer = new TerrainDeltaWriter(game.terrain); game.terrain.onChunks((c) => writer.markChunks(c));
   // record clod spawns for the clients
   const spawn = game.clods.spawn.bind(game.clods);
   game.clods.spawn = (x, y, z, vx, vy, vz, mat, vol) => { if (net.peers.size && net.clods.length < 8 * 250) net.clods.push(x, y, z, vx, vy, vz, mat, vol); spawn(x, y, z, vx, vy, vz, mat, vol); };
 
-  transport.onPeer = (id) => { net.peers.set(id, { pose: null, last: now() }); };
+  const admit = (id) => { let p = net.peers.get(id); if (!p) { net.peers.set(id, p = { pose: null, last: now() }); net.admits++; } return p; };
+  transport.onPeer = (id) => { admit(id); };
   transport.onLeave = (id) => drop(id);
-  function drop(id) { net.peers.delete(id); net.avatars.get(id)?.dispose(); net.avatars.delete(id); for (const m of game.machines) if (m.driver === id) { m.driver = null; m.remoteInp = null; } }
+  function drop(id) { if (net.peers.delete(id)) net.drops++; net.avatars.get(id)?.dispose(); net.avatars.delete(id); for (const m of game.machines) if (m.driver === id) { m.driver = null; m.remoteInp = null; } }
   transport.onMessage = (msg, from) => {
-    const peer = net.peers.get(from); if (!peer) return; peer.last = now();
-    if (msg.t === 'hello') {
+    // A player dropped for going quiet (headset off, wifi blip) whose link is still up is let straight back in on its
+    // next message, and brought up to date as a newcomer is. It used to be ignored for good: in the room, seeing the
+    // host, unable to drive or be seen, and a fresh join was the only way back.
+    const back = !net.peers.has(from), peer = admit(from); peer.last = now();
+    if (msg.t === 'hello' || back) {
+      if (msg.was && msg.was !== from) drop(msg.was); // the same player on a new link: free the old one's seat now
       const w = game.terrain.water;
       transport.send({ t: 'welcome', id: from, map: game.terrain.mapName, terrain: writer.full(), water: w ? encodeWater(w) : null }, from);
       for (const r of game.rigs) net.sentRev.delete(r.key); // resend every container to the newcomer
@@ -49,7 +54,7 @@ export async function startHost(game, S, transport, code) {
   };
   game.frameUpdaters.push((dt) => {
     for (const [id, peer] of net.peers) { // draw the other player; drop anyone silent for 12 s (a headset taken off rarely closes the link)
-      if (now() - peer.last > 12) { drop(id); continue; }
+      if (now() - peer.last > net.silence) { drop(id); continue; }
       let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene, id, (x, z) => game.terrain.heightAt(x, z)));
       a.update(peer.pose, dt);
     }
@@ -68,14 +73,37 @@ export async function startHost(game, S, transport, code) {
 // ------------------------------------------------------------------ client
 export async function startClient(game, S, transport, code) {
   S.THREE = game.THREE;
-  const net = S.net = { role: 'client', code, transport, id: null, buffers: new Map(), avatars: new Map(), poses: new SnapshotBuffer(), acc: 0, lost: false, lastSnap: now(), drivers: {} };
+  const net = S.net = { role: 'client', code, transport, id: null, buffers: new Map(), avatars: new Map(), poses: new SnapshotBuffer(), acc: 0, lost: false, lastSnap: now(), drivers: {}, seatT: 0, helloT: 0, rejoining: false, rejoins: 0, closed: false, error: null };
   for (const m of game.machines) net.buffers.set(m.id, new SnapshotBuffer());
   const rigByKey = new Map(game.rigs.map((r) => [r.key, r]));
   game.clods.setTargets({ heightAt: (x, z) => game.terrain.heightAt(x, z), deposit() {} }, []); // clods are scenery here: the host's terrain is the truth
-  let welcomed; const ready = new Promise((r) => { welcomed = r; });
-  transport.onLeave = () => { net.lost = true; };
+  game.terrain.resetRemote(); // keeps the map as built
+  let welcomed = null;
+  const sleep = (s) => new Promise((r) => setTimeout(r, s * 1000));
+  /** Link up, say hello, wait for the host's site. Used for the first join and for every way back in. */
+  async function connect() {
+    await transport.join(code);
+    const got = new Promise((res, rej) => { welcomed = res; setTimeout(() => rej(new Error('the host did not answer')), 15000); });
+    transport.send({ t: 'hello', was: net.id });
+    await got;
+  }
+  /** The link is gone: keep trying to get back in, a little slower each time, until it works or the page closes. */
+  async function rejoin() {
+    if (net.rejoining || net.closed) return; net.rejoining = true; net.lost = true;
+    for (let wait = 1; !net.closed; wait = Math.min(wait * 2, 8)) {
+      try { await connect(); net.rejoins++; net.error = null; break; } catch (e) { net.error = e.message; await sleep(wait); }
+    }
+    net.rejoining = false;
+  }
+  net.rejoin = rejoin;
+  transport.onLeave = () => { net.lost = true; rejoin(); };
   transport.onMessage = (msg) => {
-    if (msg.t === 'welcome') { net.id = msg.id; game.terrain.applyRemote(msg.terrain); if (msg.water) game.terrain.applyRemoteWater(msg.water); welcomed(); }
+    if (msg.t === 'welcome') {
+      if (net.id) game.terrain.resetRemote(); // coming back: start again from the map as built, the host may have reloaded
+      net.id = msg.id; game.terrain.applyRemote(msg.terrain); if (msg.water) game.terrain.applyRemoteWater(msg.water);
+      net.lastSnap = now(); net.lost = false; net.seatT = 0; welcomed?.();
+      if (S.player.machine) transport.send({ t: 'sit', m: S.player.machine.id }); // back after a drop: the host freed the seat, ask for it again
+    }
     else if (msg.t === 'snap') {
       const t = now(); net.lastSnap = t; net.lost = false;
       for (const id in msg.machines) { const s = msg.machines[id], m = game.machine(id); if (!m) continue; net.buffers.get(id).push(msg.time, t, s); net.drivers[id] = s.d; if (s.d !== net.id) setCtlValues(m, s.c); if (s.ev) for (const e of s.ev) m.voice.play(e); }
@@ -86,9 +114,8 @@ export async function startClient(game, S, transport, code) {
     else if (msg.t === 'water') game.terrain.applyRemoteWater(msg.d);
     else if (msg.t === 'cont') for (const key in msg.c) { const r = rigByKey.get(key); if (!r) continue; const p = msg.c[key], f = r.field; for (let k = 0; k < f.fill.length; k++) { f.fill[k] = p.f[k] / 100; f.mat[k] = p.m[k]; } f.dirty = true; }
   };
-  await transport.join(code);
-  transport.send({ t: 'hello' });
-  await Promise.race([ready, new Promise((_, rej) => setTimeout(() => rej(new Error('the host did not answer')), 15000))]);
+  for (let k = 0; ; k++) { try { await connect(); break; } catch (e) { if (k >= 2) throw e; await sleep(2); } } // three tries before giving up on a first join
+  addEventListener('pagehide', () => { net.closed = true; });
 
   const tmp = { b: [], f: [], w: [], e: [] };
   game.frameUpdaters.push((dt) => {
@@ -107,8 +134,16 @@ export async function startClient(game, S, transport, code) {
       a.update(pr.b[id], dt);
     }
     // someone else got the seat first: get out
-    const mine = S.player.machine; if (mine && net.drivers[mine.id] && net.drivers[mine.id] !== net.id && (net.seatT += dt) > 1) { S.stand(); S.input.hands.left.pulse(0.8, 80); S.input.hands.right.pulse(0.8, 80); }
-    if (t - net.lastSnap > 4) net.lost = true;
+    const mine = S.player.machine;
+    if (mine && !net.lost && net.drivers[mine.id] && net.drivers[mine.id] !== net.id) { if ((net.seatT += dt) > 1) { S.stand(); S.input.hands.left.pulse(0.8, 80); S.input.hands.right.pulse(0.8, 80); } }
+    else net.seatT = 0; // only a steady second of someone else in the seat counts, not moments added up over a session
+    // Nothing from the host: after 4 s say hello again down the same link (the host may only have timed us out);
+    // after 10 s take the link for dead and make a new one.
+    const quiet = t - net.lastSnap;
+    if (quiet > 4) {
+      net.lost = true;
+      if (!net.rejoining) { if (quiet > 10) rejoin(); else if (t - net.helloT > 2) { net.helloT = t; transport.send({ t: 'hello', was: null }); } }
+    }
     net.acc += dt; if (net.acc < NET_DT) return; net.acc = Math.min(net.acc - NET_DT, NET_DT);
     transport.send({ t: 'pose', p: localPose(game, S) });
     if (mine) transport.send({ t: 'inp', m: mine.id, inp: { ...mine.inp }, c: ctlValues(mine) });

@@ -65,10 +65,14 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 ## 7. Two players
 
 32. Headset A: on the start page press **Host a game**; read the five-digit room number (also on the dash display once seated).
-33. Headset B: type the number, press **Join**. *If it says it cannot reach the matchmaking server or the room, tell me the exact message.* This path has never been tested over a real network.
+33. Headset B: type the number, press **Join**. *If it says it cannot reach the matchmaking server or the room, tell me the exact message.* This path is tested against a matchmaking server on the build machine, not over a real network.
 34. Can you see each other (hard hat, body, gloves)? Do the other person's machines and digging appear, slightly delayed?
 35. B drives a machine: how laggy does it feel? A tries to grab the same machine's handrail: should be refused with a buzz.
-36. Take a headset off for 15 s and put it back on: does the game recover?
+36. Take headset B off for 20 s and put it back on. Its dash should say RECONNECTING for a moment, then ROOM again, and it should be back in its seat able to drive. *Before, this locked the player out until a fresh join.*
+36a. B: close the browser tab mid-game, open the game again and join the same number. Should get straight in, with the site as it stands.
+36b. A (host): reload the page. The room number must be the same as before; B should say RECONNECTING and come back by itself within about 20 s. (A is back on its last save, a minute old at most.)
+36c. Switch headset B's wifi off for 10 s and on again. Same recovery expected. If it never comes back, tell me what B's dash and start page say.
+36d. Does B see A's digging as it happens, not only the big changes? (Small ground updates used to arrive unreadable over the internet link; fixed, but never seen on two headsets.)
 
 ## Things I already suspect
 
