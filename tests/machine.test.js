@@ -442,6 +442,18 @@ describe('digging down in one pass', () => {
   }, 120000);
 });
 
+describe('standing a machine upright', () => {
+  it('puts it back on its wheels where it is, facing the way it faced', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); const m = r.m; r.step(30);
+    m.reset(12, 9, 1.0); r.step(30);
+    const rb = m.bodyList[0].rb; rb.setRotation({ x: 0.6, y: 0.45, z: 0.3, w: 0.59 }, true); // thrown on its side
+    m.upright(); r.step(60);
+    const e = m.bodyList[0].obj.matrixWorld.elements;
+    expect(e[5]).toBeGreaterThan(0.97);                                   // upright
+    expect(Math.hypot(m.position.x - 12, m.position.z - 9)).toBeLessThan(0.6); // where it was, not back at the start
+  });
+});
+
 describe('exhaust rain cap', () => {
   it('lies shut with the engine off, lifts a little at tick-over, stands well open when revved, and drops shut again', async () => {
     const r = await rig('loader', { x: 10, z: 14 }); const m = r.m; r.step(30);

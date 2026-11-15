@@ -32,7 +32,7 @@ Nothing below has been tried on a headset. Each item says what to do and what to
 
 ## 3b. Custom physics against Rapier
 
-The game starts on the **custom** vehicle model (the proof of concept's style). Seated, **click the left stick** to flip to Rapier and back; the dash display says which is on.
+The game starts on the **custom** vehicle model (the proof of concept's style). On the start page, under Extras, press **Physics** to flip to Rapier and back (it used to be a left stick click, too easy to hit by accident); the dash display says which is on.
 
 - Drive the same stretch on each: over a bank edge, across ruts, up to the stockpile. Which feels more like a heavy machine?
 - Dig on each: does the custom one bog believably when the bucket is in the pile?
@@ -58,7 +58,7 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 
 ## 6. Stress test (end of every milestone)
 
-29. On foot, click the **left stick**: all four machines start working on their own and gravel fountains out of the stockpile. Stand near them for a minute.
+29. On the start page, under Extras, press **Watch the demo drivers** (the page reloads; your saved site is not touched), then Enter VR: all four machines start working on their own and gravel fountains out of the stockpile. Stand near them for a minute.
 30. Read the wrist panel: fps, worst frame, and the `vehicles`, `terrain`, `upload`, `render` rows, plus `calls` and `tris`. **Target: 72 fps, worst frame under ~16 ms.** Send me the numbers.
 31. If it is under 72: note whether it is `render` (too much to draw) or `vehicles`/`upload` (too much to compute).
 
@@ -184,3 +184,8 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 ## Dozer digging down (changed again)
 
 - Blade right down, drive on in one go: it should keep going down into a trench (to the rock, about 2.5 m on the test ground) instead of levelling off on a platform about 1 m down. The soil the blade cannot hold is now left as a berm about 1.6 m back from the trench edge, not on its lip. Does the berm look right, and does the bow wave still stay below eye level?
+
+## Left stick click (changed)
+
+- Clicking the left stick no longer does anything by itself, on foot or seated. Seated, **hold it in for a second**: the machine you are in is stood back on its wheels where it is, with a buzz. Try it after rolling one over. Is a second the right length, and do you ever trigger it by accident while working the stick?
+- If the Rapier "digger goes round and round" trouble was after an accidental left stick click, it should not come back: that click was what switched the physics model.

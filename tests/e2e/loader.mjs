@@ -101,6 +101,15 @@ try {
   const st1 = await page.evaluate(() => ({ yaw: __game.rig.rotation.y, tilt: m.fn.bucket.pos }));
   check(Math.abs(st1.yaw - st0.yaw + Math.PI / 6) < 0.01 && Math.abs(st1.tilt - st0.tilt) < 0.02, 'seated: left stick sideways snap-turns 30° in the seat');
   await page.evaluate(() => hand('left', null)); await frame(100);
+  // seated: a click of the left stick does nothing (it used to switch the physics model); held in for a second it
+  // stands the machine upright where it is
+  await page.evaluate(() => { window.ph0 = __game.play.physics; window.up0 = 0; const u = m.upright.bind(m); m.upright = () => { window.up0++; u(); }; hand('left', at('steer', -0.4, 0.3, 0.3), false, { stickClick: true }); });
+  await frame(150); await page.evaluate(() => hand('left', at('steer', -0.4, 0.3, 0.3), false, {})); await frame(150);
+  const click = await page.evaluate(() => ({ same: __game.play.physics === ph0, ups: up0, stress: !!__game.play.stress }));
+  await page.evaluate(() => hand('left', at('steer', -0.4, 0.3, 0.3), false, { stickClick: true })); await frame(1400);
+  const held = await page.evaluate(() => ({ same: __game.play.physics === ph0, ups: up0, lean: m.bodyList[0].obj.matrixWorld.elements[5] }));
+  check(click.same && click.ups === 0 && !click.stress && held.same && held.ups === 1, `left stick: a click does nothing; held a second it stands the machine upright, once (${held.ups})`);
+  await page.evaluate(() => hand('left', null)); await frame(100);
   // on foot: grab the world. A grip squeezed on thin air and pulled 0.5 m back and 0.3 m down moves the player 0.5 m forward and 0.3 m up
   await page.evaluate(() => { P.stand(); }); await frame(200);
   const rigHand = (x, y, z, grip) => page.evaluate(([x, y, z, grip]) => P.input.setFake('right', { pos: new __game.THREE.Vector3(x, y, z), grip, parent: __game.rig }), [x, y, z, grip]);

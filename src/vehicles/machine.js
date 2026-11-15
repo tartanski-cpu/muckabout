@@ -318,6 +318,9 @@ export class Machine {
     if (this.kin.custom) this._enterCustom();
   }
 
+  /** Stand the machine back on its wheels where it is, facing the way it faced: for one that has rolled or wedged. */
+  upright() { const r = this.bodyList[0].rb.rotation(), t = this.bodyList[0].rb.translation(); _eul.setFromQuaternion(_q.set(r.x, r.y, r.z, r.w), 'YXZ'); this.reset(t.x, t.z, _eul.y); }
+
   // ------------------------------------------------------------------ custom vehicle model (no rigid-body solver)
   // The proof of concept's approach, generalised to every machine: speed and heading are integrated directly
   // (articulated, front-steer or skid-steer kinematics), and the chassis rides a plane fitted through the ground
