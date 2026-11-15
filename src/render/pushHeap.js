@@ -1,22 +1,19 @@
-// The heap being shoved along ahead of a blade or a full bucket, drawn as loose granules that flow.
+// The heap being shoved along ahead of a blade or a full bucket, drawn as loose granules that flow round it.
 //
 // The soil itself is already in the ground: the terrain windrows what a tool cannot take just ahead of its edge, and
-// that heap is what the machine pushes against and what the volume audit counts. This layer only dresses it, but it
-// is a small simulation of its own, so the heap looks like loose material and not a sheet:
-//   - every granule is a particle with a position and a velocity, under gravity
-//   - the blade is a moving wall: granules it catches are carried forward and boil up its face
-//   - they land on the heap (the terrain's surface) and run down its slope, losing speed to friction
-//   - so the material turns over: up at the blade, forward over the top, down the front, caught again; at the
-//     blade's ends it spills out sideways
-//   - a granule left behind, or come to rest off the heap, is fed back in at the blade
-// When the pushing stops nothing is fed in, the granules run out and come to rest, and they sink into the surface
-// over a couple of seconds: what is left is the ordinary ground, the same heap. One draw call for all tools.
+// that heap is what the machine pushes against and what the volume audit counts. This layer only dresses it, as a
+// small simulation of its own. Granules are heavy and stay in the pile: each lies on the heap's surface (at its own
+// depth, so they stack) and is dragged toward the speed of the soil where it lies. That flow is fastest at the blade
+// face, dies away ahead of it, sooner toward the blade's ends, and is squeezed sideways round the ends: so the
+// field is pushed out in a bow, wells up against the blade, and trails off both ends as the windrows. Granules
+// are fed in at the foot of the blade as fast as it cuts. When the pushing stops they come to rest and sink into
+// the surface over a couple of seconds: what is left is the ordinary ground, the same heap. One draw call.
 // Rendering only: not part of the deterministic sim, so Math.random is fine here.
 import * as THREE from 'three';
 import { MATERIALS } from '../terrain/materials.js';
 import { lumpy } from './chips.js';
 
-const PER_TOOL = 2600, TOOLS = 3, DEPTH = 2.6, SETTLE = 2.4, G = 9.8, R = 0.05;
+const PER_TOOL = 2600, TOOLS = 3, SETTLE = 2.4, G = 9.8, R = 0.05;
 const _o = new THREE.Object3D(), _l = new THREE.Vector3(), _r = new THREE.Vector3(), _b = new THREE.Vector3();
 const rnd = Math.random;
 
@@ -59,7 +56,7 @@ export class PushHeap {
       const C = tool.def.corners, mw = tool.node.matrixWorld;
       _l.fromArray(C[2]).applyMatrix4(mw); _r.fromArray(C[3]).applyMatrix4(mw); _b.fromArray(C[0]).applyMatrix4(mw);
       const ex = (_l.x + _r.x) / 2, ez = (_l.z + _r.z) / 2;                                 // where the edge is at the end of the frame
-      const cx = s.px === null ? ex : s.px + (ex - s.px) * part, cz = s.px === null ? ez : s.pz + (ez - s.pz) * part;
+      let cx = s.px === null ? ex : s.px + (ex - s.px) * part, cz = s.px === null ? ez : s.pz + (ez - s.pz) * part;
       let ax = _r.x - _l.x, az = _r.z - _l.z; const w = Math.hypot(ax, az) || 1; ax /= w; az /= w;
       let fx = -az, fz = ax; if (fx * (_l.x - _b.x) + fz * (_l.z - _b.z) < 0) { fx = -fx; fz = -fz; }
       const bvx = s.px === null ? 0 : (ex - s.px) / frame, bvz = s.px === null ? 0 : (ez - s.pz) / frame, bs = Math.max(0, bvx * fx + bvz * fz); // blade speed ahead
@@ -67,49 +64,65 @@ export class PushHeap {
       const pushing = s.kick > -0.05 && (bs > 0.06 || s.fresh); // soil is being cut and the edge is travelling
       s.act = Math.max(0, Math.min(1, s.act + (pushing ? dt / 0.35 : -dt / SETTLE)));
       if (s.act <= 0) { this.states.delete(tool); continue; }
-      const hw = w / 2, floor = T.heightAt(cx - fx * 0.3, cz - fz * 0.3), top = Math.max(floor + 1.3, T.heightAt(cx + fx * 0.4, cz + fz * 0.4) + 0.7), // the blade stands above the heap against it
+      // the terrain heaps the soil a little ahead of the cutting edge: that, not the edge, is the face the granules lie against
+      const off = (tool.def.ahead ?? 0.35) * 0.75, fl = T.heightAt(cx - fx * 0.3, cz - fz * 0.3); cx += fx * off; cz += fz * off;
+      const hw = w / 2, floor = fl, top = Math.max(floor + 1.3, T.heightAt(cx + fx * 0.4, cz + fz * 0.4) + 0.7), // the blade stands above the heap against it
          count = Math.min(PER_TOOL, Math.round(PER_TOOL * (hw + 0.3) / 2));
       const P = s.p, grow = Math.sqrt(s.act), sink = (1 - s.act) * 0.14, fric = Math.exp(-8 * dt);
-      let feed = pushing ? Math.ceil(count * dt * 9) : 0; // how many resting or lost granules may be fed back in this frame
+      // Granules are heavy: they never leave the pile. Each is dragged toward the speed of the soil where it lies:
+      //   at the blade face the soil moves with the blade; the pull dies away with distance ahead, sooner toward the
+      //   blade's ends than at its middle, so the heap is pushed out in a bow; and soil near the face is squeezed
+      //   sideways, more the nearer the ends, so it flows round them and is left behind as the windrows.
+      // They are fed in only at the foot of the blade, as fast as it is cutting, so the field grows from the blade.
+      let feed = pushing ? Math.ceil(count * dt * (0.5 + bs) * 2) : 0;
+      // how far ahead of the face the heap reaches, down its middle
+      let reach = 0.6; for (let a = 0.3; a < 3.4; a += 0.3) if (T.heightAt(cx + fx * a, cz + fz * a) - floor > 0.07) reach = a + 0.3;
+      const drag = 1 - Math.exp(-7 * dt);
       for (let i = 0; i < count; i++) {
         const k = i * 10;
-        let x = P[k], y = P[k + 1], z = P[k + 2], vx = P[k + 3], vy = P[k + 4], vz = P[k + 5];
+        let x = P[k], y = P[k + 1], z = P[k + 2], vx = P[k + 3], vz = P[k + 5];
         let d = (x - cx) * fx + (z - cz) * fz, u = (x - cx) * ax + (z - cz) * az;
-        const lost = !P[k + 9] || d > DEPTH + 0.6 || d < -0.35 || Math.abs(u) > hw + 1.5 || P[k + 8] > 0.6;
+        const behind = d < -0.3 && Math.abs(u) < hw;
+        const lost = !P[k + 9] || behind || d > 5 || d < -4 || Math.abs(u) > hw + 3 || P[k + 8] > 0.7;
         if (lost) {
           if (feed <= 0) { if (!P[k + 9]) continue; }
-          else { // fed in at the foot of the blade, already moving with it
-            feed--; const face = rnd() < 0.72; u = (rnd() * 2 - 1) * (hw + (face ? 0.9 : 0.1)); d = face ? 0.3 + rnd() * (DEPTH - 0.5) : 0.08 + rnd() * 0.3; // most out on the heap's face (it spills past the blade's ends), the rest at the foot of the blade
-            x = cx + ax * u + fx * d; z = cz + az * u + fz * d; const hh = T.heightAt(x, z);
-            if (face && hh - floor < 0.08) { feed++; continue; }                                        // no heap out there
-            y = hh + R + rnd() * 0.2; vx = bvx * (face ? 0.5 : 1); vz = bvz * (face ? 0.5 : 1); vy = 0; P[k + 6] = rnd() * 6.3; { const q = rnd(); P[k + 7] = 0.55 + 1.35 * q * q * q; } P[k + 8] = 0; P[k + 9] = 1; // sizes: mostly small, a few big lumps
+          else {
+            feed--; u = (rnd() * 2 - 1) * hw; d = 0.06 + rnd() * 0.3;
+            x = cx + ax * u + fx * d; z = cz + az * u + fz * d; vx = bvx; vz = bvz;
+            const q = rnd();
+            P[k + 6] = rnd() * 6.3; P[k + 7] = 0.55 + 1.35 * q * q * q; P[k + 8] = 0; P[k + 9] = 1;
           }
         }
-        vy -= G * dt;
-        // the blade: a wall that carries what it catches forward and boils it up its face
-        if (d < 0.07 && d > -1.3 && Math.abs(u) < hw + 0.05 && y < top) {
-          x += fx * (0.07 - d); z += fz * (0.07 - d);
-          if (bs > 0.05) {
-            const along = vx * fx + vz * fz, need = bs * (1.05 + 0.4 * rnd()) - along;
-            if (need > 0) { vx += fx * need; vz += fz * need; }
-            vy = Math.max(vy, 0.2 + bs * (0.5 + 1.0 * rnd()));                                   // up the face
-            const e = Math.abs(u) / hw, side = (e > 0.75 ? Math.sign(u) * (e - 0.75) * 3 : 0) + (rnd() - 0.5) * 0.5; vx += ax * side * bs * 0.5; vz += az * side * bs * 0.5; // and out toward the ends
-          }
+        // the soil's flow here
+        const e = Math.min(1.4, Math.abs(u) / hw), inside = e < 1;
+        let carry = 0, squeeze = 0;
+        if (bs > 0.02 && d > -0.2) {
+          // on the heap the surface rolls: it wells up at the face and runs forward over the top and down the front faster
+          // than the blade is travelling, comes to rest at the toe, and is overrun and taken up again
+          const len = reach * (inside ? 1 - 0.45 * e * e : 0.3), t = Math.max(0, d) / len;
+          // (each at its own pace, so they spread over the whole face; one that reaches the toe is rolled under and goes round again)
+          carry = (t < 1 ? 1.1 + 0.4 * ((i * 11) % 9) / 8 : Math.exp(-(t - 1) * len / 0.2)) * (inside ? 1 : Math.max(0, 1 - (e - 1) * 4));
+          if (pushing && inside && t >= 1) P[k + 8] = 1;
+          squeeze = inside ? Math.sign(u) * (0.15 + 0.75 * e * e) * Math.exp(-d / 0.7) : 0;
         }
-        x += vx * dt; y += vy * dt; z += vz * dt;
-        // the heap: land on it, run down its slope, lose speed to friction
+        const tx = (fx * carry + ax * squeeze * 0.6) * bs, tz = (fz * carry + az * squeeze * 0.6) * bs;
+        vx += (tx - vx) * drag; vz += (tz - vz) * drag;
+        // the blade itself: nothing passes through it
+        if (inside && d < 0.06 && d > -0.3) { x += fx * (0.06 - d); z += fz * (0.06 - d); }
+        // steeper than its angle of repose, loose soil runs downhill
+        const h0 = T.heightAt(x, z), gx = (T.heightAt(x + 0.2, z) - h0) / 0.2, gz = (T.heightAt(x, z + 0.2) - h0) / 0.2, gm = Math.hypot(gx, gz);
+        if (gm > 0.6) { const run = (gm - 0.6) / gm * G * dt * 0.5; vx -= gx * run; vz -= gz * run; }
+        let sp = Math.hypot(vx, vz); if (sp < 0.03) { vx = vz = 0; sp = 0; }
+        x += vx * dt; z += vz * dt;
         const h = T.heightAt(x, z);
-        const lie = R * P[k + 7] + ((i * 7) % 10) * 0.014;                                 // stacked: each rides at its own depth in the pile
-        if (y < h + lie) {
-          const gx = (T.heightAt(x + 0.2, z) - h) / 0.2, gz = (T.heightAt(x, z + 0.2) - h) / 0.2;
-          y = h + lie; vy = vy < -1.2 ? -vy * 0.18 : 0;
-          // loose soil lies still on anything gentler than its angle of repose; steeper, it runs
-          const gm = Math.hypot(gx, gz), run = gm > 0.55 ? (gm - 0.55) / gm * G * dt : 0;
-          vx = (vx - gx * run) * fric; vz = (vz - gz * run) * fric;
-          let sp = Math.hypot(vx, vz); if (sp < 0.06 && !run) { vx = vz = 0; sp = 0; }
-          P[k + 8] = sp < 0.15 && h - floor < 0.06 ? P[k + 8] + dt : 0; // lying still off the heap: soon fed back in
-          P[k + 6] += sp * dt * 7;                                                         // it rolls
-        } else P[k + 6] += dt * 5;                                                         // tumbling in the air
+        // each rides at its own depth in the pile, and the pile wells up against the moving blade
+        const lie = R * P[k + 7] + ((i * 7) % 10) * 0.016, well = inside && d < 0.7 ? (1 - Math.max(0, d) / 0.7) * 0.22 * Math.min(1, bs * 1.5) * (0.4 + 0.6 * ((i * 13) % 7) / 6) : 0;
+        y += (h + lie + well - y) * Math.min(1, dt * 12);
+        if (y < h + lie) y = h + lie;
+        // lying still where there is no heap: soon fed back in at the blade
+        P[k + 8] = sp < 0.1 && h - floor < 0.05 ? P[k + 8] + dt : 0;
+        P[k + 6] += sp * dt * 6;
+        const vy = 0;
         P[k] = x; P[k + 1] = y; P[k + 2] = z; P[k + 3] = vx; P[k + 4] = vy; P[k + 5] = vz;
         if (!draw) continue;
         const sc = grow * P[k + 7], sp6 = P[k + 6];
