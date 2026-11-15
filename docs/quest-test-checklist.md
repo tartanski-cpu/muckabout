@@ -180,3 +180,7 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - Is the trigger a natural way to switch, or do you switch it by accident while carrying a stake?
 - The choice is saved with the site.
 
+
+## Dozer digging down (changed again)
+
+- Blade right down, drive on in one go: it should keep going down into a trench (to the rock, about 2.5 m on the test ground) instead of levelling off on a platform about 1 m down. The soil the blade cannot hold is now left as a berm about 1.6 m back from the trench edge, not on its lip. Does the berm look right, and does the bow wave still stay below eye level?

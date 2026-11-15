@@ -424,8 +424,21 @@ describe('digging down', () => {
       }
       expect(depth[0]).toBeGreaterThan(0.12);
       expect(depth[3]).toBeGreaterThan(0.75);                    // well past the 60 cm it used to stop at
-      expect(depth[3]).toBeGreaterThan(depth[1] + 0.2);          // and still going down
+      expect(depth[3]).toBeGreaterThanOrEqual(depth[1] - 0.05);  // and not climbing back (it may already be on the rock 2.5 m down)
     }
+  }, 120000);
+});
+
+describe('digging down in one pass', () => {
+  it('a dozer driven on with the blade right down keeps going down: its own spill does not fill the trench behind it', async () => {
+    const r = await rig('dozer', { x: 15, z: 22 }); const m = r.m; r.step(60); start(m); m.inp.throttle = 1; r.step(90);
+    const g0 = r.terrain.heightAt(15, 22); let deep = 0, late = 0;
+    for (let k = 0; k < 30; k++) {
+      r.step(60, (mm) => { mm.inp.lift = -1; mm.inp.left = 0.8; mm.inp.right = 0.8; });
+      const d = g0 - m.position.y; deep = Math.max(deep, d); if (k >= 20) late = Math.max(late, d);
+    }
+    expect(deep).toBeGreaterThan(1.7);   // it used to level off about 1 m down
+    expect(late).toBeGreaterThan(1.6);   // and it stays down there rather than climbing back onto a platform
   }, 120000);
 });
 

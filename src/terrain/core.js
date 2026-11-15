@@ -6,6 +6,7 @@ export const CHUNK = 32;
 const D2R = Math.PI / 180;
 const NB = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [-1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, -1, Math.SQRT2]];
 
+const SPILL_CLEAR = 1.6; // m beyond a trench wall that a blade's spill is left
 export class TerrainCore {
   /** @param {{nx:number, nz:number, cell:number, ox:number, oz:number}} cfg  ox/oz = world position of sample (0,0) */
   constructor(cfg) {
@@ -187,7 +188,13 @@ export class TerrainCore {
             // is cut spills round the nearer end of the blade and is left beside it as a windrow
             if (heapMax && this.heightAt(tx, tz) > P[7] + heapMax) {
               const ex = P[9] - P[6], ez = P[11] - P[8], el = Math.hypot(ex, ez) || 1, side = a < 0.5 ? -1 : 1;
-              tx = (side < 0 ? P[6] : P[9]) + side * ex / el * 0.55 + pdx * 0.1; tz = (side < 0 ? P[8] : P[11]) + side * ez / el * 0.55 + pdz * 0.1;
+              // In a trench the end of the blade is against the wall: soil left on the wall's lip slumps straight back
+              // in behind the blade, the tracks climb onto it and the cut levels off into a platform. So find the
+              // wall (ground standing above the heap) and leave the spill well back from its edge, as a berm.
+              const sx = side * ex / el, sz = side * ez / el, bx = side < 0 ? P[6] : P[9], bz = side < 0 ? P[8] : P[11];
+              let d = 0.55;
+              for (let w = 0.3; w <= 1.5; w += 0.3) if (this.heightAt(bx + sx * w, bz + sz * w) > P[7] + heapMax) { d = w + SPILL_CLEAR; break; }
+              tx = bx + sx * d + pdx * 0.1; tz = bz + sz * d + pdz * 0.1;
             }
             this.deposit(tx, tz, om, v); pushed += v;
           }
