@@ -3,9 +3,11 @@
 //   shovel   for small clean-ups. Its blade is a little cutting edge, exactly like a machine's bucket: pushed into the
 //            ground it takes soil (up to a shovelful), and turned over, or with the trigger, it throws it off as clods.
 //            The soil on it is counted in the volume audit like any other load.
-//   stakes   two grading stakes with a string line between them. The line is level: it runs at the height of the
-//            first stake's top, and droppers hang from it to the ground every half metre, coloured by how the ground
-//            there stands against the first stake's foot: green on grade, red high (cut), blue low (fill).
+//   stakes   two grading stakes with a string line between them, and droppers hanging from it to the ground every
+//            half metre, coloured by how the ground there stands against the grade: green on it, red high (cut),
+//            blue low (fill). Level (pink): the grade is the first stake's foot all the way along. Sloped (orange),
+//            for ramps and roads: the line runs from the top of one stake to the top of the other, and the grade is
+//            the straight line between their feet. The trigger, with a stake in the hand, switches between the two.
 //   chain    a tow chain with a hook at each end. Let a hook go at the front or back of a machine and it hitches
 //            there. When the chain comes taut between two machines it pulls on both (Machine.tow), so one can drag
 //            another out of the bog.
@@ -86,33 +88,40 @@ class Stake extends Carried {
     this.moving([[box(0.045, STAKE + 0.3, 0.045), 0xc9a36a, 0, (STAKE - 0.3) / 2, 0], [box(0.05, 0.14, 0.05), colour, 0, STAKE - 0.07, 0], [box(0.055, 0.02, 0.055), 0x1c1c1c, 0, STAKE - 0.16, 0]]);
     this.grip.set(0, 0.75, 0); this.holdQ = new THREE.Quaternion();
   }
-  grabMove(hand) { this.root.quaternion.identity(); this.root.position.copy(hand.pos).sub(this.grip); } // carried upright
+  // carried upright; the trigger, while one is in the hand, switches the line between level and sloped
+  grabMove(hand) { this.root.quaternion.identity(); this.root.position.copy(hand.pos).sub(this.grip); if (hand.triggerPressed && this.onTrigger) { this.onTrigger(); hand.pulse(0.6, 40); } }
   rest() { const p = this.root.position; p.y = this.ground(p.x, p.z); this.root.quaternion.identity(); }
 }
 class StringLine {
   constructor(game, a, b) {
     this.game = game; this.a = a; this.b = b; this.t = 0;
-    this.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xff4a8a })); this.line.frustumCulled = false;
+    this.slope = false; // level: the line runs at the first stake's height. sloped: from the top of one stake to the top of the other
+    this.mat = new THREE.LineBasicMaterial({ color: 0xff4a8a });
+    this.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), this.mat); this.line.frustumCulled = false;
     this.drops = new THREE.InstancedMesh(box(0.012, 1, 0.012, 0, -0.5, 0), new THREE.MeshBasicMaterial(), 96); this.drops.frustumCulled = false; this.drops.count = 0;
     this.drops.setColorAt(0, new THREE.Color(1, 1, 1));
     game.scene.add(this.line, this.drops);
-    this.report = { length: 0, high: 0, low: 0, onGrade: 0 };
+    this.report = { length: 0, high: 0, low: 0, onGrade: 0, slope: false, grade: 0 };
+    a.onTrigger = b.onTrigger = () => this.setSlope(!this.slope);
   }
+  setSlope(on) { this.slope = !!on; this.mat.color.setHex(this.slope ? 0xffa020 : 0xff4a8a); this.t = 0; } // pink: level. orange: sloped
   update(dt) {
     this.t -= dt; if (this.t > 0 && !this.a.held && !this.b.held) return; this.t = 0.2;
     const T = this.game.terrain, A = this.a.root.position, B = this.b.root.position, len = Math.hypot(B.x - A.x, B.z - A.z);
     const show = len > 0.6 && len < 46; this.line.visible = this.drops.visible = show; this.report.length = show ? len : 0; if (!show) return;
-    const datum = T.heightAt(A.x, A.z), y = datum + STAKE - 0.07, pos = this.line.geometry.attributes.position;   // level with the first stake's foot
-    pos.setXYZ(0, A.x, y, A.z); pos.setXYZ(1, B.x, y, B.z); pos.needsUpdate = true;
+    // the grade the ground should be at, at each end: the foot of the first stake, and for a sloped line the foot of the second
+    const footA = this.a.held ? T.heightAt(A.x, A.z) : A.y, footB = this.slope ? (this.b.held ? T.heightAt(B.x, B.z) : B.y) : footA;
+    const top = STAKE - 0.07, pos = this.line.geometry.attributes.position;
+    pos.setXYZ(0, A.x, footA + top, A.z); pos.setXYZ(1, B.x, footB + top, B.z); pos.needsUpdate = true;
     const n = Math.min(95, Math.floor(len / 0.5)), c = new THREE.Color(); let high = 0, low = 0, ok = 0;
     for (let i = 1; i <= n; i++) {
-      const k = i / (n + 1), x = A.x + (B.x - A.x) * k, z = A.z + (B.z - A.z) * k, g = T.heightAt(x, z), d = g - datum;
+      const k = i / (n + 1), x = A.x + (B.x - A.x) * k, z = A.z + (B.z - A.z) * k, grade = footA + (footB - footA) * k, g = T.heightAt(x, z), d = g - grade, y = grade + top;
       _o.position.set(x, y, z); _o.scale.set(1, Math.max(0.02, y - g), 1); _o.rotation.set(0, 0, 0); _o.updateMatrix(); this.drops.setMatrixAt(i - 1, _o.matrix);
       if (Math.abs(d) < 0.04) { c.setRGB(0.2, 0.9, 0.3); ok++; } else if (d > 0) { c.setRGB(1, 0.25, 0.2); high++; } else { c.setRGB(0.25, 0.5, 1); low++; }
       this.drops.setColorAt(i - 1, c);
     }
     this.drops.count = n; this.drops.instanceMatrix.needsUpdate = true; this.drops.instanceColor.needsUpdate = true;
-    Object.assign(this.report, { high, low, onGrade: ok });
+    Object.assign(this.report, { high, low, onGrade: ok, slope: this.slope, grade: (footB - footA) / len });
   }
 }
 

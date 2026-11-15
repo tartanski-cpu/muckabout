@@ -36,6 +36,7 @@ export class SaveGame {
       rigs: g.rigs.map((r) => ({ fill: r.field.fill.slice(), mat: r.field.mat.slice() })),
       machines: S.machines.map((m) => ({ id: m.id, bodies: m.bodyList.map((b) => { const t = b.rb.translation(), q = b.rb.rotation(); return [t.x, t.y, t.z, q.x, q.y, q.z, q.w]; }), fn: m.fnList.map((f) => f.pos), joints: m.joints.map((j) => j.target), custom: !!m.kin.custom })),
       tools: S.tools ? S.tools.all.map((t) => pose(t.root)) : [],
+      slopedLine: !!S.tools?.line.slope,
       checklist: S.checklist ? S.checklist.items.map((i) => !!i.done) : [],
       player: [S.player.feet.x, S.player.feet.z, S.player.yaw],
     };
@@ -61,6 +62,7 @@ export class SaveGame {
       if (m.controls?.key) m.controls.key.set(0); if (m.controls?.park) m.controls.park.set(1);
     }
     if (S.tools) S.tools.all.forEach((t, i) => { const p = s.tools[i]; if (p) { t.root.position.fromArray(p); t.root.quaternion.fromArray(p, 3); if (t.hitch !== undefined) t.hitch = null; } });
+    if (S.tools) S.tools.line.setSlope(!!s.slopedLine);
     if (S.checklist) S.checklist.items.forEach((it, i) => { it.done = !!s.checklist[i]; });
     S.player.place(s.player[0], s.player[1], s.player[2]);
     g.simTime = s.simTime || 0;

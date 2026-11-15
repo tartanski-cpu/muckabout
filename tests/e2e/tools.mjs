@@ -41,6 +41,14 @@ try {
   check(Math.abs(line.a[1] - line.ga) < 0.02 && Math.abs(line.b[1] - line.gb) < 0.02, 'stakes: let go, each plants itself upright on the ground');
   check(line.shown && line.rep.length > 10 && line.rep.high > 3 && line.rep.onGrade > 3, `grading line: ${line.rep.length.toFixed(1)} m, droppers read ${line.rep.onGrade} on grade and ${line.rep.high} high (the sand heap)`);
 
+  // sloped line, for ramps: the trigger with a stake in hand switches it; the grade then runs between the two stakes' feet
+  const ramp = await page.evaluate(() => { const [a, b] = P.tools.stakes, t = __game.terrain, L = P.tools.line;
+    const p = b.grabPoint(new V()); hold('left', p.x, p.y, p.z, true); frames(2); hold('left', p.x, p.y, p.z, true, { trigger: 1 }); frames(2); hold('left', p.x, p.y, p.z, false); frames(25);
+    const r = { ...L.report }, la = L.line.geometry.attributes.position, colour = L.mat.color.getHex();
+    return { r, rise: la.getY(1) - la.getY(0), feet: b.root.position.y - a.root.position.y, colour }; });
+  check(ramp.r.slope && ramp.colour === 0xffa020 && Math.abs(ramp.rise - ramp.feet) < 0.01 && ramp.feet > 0.3, `sloped line: the trigger switches it, and it runs from stake top to stake top (rising ${ramp.rise.toFixed(2)} m, ${(ramp.r.grade * 100).toFixed(0)} %)`);
+  check(ramp.r.low > 3, `sloped line: flat ground under a line that climbs to the heap reads low, to be filled (${ramp.r.low} droppers)`);
+
   // ---- tow chain: hook the loader's back to the dozer's front; the loader drives off and drags the dozer, engine off, park brake released
   const tow = await page.evaluate(() => { const g = __game, L = g.machine('loader'), D = g.machine('dozer'), [h1, h2] = P.tools.hooks;
     L.reset(-4, 8, 0); D.reset(-4, 15.5, 0); g.sim(60);

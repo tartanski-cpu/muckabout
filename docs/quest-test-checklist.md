@@ -170,3 +170,9 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - Every machine: TRAVEL GEAR switch on the left console (the dash shows F1 or F2). In the travel gear it should be clearly faster on a long run and noticeably weaker: slower off the line, poor at pushing into a pile or climbing a bank. Top speeds on the custom model: loader 14 then 22 km/h, dumper 17 then 28, backhoe 15 then 24, dozer 11 then 16. Enough for getting about? Too fast to be comfortable in VR?
 - Is a switch the right control, or would you rather a lever?
 
+## Sloped grading line (new)
+
+- With either stake in your hand, squeeze the trigger: the string turns from pink (level) to orange (sloped) and you feel a click. Sloped, it runs from the top of one stake to the top of the other, and the droppers are coloured against the straight grade between the two stakes' feet. Plant one stake at the bottom of where a ramp should start and the other at the top: red droppers are ground to cut, blue ground to fill.
+- Is the trigger a natural way to switch, or do you switch it by accident while carrying a stake?
+- The choice is saved with the site.
+
