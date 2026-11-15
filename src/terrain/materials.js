@@ -1,10 +1,11 @@
 // Material table shared by the terrain core, renderer and vehicles.
-export const NONE = 0, TOPSOIL = 1, MUD = 2, CLAY = 3, SAND = 4, GRAVEL = 5, ROCK = 6, SPOIL = 7;
-export const NMAT = 8;
+export const NONE = 0, TOPSOIL = 1, MUD = 2, CLAY = 3, SAND = 4, GRAVEL = 5, ROCK = 6, SPOIL = 7, BOG = 8;
+export const NMAT = 9;
 
 // repose/reposeWet: degrees. dig: relative resistance to cutting. compaction: how much tyres rut it.
 // erosion: how readily flowing water carries it off. grip: tyre friction coefficient.
 // loosens: the material this turns into when a tool cuts it.
+// sink: how far a fully loaded wheel settles into it (m): the material is squeezed out to the sides, not compressed.
 export const MATERIALS = [
   { name: 'none',    density: 0,    repose: 45, reposeWet: 45, dig: 0,   compaction: 0,    erosion: 0,    grip: 0.8,  color: [0, 0, 0],          chip: 0 },
   { name: 'topsoil', density: 1400, repose: 40, reposeWet: 26, dig: 1.0, compaction: 0.3,  erosion: 0.5,  grip: 0.75, color: [0.47, 0.30, 0.17], chip: 3 },
@@ -15,6 +16,8 @@ export const MATERIALS = [
   { name: 'rock',    density: 2600, repose: 85, reposeWet: 85, dig: 99,  compaction: 0,    erosion: 0,    grip: 0.85, color: [0.42, 0.41, 0.40], chip: 0 },
   // clay once it has been dug: in-situ clay stands in steep faces, the loose spoil does not
   { name: 'spoil',   density: 1500, repose: 36, reposeWet: 22, dig: 1.0, compaction: 0.3,  erosion: 0.45, grip: 0.65, color: [0.60, 0.35, 0.21], chip: 2 },
+  // deep wet mud: stands at hardly any slope, so ruts close up again; wheels sink into it and find little grip
+  { name: 'bog',     density: 1750, repose: 15, reposeWet: 9,  dig: 0.6, compaction: 1.2,  erosion: 1.0,  grip: 0.3,  color: [0.23, 0.17, 0.12], chip: 2, sink: 1.0 },
 ];
 export const GRASS_COLOR = [0.33, 0.52, 0.18];
 export const matId = (name) => MATERIALS.findIndex((m) => m.name === name);

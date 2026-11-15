@@ -195,6 +195,8 @@ export class TerrainCore {
     const j0 = Math.max(1, Math.round((z - r - this.oz) / cell)), j1 = Math.min(this.nz - 2, Math.round((z + r - this.oz) / cell));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       const c = j * this.nx + i; if (!this.nl[c]) continue;
+      const sink = MATERIALS[this.topMat(c)].sink;
+      if (sink) { this._sink(c, i, j, Math.ceil(r / cell) + 1, sink * load); continue; }
       const target = MATERIALS[this.topMat(c)].compaction * 0.14 * load;
       if (this.rut[c] >= target) continue;
       const want = Math.min(target - this.rut[c], 0.006);
@@ -203,6 +205,22 @@ export class TerrainCore {
       const got = this.removeTop(c, want, vol);
       this.rut[c] = keep + got; this.compacted += got * this.area; this.dist[c] = 255;
     }
+  }
+
+  /**
+   * A wheel in bog: the mud under it is squeezed out to the sides, until the wheel stands `depth` below the mud
+   * around it. Nothing is lost: what leaves this cell is heaped on the four cells `ring` away, and being mud it
+   * slumps back in once the wheel has gone.
+   */
+  _sink(c, i, j, ring, depth) {
+    const nx = this.nx, around = [c - ring, c + ring, c - ring * nx, c + ring * nx].filter((q) => q >= 0 && q < this.n && this.nl[q]);
+    if (!around.length) return;
+    let hr = -1e9; for (const q of around) hr = Math.max(hr, this.h[q]); // the mud standing beside the rut, not the rut ahead and behind
+    const want = Math.min(depth - (hr - this.h[c]), 0.15, this.lt[c * 3 + this.nl[c] - 1]); if (want <= 0.001) return; // only the mud gives way, not what is under it
+    const vol = this._vol; vol.fill(0);
+    const got = this.removeTop(c, want, vol); if (got <= 0) return;
+    for (let m = 1; m < NMAT; m++) if (vol[m] > 0) for (const q of around) { this.addTop(q, m, vol[m] / around.length); this.dist[q] = 255; this.wake(q); }
+    this.dist[c] = 255; this.wake(c);
   }
 
   /** Run one fixed step: apply commands, relax. Returns per-command results (null where there is none). */

@@ -163,3 +163,22 @@ describe('ContainerField + Clods', () => {
     expect(core.audit().byMat[GRAVEL]).toBeGreaterThan(1.4);
   });
 });
+
+describe('bog', () => {
+  it('a wheel sinks into bog by squeezing it aside: deep rut, ridges, no volume lost', async () => {
+    const { TerrainCore } = await import('../src/terrain/core.js'); const { MAPS } = await import('../src/terrain/maps.js'); const { BOG } = await import('../src/terrain/materials.js');
+    const core = new TerrainCore(MAPS.test.cfg); MAPS.test.build(core);
+    const v0 = core.audit().total, h0 = core.heightAt(14, -14);
+    expect(core.topMat(core.cellAt ? core.cellAt(14, -14) : Math.round((-14 + 20) / 0.25) * 160 + Math.round((14 + 20) / 0.25))).toBe(BOG);
+    for (let k = 0; k < 120; k++) { core.compact(14, -14, 0.3, 1); core.step([]); }
+    const rut = h0 - core.heightAt(14, -14), a = core.audit();
+    expect(rut).toBeGreaterThan(0.2); expect(rut).toBeLessThan(1.05);
+    expect(Math.abs(a.total - v0) / v0).toBeLessThan(1e-6); expect(a.compacted).toBe(0);   // squeezed aside, not compressed away
+    // topsoil under the same wheel only ruts a few centimetres
+    const t0 = core.heightAt(10, 10); for (let k = 0; k < 120; k++) { core.compact(10, 10, 0.3, 1); core.step([]); }
+    expect(t0 - core.heightAt(10, 10)).toBeLessThan(0.08);
+    // left alone, the mud slowly slumps back into the rut
+    for (let k = 0; k < 600; k++) core.step([]);
+    expect(h0 - core.heightAt(14, -14)).toBeLessThan(rut * 0.95);
+  });
+});

@@ -348,9 +348,10 @@ export class Machine {
     const oppose = (v, a) => v - Math.sign(v) * Math.min(Math.abs(v), a * dt); // decelerate toward zero, never past it
     if (dr.type === 'tracks') {
       const tgt = this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
+      const bogged = 1 - 0.6 * clamp((soft - 0.5) / 0.7, 0, 1); // tracks keep going in deep mud where wheels stop, but only at a crawl
       // a loaded blade lugs the machine down: the deeper the cut and the bigger the heap ahead, the slower it crawls
       const lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / (dr.digLug ?? 16), 1.5)) : 1;
-      k.vl += clamp(tgt.L * lug - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R * lug - k.vr, -amax * dt, amax * dt);
+      k.vl += clamp(tgt.L * lug * bogged - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R * lug * bogged - k.vr, -amax * dt, amax * dt);
       const push = toolMoving > 0.05 ? dig : 0, hold = dr.maxForce / this.mass; // the blade's load and the hill can overpower the tracks
       for (const side of ['vl', 'vr']) { let v = k[side]; v = oppose(v, Math.max(0, push - hold * 0.35)); if (Math.abs(slope) > grip) v += (slope - Math.sign(slope) * grip) * dt; k[side] = v; }
       k.v = (k.vl + k.vr) / 2; k.psi += (k.vr - k.vl) / k.W * 0.3 * dt; // tracks scrub sideways when they turn: far slower than the speed difference alone suggests
@@ -643,7 +644,7 @@ export class Machine {
     let spill = 0; for (const r of this.rigs) spill += r.spillRate; this.spillRate = spill;
     if (this.trackRuns.length) { for (const run of this.trackRuns) { const w = this.wheels.find((x) => x.side === run.side); run.s += (w ? w.vf : this.speed) * dt; } this._poseTracks(); }
     // ruts
-    if (this.tick % 4 === 0) for (const w of this.wheels) if (w.grounded && Math.abs(w.vf) > 0.2) this.terrain.compact(w.gx, w.gz, (w.def.w ?? 0.5) * 0.6, clamp(w.N / (w.share * G), 0, 1));
+    if (this.tick % 4 === 0) for (const w of this.wheels) if (w.grounded && Math.abs(w.vf) > 0.2) this.terrain.compact(w.gx, w.gz, (w.def.w ?? 0.5) * 0.6, clamp(w.N / (w.share * G), 0, 1) * (this.def.drive.type === 'tracks' ? 0.55 : 1)); // tracks spread the load
     this.bump *= 0.8;
   }
 

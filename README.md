@@ -115,6 +115,10 @@ Key decisions:
 
 An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick looks round (in chase view it orbits the machine), hold **LB** and the right stick works the bucket/blade/bed instead (from the backhoe's rear seat the left stick works the hoe too; right stick click turns the seat), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
 
+## The bog
+
+The middle terrace of the main map has a patch of **bog** (`map.bog` in `src/terrain/maps.js`; a small one on the test map too): a ninth soil material, deep wet mud. A wheel or track on it squeezes the mud out to the sides until it stands up to a metre deep in a rut (`TerrainCore._sink`), so nothing is compressed away and the volume audit still balances; being mud that stands at hardly any slope, the ruts close up again. It has little grip and drags hard, so wheeled machines crawl and the tracked dozer does better. It digs, carries, tips and slumps like any other soil.
+
 ## Sound
 
 All sound is synthesised; there are no samples. The engine note is not mixed from inputs: it follows a small engine model.

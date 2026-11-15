@@ -310,3 +310,18 @@ describe('the engine works for its living (what the sound follows)', () => {
     r.m.inp.accel = 0; r.step(120); expect(r.m.engine.rpm).toBeGreaterThan(free - 40);
   });
 });
+
+describe('bog', () => {
+  it('a loader driven into the bog sinks in, is dragged right down, and the soil still balances', async () => {
+    for (const phys of ['custom', 'rapier']) {
+      const r = await rig('loader', { x: 14, z: -3 }); r.m.setPhysics(phys); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(90);
+      const v0 = await r.total(), g0 = r.terrain.heightAt(14, -14); let fast = 0, rut = 0, slow = 9, n = 0;
+      r.step(420, (m) => { m.inp.shuttle = 1; m.inp.accel = 0.8; n++; if (n < 60) fast = Math.max(fast, m.speed);
+        if (m.position.z < -11 && m.position.z > -15) { slow = Math.min(slow, Math.abs(m.speed)); for (const w of m.wheels) if (r.terrain.materialAt(w.gx, w.gz) === 8) rut = Math.max(rut, g0 - r.terrain.heightAt(w.gx, w.gz)); } });
+      expect(rut).toBeGreaterThan(0.18);                         // wheels down in ruts
+      expect(slow).toBeLessThan(fast * 0.75);                    // and the machine dragged down
+      expect(r.m.bodyList[0].obj.matrixWorld.elements[5]).toBeGreaterThan(0.9);
+      expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-6);
+    }
+  });
+});

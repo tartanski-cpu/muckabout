@@ -122,3 +122,11 @@ Listen for each of these, from the seat and standing beside the machine. For eac
 - Seated: push the left stick sideways for a 30° turn in the seat (B recentres). The left stick's forward and back still works the boom, blade or bed; its sideways push no longer curls the bucket or tilts the blade (the right stick does). Is that the right trade?
 - On foot the right stick still snap-turns.
 
+## The bog (new)
+
+- On the middle terrace, east of the way down (a dark patch about 26 m by 10 m), is deep wet mud. Drive the loader in: the wheels should sink about 30 cm and the machine should slow to a crawl, engine working hard. Can you still get out? Is it too punishing, or not enough?
+- The dozer should keep going through it at a slow walk where the wheeled machines nearly stop.
+- The ruts should slowly close up after you have gone. Too fast, too slow?
+- It is soil like the rest: dig it with the loader or the hoe, carry it, tip it somewhere else. A heap of it should slump almost flat. Tipping gravel or clay into the bog to make a firm crossing should work, as at the ford.
+- Does the frame rate hold while a machine churns through it?
+
