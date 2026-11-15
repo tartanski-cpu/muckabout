@@ -15,7 +15,7 @@ import { Powertrain } from './powertrain.js';
 import { clamp } from '../util/rng.js';
 
 const G = 9.81, ROCK_ID = 6;
-const TOOL_BITE = 0.6; // m a blade or bucket may stand below the ground beside it before the soil carries it
+const TOOL_BITE = 0.6; // m a blade or bucket may stand below the ground its machine is on before the soil carries it
 const V = () => new THREE.Vector3();
 const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n = V(), _c = V(), _v = V(), _p = V(), _a = V(), _m4 = new THREE.Matrix4(), _m5 = new THREE.Matrix4();
 const _trk = new THREE.Object3D();
@@ -402,16 +402,18 @@ export class Machine {
     }
     let [a, b, cc] = fit();
     let lifted = false; // stabiliser feet, blade or bucket pressed into the ground carry the machine too
+    let gmin = 1e9; for (const w of this.wheels) gmin = Math.min(gmin, T.heightAt(w.gx, w.gz));
     for (const ct of this.contacts) {
       this._refLocal(ct.body, ct.local, _p);
       const wx = ox + c * _p.x + s * _p.z, wz = oz - s * _p.x + c * _p.z, need = T.heightAt(wx, wz) - _p.y;
       ct.N = 0;
       let rest = need;
       if (ct.tool && T.materialAt(wx, wz) !== ROCK_ID) {
-        // A cutting edge sinks into soil, but only so far: more than TOOL_BITE below the ground beside it (out past
-        // the windrow it leaves) and the soil carries it. Without this a machine that drops nose first off an edge
-        // drives its bucket metres into the ground.
-        const out = Math.sign(_p.x) || 1; rest = T.heightAt(wx + c * out * 1.4, wz - s * out * 1.4) - TOOL_BITE - _p.y;
+        // A cutting edge sinks into soil, but only so far below the ground the machine stands on, or the ground well
+        // ahead if that is lower: more than TOOL_BITE under that and the soil carries it. A blade or bucket never
+        // reaches that far below its own wheels in ordinary work, so pass after pass it can dig as deep as you like;
+        // but a machine that drops nose first off an edge can no longer drive its bucket metres into the ground.
+        rest = Math.min(gmin, T.heightAt(wx - s * 2.6, wz - c * 2.6), T.heightAt(wx - s * 3.4, wz - c * 3.4), T.heightAt(wx - s * 4.2, wz - c * 4.2)) - TOOL_BITE - _p.y;
       }
       if (rest > a + b * _p.x + cc * _p.z + 0.01) { add(_p.x, _p.z, rest, 6); lifted = true; ct.N = this.mass * G / 4; }
     }
@@ -609,9 +611,11 @@ export class Machine {
       const rb = c.body.rb, t = rb.translation(), r = rb.rotation();
       _p.copy(c.local).applyQuaternion(_q.set(r.x, r.y, r.z, r.w)); _p.x += t.x; _p.y += t.y; _p.z += t.z;
       let x = terrain.heightAt(_p.x, _p.z) - _p.y;
-      if (c.tool && terrain.materialAt(_p.x, _p.z) !== ROCK_ID) { // in soil a cutting edge is carried only once it is TOOL_BITE below the ground beside it (see customStep)
-        const o = Math.sign(c.local.x) || 1; _f.set(o * 1.4, 0, 0).applyQuaternion(_q);
-        x = terrain.heightAt(_p.x + _f.x, _p.z + _f.z) - TOOL_BITE - _p.y;
+      if (c.tool && terrain.materialAt(_p.x, _p.z) !== ROCK_ID) { // in soil a cutting edge is carried only once it is TOOL_BITE below the ground the machine stands on, or the ground well ahead (see customStep)
+        _f.set(0, 0, -1).applyQuaternion(_q); _f.y = 0; _f.normalize();
+        let ref = Math.min(terrain.heightAt(_p.x + _f.x * 2.6, _p.z + _f.z * 2.6), terrain.heightAt(_p.x + _f.x * 3.4, _p.z + _f.z * 3.4), terrain.heightAt(_p.x + _f.x * 4.2, _p.z + _f.z * 4.2));
+        for (const w of this.wheels) if (w.grounded) ref = Math.min(ref, terrain.heightAt(w.gx, w.gz));
+        x = ref - TOOL_BITE - _p.y;
       }
       if (x <= 0) { c.N = 0; continue; }
       const v = rb.velocityAtPoint(_p), kc = 2 * Math.sqrt(c.k * this.mass) * 0.5;

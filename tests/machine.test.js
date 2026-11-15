@@ -410,3 +410,21 @@ describe('dozer auto level', () => {
     expect(auto.rough).toBeLessThan(hand.rough * 0.6);        // and much flatter than a blade just held where it was
   });
 });
+
+describe('digging down', () => {
+  it('a dozer with the blade right down goes deeper pass after pass: it does not level off', async () => {
+    for (const phys of ['custom', 'rapier']) {
+      const r = await rig('dozer', { x: 15, z: 16 }); r.m.setPhysics(phys); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(90);
+      const g0 = r.terrain.heightAt(15, 9), depth = [];
+      for (let pass = 0; pass < 4; pass++) {
+        r.m.reset(15, 16, 0); r.step(40); r.step(110, (m) => { m.inp.lift = -1; }); r.m.inp.lift = 0;
+        r.step(700, (m) => { const go = m.position.z > 2 ? 0.7 : 0; m.inp.left = go; m.inp.right = go; });
+        r.step(60, (m) => { m.inp.left = 0; m.inp.right = 0; m.inp.lift = 1; }); r.m.inp.lift = 0;
+        let low = 0; for (let z = 5; z <= 11; z += 0.5) low = Math.max(low, g0 - r.terrain.heightAt(15, z)); depth.push(low);
+      }
+      expect(depth[0]).toBeGreaterThan(0.12);
+      expect(depth[3]).toBeGreaterThan(0.75);                    // well past the 60 cm it used to stop at
+      expect(depth[3]).toBeGreaterThan(depth[1] + 0.2);          // and still going down
+    }
+  }, 120000);
+});
