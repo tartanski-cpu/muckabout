@@ -70,6 +70,7 @@ try {
   // and the same when its whole Peer dies (the browser dropped everything)
   await b.evaluate(() => { __game.play.net.transport.peer.destroy(); });
   await until('the other player to rejoin', async () => (await joined(b)) && (await peers()) === 2);
+  await until('the host to show two avatars', async () => (await host.evaluate(() => __game.play.net.avatars.size)) === 2, 30).catch(() => {}); // avatars are made and cleared on the host's next frames
   check(await host.evaluate(() => __game.play.net.avatars.size) === 2, 'so does one whose connection was torn down entirely; the host shows two players');
 
   // the host's page reloads: same room id straight after leaving it
