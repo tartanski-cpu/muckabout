@@ -16,7 +16,16 @@ Out of the plan on purpose: money, fuel and wear. They add chores, not play.
 |---|---|---|
 | The owner | Physics and gameplay, sandbox | A new physical thing to handle every chapter; the sandbox handed back at the end |
 | The mission perfectionist | Structure, missions, deep systems done properly | Job cards with a spec, a tolerance and a grade; systems that interlock (drainage protects the road, roots protect the banks, power gates the electric machines) |
-| The realism one | Authentic behaviour, good looks | Correct procedures and machine behaviour; a transformation worth looking at; a higher-quality PC tier (see open questions) |
+| The realism one | Authentic behaviour, good looks | Correct procedures and machine behaviour; a transformation worth looking at; a higher-quality PC graphics tier |
+
+## Players and platforms
+
+Two groups play it:
+
+- **Family:** two in VR, possibly three.
+- **Friends:** the owner in VR and two friends on PC, both with top-end graphics cards.
+
+So the targets are **three players in one valley** and **PC as a real way to play**, not a debug path. This changes the MVP spec's "VR only, no desktop controls". The host can be a PC or a headset.
 
 ## What every chapter needs
 
@@ -37,6 +46,7 @@ And three rules that carry over from the MVP:
 | # | Chapter | New toy | What the valley gains |
 |---|---|---|---|
 | 0 | Headset check | none | Confidence in the frame budget |
+| 0b | Three players, PC and VR | A proper PC seat, a third player | Everyone can turn up |
 | 1 | Survey and grade | Grade overlay, job cards, scoring | A levelled pad and the site office |
 | 2 | The road in | Roller, compaction, supply trucks | A road that holds; materials arrive |
 | 3 | Rain | Storms, ditches, culverts, a pond | A valley that drains |
@@ -50,6 +60,18 @@ And three rules that carry over from the MVP:
 Nothing has run on a Quest yet. Work through `docs/quest-test-checklist.md` before adding anything: the frame budget decides how much vegetation and how many placed objects later chapters can afford.
 
 **Done when:** the checklist is ticked or its failures are fixed, and there is a measured headroom figure (frame time and draw calls in the stress scene on the headset).
+
+### 0b. Three players, PC and VR
+
+Done early, because the friends cannot play at all without it, and every later chapter is cheaper if it is built for three players and two kinds of seat from the start.
+
+- **Three players:** co-op is host plus one today (`src/net/session.js`). Grow it to host plus two, with the drop-and-rejoin tests (`tests/e2e/coop.mjs`, `tests/e2e/peer.mjs`) extended to three.
+- **PC play path:** the desktop keys and gamepad exist for debugging. Make them a finished way to play: in-cab mouse look, every cab control reachable, on-foot hand tools usable, a start page that does not assume a headset. Cab controls stay the one source of truth, so PC input moves the same levers the VR hands do.
+- **Client prediction:** a client's own machine responds about 0.15 s late today. Two of three players will be clients, so predict the local machine.
+- **Hand tools in co-op:** the shovel, stakes and chain are not replicated yet; chapter 1's survey tools need them to be.
+- **PC graphics tier:** a quality switch above the Quest's settings (real shadows, denser vegetation later, higher-resolution ground). The 150 draw-call budget is the Quest's; the PC tier may spend more, but the sim stays identical on both.
+
+**Done when:** three tabs (one driven as VR with fake hands, two as PC) finish the MVP checklist job together in an e2e test, through drops and rejoins.
 
 ### 1. Survey and grade
 
@@ -126,7 +148,8 @@ The expensive chapter: the game has no placeable rigid objects yet.
 
 ## Order, and why
 
-- 1 first because jobs and scoring are the framework for everything.
+- 0b before any content because it decides who can play, and retrofitting a third player and a PC seat onto finished chapters costs more.
+- 1 first of the content because jobs and scoring are the framework for everything.
 - 2 and 3 next because they lean on what exists (compaction, erosion, autopilot), so the game deepens quickly.
 - 4 after the cheap wins because placeable objects are new work.
 - 5 after 3 because rain gives planting a purpose.
@@ -134,7 +157,8 @@ The expensive chapter: the game has no placeable rigid objects yet.
 
 ## Open questions
 
-- **Who plays, on what?** If the owner's friends play on PC, that argues for a non-VR play path (the spec says VR only, with debug keys) and a higher-quality graphics tier above the Quest's. If all three play together, co-op has to grow from two players to three.
+- **Four players?** Three is the target. Whether family and friends ever play together decides if four is worth designing for.
+- **Jobs for three:** which jobs need a third pair of hands (banksman, surveyor, second haul truck) and which just go faster.
 - **How much story?** Job cards alone, or a character handing them out.
 - **Does time pass while away in real time, or per session?**
 
