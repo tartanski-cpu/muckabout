@@ -428,3 +428,17 @@ describe('digging down', () => {
     }
   }, 120000);
 });
+
+describe('exhaust rain cap', () => {
+  it('lies shut with the engine off, lifts a little at tick-over, stands well open when revved, and drops shut again', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); const m = r.m; r.step(30);
+    const run = (n) => { for (let i = 0; i < n; i++) { r.step(1); m.animateCap(1 / 60, i / 60); } };
+    run(30); expect(m.capOpen).toBe(0);
+    start(m); m.inp.throttle = 0; run(240); const idle = m.capOpen;
+    m.inp.throttle = 1; run(240); const revved = m.capOpen;
+    expect(idle).toBeGreaterThan(0.02); expect(idle).toBeLessThan(0.4);
+    expect(revved).toBeGreaterThan(idle + 0.4); expect(revved).toBeLessThan(1.3);
+    expect(m.cap.rotation.x).toBe(m.capOpen);
+    m.inp.key = 0; run(240); expect(m.capOpen).toBeLessThan(0.02);
+  });
+});

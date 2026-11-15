@@ -108,6 +108,7 @@ PAINT.onBeforeCompile = (sh) => {
 // the ink line round each part: the same shape drawn inside out, a little larger, in near black
 const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x14110e, side: THREE.BackSide });
 OUTLINE.onBeforeCompile = (sh) => { sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += normal * 0.034;'); };
+const CAP = new THREE.MeshLambertMaterial({ color: 0x1b1b1d, flatShading: true });
 const GLASS = new THREE.MeshBasicMaterial({ color: 0x9ccbe8, transparent: true, opacity: 0.12, depthWrite: false });
 const _mm = new THREE.Matrix4(), _me = new THREE.Euler(), _mc = new THREE.Color();
 /** Geometry placed at pos/rot and painted one colour, ready for merging. */
@@ -250,7 +251,12 @@ export class Machine {
       byParent.get(key).parts.push(part(geo, v.mat || 'yellow', v.pos, v.rot));
     }
     for (const g of byParent.values()) { const geo = mergeGeometries(g.parts), mesh = new THREE.Mesh(geo, g.glass ? GLASS : PAINT); this.nodes[g.parent].add(mesh); if (!g.glass) mesh.add(new THREE.Mesh(geo, OUTLINE)); }
-    // ---- hydraulic rams: each joins a point on one part to a point on another, and is drawn stretched between them
+    // ---- the rain cap on the exhaust stack: a hinged, weighted flap that the exhaust gas blows open (animateCap)
+    if (def.exhaust && this.nodes[def.exhaust.parent]) {
+      const hinge = this.cap = new THREE.Group(); hinge.position.fromArray(def.exhaust.pos); hinge.position.y -= 0.025; hinge.position.z += 0.085;
+      const g = mergeGeometries([new THREE.CylinderGeometry(0.095, 0.095, 0.014, 10).translate(0, 0, -0.085), new THREE.BoxGeometry(0.04, 0.03, 0.07).translate(0, -0.01, 0.045), new THREE.BoxGeometry(0.11, 0.02, 0.02)]);
+      hinge.add(new THREE.Mesh(g, CAP)); this.nodes[def.exhaust.parent].add(hinge); this.capOpen = 0; this.capVel = 0;
+    }
     this.links = (def.links || []).map((l) => ({ a: this.nodes[l.a[0]], pa: new THREE.Vector3(l.a[1], l.a[2], l.a[3]), b: this.nodes[l.b[0]], pb: new THREE.Vector3(l.b[1], l.b[2], l.b[3]), r: l.r ?? 0.065, barrel: l.barrel ?? 0.55 }));
     // ---- running tracks: grouser pads carried round the loop by track speed (one instanced mesh per machine)
     this.trackRuns = [];
@@ -720,6 +726,23 @@ export class Machine {
       o.position.set(run.x, y, z); o.rotation.set(a, 0, 0); o.updateMatrix(); this.trackMesh.setMatrixAt(run.first + i, o.matrix);
     }
     this.trackMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * The exhaust rain cap, every drawn frame. The gas holds it open by how hard the engine is breathing (speed and
+   * fuel); at tick-over it only lifts a little and chatters with each firing; when the engine stops it drops shut
+   * with a bounce. t: seconds, for the chatter.
+   */
+  animateCap(dt, t) {
+    if (!this.cap) return;
+    const e = this.engine, ed = this.def.engine, run = e.running ? 1 : 0;
+    const rev = clamp((e.rpm - ed.idleRpm) / (ed.maxRpm - ed.idleRpm), 0, 1), gas = run * (0.1 + 0.55 * rev + 0.45 * (e.load || 0) * (0.4 + 0.6 * rev));
+    const chatter = run * (1 - rev) * 0.07 * Math.sin(t * e.rpm / 60 * (ed.cylinders || 6) / 2 * Math.PI * 2);
+    const target = Math.min(1.25, gas * 1.35 + chatter);                    // radians open
+    this.capVel += ((target - this.capOpen) * 220 - this.capVel * 16) * dt; // a light flap on a spring of gas, well damped
+    this.capOpen += this.capVel * dt;
+    if (this.capOpen < 0) { this.capOpen = 0; this.capVel = Math.abs(this.capVel) * 0.35; } // it lands on the pipe and bounces
+    this.cap.rotation.x = this.capOpen;
   }
 
   /** Volume held in this machine's containers (m³). */

@@ -255,6 +255,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     player.noSeatTurn = !!player.machine && (player.machine.inp.assist > 0.5 || (player.machine.fn.swivel && player.machine.fn.swivel.pos > 1.5)); // the left stick is busy driving, or working the hoe
     player.update(fdt, input.hands);
     if (!game.fast) heap.update(fdt);
+    for (const m of machines) m.animateCap(Math.min(fdt, 0.05), game.simTime);
     desktopCamera();
     scene.updateMatrixWorld();
     hands.update(input.hands, fdt);
