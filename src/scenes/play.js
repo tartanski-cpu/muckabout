@@ -87,7 +87,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const c = dashC.getContext('2d'), e = m.engine;
     c.fillStyle = '#10161a'; c.fillRect(0, 0, 256, 128); c.strokeStyle = '#ffb21a'; c.lineWidth = 3; c.strokeRect(2, 2, 252, 124);
     c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
-    c.fillText(`${(Math.abs(m.speed) * 3.6).toFixed(0).padStart(2)} km/h  ${m.gear > 0 ? 'F' : m.gear < 0 ? 'R' : 'N'}${m.inp.park > 0.5 ? '  (P)' : ''}`, 12, 30);
+    c.fillText(`${(Math.abs(m.speed) * 3.6).toFixed(0).padStart(2)} km/h  ${m.gear > 0 ? 'F' : m.gear < 0 ? 'R' : 'N'}${m.range.high ? '2' : '1'}${m.inp.park > 0.5 ? '  (P)' : ''}`, 12, 30);
+    if (m.gradeOn) { c.fillStyle = '#9fe08a'; c.font = 'bold 15px monospace'; c.fillText('AUTO LEVEL', 150, 122); c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace'; }
     c.fillText(e.running ? `${e.rpm.toFixed(0)} rpm` : e.crank > 0 ? 'cranking…' : 'ENGINE OFF', 12, 58);
     c.fillStyle = '#9fd4ff'; c.font = 'bold 15px monospace'; c.fillText(S.physics === 'custom' ? 'CUSTOM PHYSICS' : 'RAPIER PHYSICS', 12, 122); c.fillStyle = '#ffd25a'; c.font = 'bold 22px monospace';
     if (S.net) { c.fillStyle = S.net.lost ? '#ff7a5a' : '#9fd4ff'; c.font = 'bold 16px monospace'; c.fillText(S.net.lost ? 'LINK LOST' : `ROOM ${S.net.code}`, 150, 58); c.fillStyle = '#ffd25a'; }
@@ -172,7 +173,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (lbTap) setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
     if (hit(0)) m.voice.horn();                                                                      // A: horn
     if (hit(11) && m.controls.swivel) m.controls.swivel.press(null);                                 // right stick click: turn the seat (backhoe)
-    if (hit(13)) m.reset();                                                                          // d-pad down: put it back on its wheels
+    if (hit(13)) m.reset();
+    if (hit(12) && m.controls.range) setCtl(m, 'range', m.controls.range.value > 0.5 ? 0 : 1);                  // d-pad up: travel gear                                                                          // d-pad down: put it back on its wheels
   }
   const setCtl = (m, name, v) => { const c = m.controls[name]; if (c && !c.held && c.value !== v) c.set(v); };
   const k = (c) => (keys.has(c) ? 1 : 0);
@@ -308,6 +310,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     else if (m && e.code === 'KeyT') setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));
     else if (m && e.code === 'KeyG') setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
     else if (m && e.code === 'KeyR') m.reset();
+    else if (m && e.code === 'KeyU' && m.controls.range) setCtl(m, 'range', m.controls.range.value > 0.5 ? 0 : 1);
+    else if (m && e.code === 'KeyY' && m.controls.grade) setCtl(m, 'grade', m.controls.grade.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyH') m.voice.horn();
     else if (m && e.code === 'KeyC') player.recentre();
     else if (m && e.code === 'KeyB' && m.controls.swivel) m.controls.swivel.press(null);
@@ -338,8 +342,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Grab the yellow handrail to climb in. `
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
       + `<b>Desktop (debug):</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
-      + `${K('T')}/${K('G')} throttle · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
-      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▼ reset; on foot, sticks walk and look<br>`
+      + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
+      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ reset; on foot, sticks walk and look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }

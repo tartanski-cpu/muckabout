@@ -115,6 +115,12 @@ Key decisions:
 
 An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick looks round (in chase view it orbits the machine), hold **LB** and the right stick works the bucket/blade/bed instead (from the backhoe's rear seat the left stick works the hoe too; right stick click turns the seat), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
 
+## Gears and auto level
+
+Each machine has two gears (`drive.high = [speed factor, pull factor]` in its file; `TRAVEL GEAR` switch, `U` on the desktop, d-pad up on a gamepad). Low is the working gear. High is geared up for getting about: more top speed, about half the pull, and the converter locked up so more of the engine's power reaches the wheels at speed.
+
+The dozer has `AUTO LEVEL` (`grade` in its file; `Y` on the desktop): the lift holds the blade's edge at the height it had when switched on, and the tilt keeps the edge level with the horizon. Moving the lift lever takes over and sets a new level.
+
 ## Saving
 
 `src/game/save.js`: the site is saved in the browser (IndexedDB, one save per map) every minute, when the page is hidden or closed and when a VR session ends, and loaded at the start. It holds the ground and water (`TerrainCore.snapshot` / `restore`, through the worker), each machine's pose, hydraulics and loads, the hopper, the checklist, the hand tools and the player's position. `?new=1` or the "Start a new site" button forgets it; `?save=0` switches saving off (the browser tests use that). In co-op only the host saves.

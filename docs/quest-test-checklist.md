@@ -163,3 +163,10 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - To start again: on the desktop page, "Start a new site" in the help panel, or add `?new=1` to the address. There is no button for it in VR yet.
 - The save lives in the Quest browser's storage for this site: clearing browsing data removes it, and it does not follow you to another device.
 
+## Dozer auto level and gears (new)
+
+- Dozer, AUTO LEVEL switch on the right console (green "AUTO LEVEL" on the dash when on). Put the blade's edge where you want the ground, switch it on, and track across humps and hollows: the lift should work by itself to hold the edge at that height, and the tilt to keep it level with the horizon. Does the ground come out flat? Does the blade hunt up and down?
+- With it on, move the lift lever: you take over, and where you leave the blade is the new level. Natural, or should it need switching off and on?
+- Every machine: TRAVEL GEAR switch on the left console (the dash shows F1 or F2). In the travel gear it should be clearly faster on a long run and noticeably weaker: slower off the line, poor at pushing into a pile or climbing a bank. Top speeds on the custom model: loader 14 then 22 km/h, dumper 17 then 28, backhoe 15 then 24, dozer 11 then 16. Enough for getting about? Too fast to be comfortable in VR?
+- Is a switch the right control, or would you rather a lever?
+

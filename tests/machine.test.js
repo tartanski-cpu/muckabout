@@ -372,3 +372,41 @@ describe('driving off an edge', () => {
     }
   });
 });
+
+describe('gears', () => {
+  it('the travel gear is a good deal faster on a long straight and pulls far less', async () => {
+    for (const [name, phys] of [['loader', 'custom'], ['loader', 'rapier'], ['dozer', 'custom'], ['dumper', 'custom'], ['backhoe', 'custom']]) {
+      const run = async (high) => {
+        const r = await rig(name, { x: -50, z: -37 }, 'dirttown'); r.m.reset(-50, -37, -Math.PI / 2); r.m.setPhysics(phys); r.step(60); start(r.m); r.m.inp.throttle = 1; r.m.inp.range = high ? 1 : 0; r.step(90);
+        let top = 0; r.step(1300, (m) => { m.inp.shuttle = 1; m.inp.accel = 1; m.inp.left = 1; m.inp.right = 1; if (m.position.x < 45) top = Math.max(top, m.speed); });
+        return { top, high: r.m.range.high, f: r.m.range.f };
+      };
+      const lo = await run(false), hi = await run(true);
+      expect(lo.high).toBe(false); expect(hi.high).toBe(true);
+      expect(lo.top).toBeGreaterThan(2.5);
+      expect(hi.top).toBeGreaterThan(lo.top * 1.25);
+      expect(hi.f).toBeLessThan(0.6);
+    }
+  }, 120000);
+});
+
+describe('dozer auto level', () => {
+  it('holds the blade at one height over humps and hollows and leaves the ground flat', async () => {
+    const lane = async (auto) => {
+      const r = await rig('dozer', { x: 15, z: 16 }); r.m.setPhysics('custom'); r.step(30);
+      const core = r.terrain.core, junk = new Float64Array(16);
+      for (let z = 2; z <= 11; z += 0.25) for (let x = 12; x <= 18; x += 0.25) { const c = core.cellAt(x, z), k = Math.sin(z * 1.3) * 0.22; if (k > 0) core.addTop(c, 1, k); else core.removeTop(c, -k, junk); core.wake(c); }
+      r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(90);
+      const g0 = r.terrain.heightAt(15, 14);
+      r.step(200, (m) => { const t = m.tools[0], e = t.node.matrixWorld.elements, c = t.def.corners[2], y = e[1] * c[0] + e[5] * c[1] + e[9] * c[2] + e[13]; m.inp.lift = y > g0 - 0.02 ? -0.4 : 0; }); // blade edge down to grade
+      r.m.inp.lift = 0; r.m.inp.grade = auto ? 1 : 0;
+      r.step(1300, (m) => { m.inp.left = 0.5; m.inp.right = 0.5; });
+      let lo = 9, hi = -9; for (let z = 3; z <= 10; z += 0.25) for (const x of [14, 15, 16]) { const h = r.terrain.heightAt(x, z) - g0; lo = Math.min(lo, h); hi = Math.max(hi, h); }
+      return { rough: hi - lo, z: r.m.position.z, on: r.m.gradeOn };
+    };
+    const hand = await lane(false), auto = await lane(true);
+    expect(auto.on).toBe(true); expect(auto.z).toBeLessThan(4);
+    expect(auto.rough).toBeLessThan(0.16);                    // within a hand's breadth of flat
+    expect(auto.rough).toBeLessThan(hand.rough * 0.6);        // and much flatter than a blade just held where it was
+  });
+});

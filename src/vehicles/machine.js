@@ -287,6 +287,7 @@ export class Machine {
     this.inp = { steer: 0, accel: 0, brake: 0, shuttle: 0, throttle: 0, park: 1, key: 0, left: 0, right: 0, decel: 0, horn: 0 };
     for (const f of this.fnList) this.inp[f.input ?? f.name] = 0;
     this.engine = { running: false, crank: 0, rpm: 0, load: 0, boost: 0, smoke: 0 };
+    this.range = { v: 1, f: 1, high: false }; this.gradeOn = false; this.gradeY = 0;
     this.tow = null; // {fx, fz (N, world), px, py, pz (world point), body}: set each step by a taut tow chain
     this.pt = new Powertrain({ ...def.engine, power: def.drive.power }); this.shaft = 0; this.hyd = { p: 0, q: 0 };
     this.digRate = 0; this.spillRate = 0; this.bump = 0; this.speed = 0; this.tick = 0; this.events = [];
@@ -355,7 +356,7 @@ export class Machine {
       const tgt = free ? { L: k.vl * 0.98, R: k.vr * 0.98 } : this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
       const bogged = 1 - 0.6 * clamp((soft - 0.5) / 0.7, 0, 1); // tracks keep going in deep mud where wheels stop, but only at a crawl
       // a loaded blade lugs the machine down: the deeper the cut and the bigger the heap ahead, the slower it crawls
-      const lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / (dr.digLug ?? 16), 1.5)) : 1;
+      const lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / ((dr.digLug ?? 16) * this.range.f), 1.5)) : 1;
       k.vl += clamp(tgt.L * lug * bogged - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R * lug * bogged - k.vr, -amax * dt, amax * dt);
       const push = toolMoving > 0.05 ? dig : 0, hold = dr.maxForce / this.mass; // the blade's load and the hill can overpower the tracks
       for (const side of ['vl', 'vr']) { let v = k[side]; v = oppose(v, Math.max(0, push - hold * 0.35)); if (Math.abs(slope) > grip) v += (slope - Math.sign(slope) * grip) * dt; k[side] = v; }
@@ -364,9 +365,9 @@ export class Machine {
     } else {
       let a = clamp(this.tractive / this.mass * 0.75, -grip, grip);
       k.v += (a + slope + towAlong) * dt;
-      k.v = oppose(k.v, Math.min(this.brake * 7, grip) + rr + (toolMoving > 0.05 ? dig : 0) + Math.abs(k.v) * 0.22);
+      k.v = oppose(k.v, Math.min(this.brake * 7, grip) + rr + (toolMoving > 0.05 ? dig : 0) + Math.abs(k.v) * 0.22 / (this.range.v * this.range.v * this.range.v)); // (the travel gear's taller gearing drags far less at speed)
       if (this.brake > 0.3 && Math.abs(k.v) < 0.25 && Math.abs(slope) < grip && Math.abs(towAlong) < 2.5) k.v = 0; // brakes hold on anything the tyres can grip (a hard pull on a tow chain drags it all the same)
-      const vmax = dr.maxSpeed; k.v = clamp(k.v, -vmax[1] * 1.1, vmax[0] * 1.1);
+      const vmax = dr.maxSpeed; k.v = clamp(k.v, -vmax[1] * 1.1 * this.range.v, vmax[0] * 1.1 * this.range.v);
       if (this.joints[0]) { k.gamma = this.joints[0].target; k.psi += k.v * Math.sin(k.gamma) / (k.LF + k.LR * Math.cos(k.gamma)) * dt; }
       else { let st = 0, n = 0; for (const w of this.wheels) if (w.def.steer) { st += w.steer; n++; } k.psi += k.v * Math.tan(n ? st / n : 0) / k.L * dt; }
     }
@@ -446,7 +447,22 @@ export class Machine {
   pre(dt) {
     const inp = this.inp, e = this.engine, ed = this.def.engine;
     this.tick++; this.events.length = 0;
-    // engine: key → crank → run
+    // Gears. Low is the working gear: full pull, modest speed. High (drive.high = [speed factor, pull factor]) is for
+    // getting about: the same engine power geared up, so it is faster on the flat and far weaker at pushing and climbing.
+    { const hi = inp.range > 0.5 && this.def.drive.high; this.range.v = hi ? hi[0] : 1; this.range.f = hi ? hi[1] : 1; this.range.high = !!hi; }
+    // Auto level (def.grade, a dozer): the lift holds the blade's edge at the height it had when the switch went on,
+    // whatever the machine rides over, and the tilt keeps the edge level with the horizon. Moving the lift lever
+    // takes over, and where you leave the blade is the new level.
+    if (this.def.grade) {
+      const gd = this.def.grade, on = inp.grade > 0.5 && e.running, t = this.tools.find((x) => x.def.name === gd.tool);
+      if (on && t) {
+        const C = t.def.corners, m = t.node.matrixWorld.elements, wy = (c) => m[1] * c[0] + m[5] * c[1] + m[9] * c[2] + m[13], yL = wy(C[2]), yR = wy(C[3]), y = (yL + yR) / 2;
+        if (!this.gradeOn || Math.abs(inp[gd.lift] || 0) > 0.15) this.gradeY = y;
+        else inp[gd.lift] = clamp((this.gradeY - y) * 7, -1, 1);
+        if (gd.tilt && Math.abs(inp[gd.tilt] || 0) < 0.15) inp[gd.tilt] = clamp((yL - yR) * 9 * (gd.tiltSign ?? 1), -1, 1);
+      }
+      this.gradeOn = on;
+    }
     if (inp.key > 0.5 && !e.running) { e.crank += dt; if (e.crank > 0.9) { e.running = true; this.events.push({ type: 'start' }); } } else if (inp.key <= 0.5) { if (e.running) this.events.push({ type: 'stop' }); e.running = false; e.crank = 0; }
     const demand = e.running ? clamp(Math.max(inp.throttle, this.def.drive.type === 'tracks' ? 1 - inp.decel : inp.accel), 0, 1) : 0;
     // tracked machines: the hand throttle sets the revs, and pushing the drive levers brings them up from a low setting
@@ -503,13 +519,14 @@ export class Machine {
 
     // drive demand
     const dr = this.def.drive, sp = this.speed;
+    // (in the travel gear the converter locks up: a third more of the engine's power reaches the wheels at speed)
     this.tractive = 0; this.trackTarget = null;
     if (e.running && dr.type === 'wheels') {
-      const dir = inp.shuttle > 0.5 ? 1 : inp.shuttle < -0.5 ? -1 : 0, vmax = dir >= 0 ? dr.maxSpeed[0] : dr.maxSpeed[1], along = sp * dir;
-      this.tractive = dir * inp.accel * Math.min(dr.maxForce, dr.power / Math.max(Math.abs(sp), 1)) * clamp((vmax - along) / (vmax * 0.15), 0, 1);
+      const dir = inp.shuttle > 0.5 ? 1 : inp.shuttle < -0.5 ? -1 : 0, vmax = (dir >= 0 ? dr.maxSpeed[0] : dr.maxSpeed[1]) * this.range.v, along = sp * dir;
+      this.tractive = dir * inp.accel * Math.min(dr.maxForce * this.range.f, dr.power * (this.range.high ? 1.33 : 1) / Math.max(Math.abs(sp), 1)) * clamp((vmax - along) / (vmax * 0.15), 0, 1);
       this.gear = dir;
     } else if (e.running && dr.type === 'tracks') {
-      const k = dr.maxSpeed[0] * (0.35 + 0.65 * flow);
+      const k = dr.maxSpeed[0] * this.range.v * (0.35 + 0.65 * flow);
       this.trackTarget = { L: clamp(inp.left, -1, 1) * k, R: clamp(inp.right, -1, 1) * k };
       this.gear = Math.sign(inp.left + inp.right);
     } else this.gear = 0;
@@ -522,7 +539,7 @@ export class Machine {
     const Tr = this.pt.Tr, x = e.rpm / ed.maxRpm, cap = this.rigs.reduce((a, r) => a + r.field.capacity, 0), full = cap ? Math.min(1, this.payload() / cap) : 0;
     this.hyd.q = Math.min(1, hq); this.hyd.p = hq > 0 ? hw / hq : 0;
     let shaft = Tr * (0.03 + (ed.hydShare ?? 0.55) * Math.min(1.15, hw));
-    if (dr.type === 'wheels') { const sr = clamp(Math.abs(sp) / (Math.max(dr.maxSpeed[0], 1) * Math.max(0.3, x)), 0, 1); shaft += inp.accel * Math.abs(this.gear) * Tr * 1.05 * x * x * (1 - 0.72 * sr * sr) * (1 + 0.3 * full); }
+    if (dr.type === 'wheels') { const sr = clamp(Math.abs(sp) / (Math.max(dr.maxSpeed[0] * this.range.v, 1) * Math.max(0.3, x)), 0, 1); shaft += inp.accel * Math.abs(this.gear) * Tr * 1.05 * x * x * (1 - 0.72 * sr * sr) * (1 + 0.3 * full); }
     else if (this.trackTarget) shaft += Tr * (Math.abs(inp.left) + Math.abs(inp.right)) / 2 * (0.42 + 0.6 * clamp(this.digRate / 22, 0, 1)) // tracking alone is real work for the engine; a loaded blade more than doubles it;
     this.shaft = e.running ? shaft : 0;
   }
@@ -571,7 +588,7 @@ export class Machine {
       const kill = w.share / h * 0.5; // force that would stop this wheel's share of the mass in ~2 substeps
       let Fl, Fs = -vs * kill * (w.side ? 0.55 : 1);
       if (w.side) { // track contact: hydrostatic drive holds a target speed
-        const tv = this.trackTarget ? this.trackTarget[w.side] : 0, fmax = dr.maxForce / (this.wheels.length / 2);
+        const tv = this.trackTarget ? this.trackTarget[w.side] : 0, fmax = dr.maxForce * this.range.f / (this.wheels.length / 2);
         const free = this.tow && this.brake < 0.3 && (!this.trackTarget || Math.abs(this.trackTarget.L) + Math.abs(this.trackTarget.R) < 0.05);
         // towed with the levers at rest, the tracks run free against a little drag
         Fl = free ? clamp(-vf * kill * 0.03, -fmax, fmax) : this.trackTarget && !(this.brake > 0.5) ? clamp((tv - vf) * kill * 0.6, -fmax, fmax) : clamp(-vf * kill, -fmax * 1.5, fmax * 1.5);
