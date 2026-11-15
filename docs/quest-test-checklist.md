@@ -150,3 +150,9 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - The ISO PATTERN switch between the two sticks swaps boom and dipper between the hands (the excavator layout). Does it flip cleanly?
 - The controller thumbsticks follow the same pattern as the levers.
 
+## Shaking a load out, and driving off an edge (new)
+
+- Soil clinging in a part-tipped bucket: flick the bucket lever back and forth quickly (two or three reversals) and it should come loose and fall out. The same with the dumper's tip lever. Does it take about the right effort? Does a load ever shake out when you did not mean it to (hard driving over rough ground on the Rapier model)?
+- Drive a loader fast off a terrace edge, bucket low. Before, the bucket buried itself and threw up a mound taller than the cab. Now the bucket should dig in no more than about 60 cm and then carry the nose. Still able to make a crater?
+- The same limit applies to the dozer blade: held right down on a long push, it should no longer bury the machine in its own trench.
+

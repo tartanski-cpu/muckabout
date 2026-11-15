@@ -36,6 +36,7 @@ export class ContainerRig {
     this.field = field; this.key = key; this.inv = new Float64Array(16); this.world = new Float64Array(16);
     this.prev = new Float64Array(16); this.has = false; this.passes = 2; this.spillRate = 0;
     this._p = [0, 0, 0]; this._q = [0, 0, 0];
+    this.shake = 0; this._up = null; this._du = [0, 0, 0]; this._since = 9; this._revs = 0; this._last = 9; // shaking the load loose (see step)
   }
   /** world/inverse: matrixWorld elements and its inverse. */
   setPose(world, inverse) {
@@ -45,6 +46,21 @@ export class ContainerRig {
   step(dt, clods) {
     const m = this.world, s = Math.hypot(m[1], m[5], m[9]) || 1;
     const up = [m[1] / s, m[5] / s, m[9] / s]; // world +Y in local coordinates
+    // Shaking it out: flick the bucket or body back and forth and what clings in it comes loose. Each quick reversal
+    // of the way it is tipping adds to `shake`, which the load then slides on; it dies away in about a second.
+    this.shake = Math.max(0, this.shake - dt * 1.1); this._since += dt; this._last += dt;
+    if (this._up) {
+      const du = [up[0] - this._up[0], up[1] - this._up[1], up[2] - this._up[2]], w = Math.hypot(du[0], du[1], du[2]) / dt;
+      if (w > 0.2) { // tipping at more than 0.2 rad/s
+        const was = this._du, dot = du[0] * was[0] + du[1] * was[1] + du[2] * was[2];
+        if (dot < 0 && this._since < 0.7) { // a reversal. One alone is a bump in the road; two in quick succession is a shake
+          this._revs = this._last < 0.9 ? this._revs + 1 : 1; this._last = 0;
+          if (this._revs >= 2) this.shake = Math.min(1, this.shake + 0.55);
+        }
+        this._du = du; this._since = 0;
+      }
+    }
+    this._up = up;
     let out = 0;
     const emit = (lx, ly, lz, dx, dz, mat, vol) => {
       tp(m, lx, ly, lz, this._p, 0); tp(this.prev, lx, ly, lz, this._q, 0);
@@ -52,7 +68,7 @@ export class ContainerRig {
       clods.pour(this.key, this._p[0], this._p[1], this._p[2],
         (this._p[0] - this._q[0]) / dt + ox * 0.9, (this._p[1] - this._q[1]) / dt + oy * 0.9, (this._p[2] - this._q[2]) / dt + oz * 0.9, mat, vol);
     };
-    for (let k = 0; k < this.passes; k++) out += this.field.relax(up, emit);
+    for (let k = 0; k < this.passes; k++) out += this.field.relax(up, emit, this.shake);
     this.spillRate += (out / dt - this.spillRate) * 0.3;
     return out;
   }

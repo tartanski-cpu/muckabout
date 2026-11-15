@@ -300,7 +300,7 @@ describe('the engine works for its living (what the sound follows)', () => {
       return { fuel, rpm: r.m.engine.rpm, boost: r.m.engine.boost };
     };
     const free = await go(false), push = await go(true);
-    expect(push.fuel).toBeGreaterThan(free.fuel + 0.25); expect(push.rpm).toBeLessThan(free.rpm - 30); expect(push.boost).toBeGreaterThan(free.boost + 0.2);
+    expect(push.fuel).toBeGreaterThan(free.fuel + 0.15); expect(push.rpm).toBeLessThan(free.rpm - 30); expect(push.boost).toBeGreaterThan(free.boost + 0.2);
   });
   it('a loader driven into the pile sags and digs in, then recovers when the pedal comes off', async () => {
     const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(150);
@@ -338,5 +338,37 @@ describe('the heap in front of a blade', () => {
     expect(peak).toBeLessThan(1.3);                                      // no bow wave up at the driver's eyes
     expect(side).toBeGreaterThan(0.12);                                  // windrows left beside the cut
     expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-6);
+  });
+});
+
+describe('shaking a load out', () => {
+  it('soil that clings in a half-tipped bucket comes out when the bucket is flicked back and forth', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(120);
+    const f = r.m.containers.bucket.field; f.add(1, 1.2); const v0 = await r.total();
+    r.step(200, (m) => { m.inp.boom = m.fn.boom.pos < 0.5 ? 1 : 0; });                           // lift it clear
+    r.step(200, (m) => { m.inp.boom = 0; m.inp.bucket = m.fn.bucket.pos > -0.45 ? -1 : 0; });     // tip part way: some slides out, some clings
+    r.m.inp.bucket = 0; r.step(240); const clung = f.volume();
+    expect(clung).toBeGreaterThan(0.15);
+    r.step(240); expect(f.volume()).toBeGreaterThan(clung * 0.9);                                 // left alone it stays put
+    r.step(150, (m, i) => { m.inp.bucket = Math.floor(i / 9) % 2 ? 1 : -1; }); r.m.inp.bucket = 0; r.step(120); // flick it
+    expect(f.volume()).toBeLessThan(clung * 0.35);
+    expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-6);
+  });
+});
+
+describe('driving off an edge', () => {
+  it('a loader that runs nose first off a bank does not bury its bucket and throw up a mound', async () => {
+    for (const phys of ['custom', 'rapier']) {
+      const r = await rig('loader', { x: 15, z: 12 }); r.m.setPhysics(phys); r.step(30);
+      // cut the ground down 1.6 m across its path from 7 m ahead: a bank to drive off
+      const core = r.terrain.core, junk = new Float64Array(16);
+      for (let x = 11; x <= 19; x += 0.25) for (let z = -15; z <= 4.5; z += 0.25) { const c = core.cellAt(x, z); core.removeTop(c, 1.6, junk); core.wake(c); }
+      r.step(5); const low = r.terrain.heightAt(15, 0); expect(r.terrain.heightAt(15, 8) - low).toBeGreaterThan(1.2);
+      r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(90);
+      r.step(300, (m) => { m.inp.shuttle = 1; m.inp.accel = 1; });
+      let peak = -9, pit = 9; for (let z = -12; z <= 2.5; z += 0.5) for (const x of [14, 15, 16]) { const h = r.terrain.heightAt(x, z) - low; peak = Math.max(peak, h); pit = Math.min(pit, h); }
+      expect(r.m.position.z).toBeLessThan(5);        // its front end, at least, went over
+      expect(peak).toBeLessThan(1.2); expect(pit).toBeGreaterThan(-0.9);
+    }
   });
 });

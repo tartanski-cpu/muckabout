@@ -56,8 +56,11 @@ export class ContainerField {
    * emit(lx, ly, lz, dx, dz, mat, vol): material leaving at local position, heading in local direction (dx, dz).
    * Returns volume that left.
    */
-  relax(up, emit) {
+  relax(up, emit, shake = 0) {
     const { nx, nz, cs, fill, mat } = this, ux = up[0], uy = up[1], uz = up[2];
+    // shaken (0..1): the load is jolted loose. It slides at a far shallower angle, clears lips and low sides, and thin
+    // layers that would otherwise cling let go.
+    const loose = 1 - 0.88 * shake, lip = 1 - 0.75 * shake, least = shake > 0.3 ? 0.0002 : 0.002;
     let out = 0;
     if (uy < 0.08) { // on its side or upside down: everything drops out
       for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
@@ -73,16 +76,16 @@ export class ContainerField {
       let d = uy * (fill[a] - fill[b]) - ux * dxl - uz * dzl, hi = a, lo = b;
       if (d < 0) { d = -d; hi = b; lo = a; }
       if (fill[hi] <= 0) return;
-      const ex = d - cs * Math.tan(MATERIALS[mat[hi]].repose * D2R) * k1;
-      if (ex <= 0.002) return;
+      const ex = d - cs * Math.tan(MATERIALS[mat[hi]].repose * D2R) * k1 * loose;
+      if (ex <= least) return;
       const m = Math.min(ex * 0.25 / k1, fill[hi]);
       fill[hi] -= m; this._put(lo, mat[hi], m);
     };
     const edge = (a, i, j, dxl, dzl, wall) => { // outflow over a side
       if (fill[a] <= 0 || wall >= 5) return;
-      const d = uy * (fill[a] - wall) - ux * dxl - uz * dzl;
-      const ex = d - cs * Math.tan(MATERIALS[mat[a]].repose * D2R) * k1;
-      if (ex <= 0.002) return;
+      const d = uy * (fill[a] - wall * lip) - ux * dxl - uz * dzl;
+      const ex = d - cs * Math.tan(MATERIALS[mat[a]].repose * D2R) * k1 * loose;
+      if (ex <= least) return;
       const m = Math.min(ex * 0.3 / k1, fill[a]);
       fill[a] -= m; const v = m * this.area; out += v; this.dirty = true;
       emit(this.cx(i) + dxl * 0.6, Math.max(fill[a], wall) + 0.03, this.cz(j) + dzl * 0.6, Math.sign(dxl), Math.sign(dzl), mat[a], v);
