@@ -10,7 +10,7 @@ WebXR earthmoving sandbox for Meta Quest. Spec and milestones: `docs/mvp-spec.md
 - Sim code stays deterministic (fixed dt, seeded RNG, no `Math.random` in the sim; audio may use it).
 - Draw calls are the Quest's main cost: merge static geometry (see `machine.js` visuals and `xr/controls/decor.js`); the budget is 150.
 - Tests drive cab controls with fake hands (`input.setFake`) pinned to the cab; wait on frames and sim time, not wall-clock time (software GL is slow).
-- Co-op must survive drops: `tests/e2e/coop.mjs` (two tabs) and `tests/e2e/peer.mjs` (real PeerJS against a local matchmaking server) drop and rejoin players every way they can. Byte arrays arrive from PeerJS as `ArrayBuffer` or `Uint8Array` depending on size; `transport.js` evens them out.
+- Co-op must survive drops: `tests/e2e/coop.mjs` (two tabs), `tests/e2e/coop3.mjs` (three) and `tests/e2e/peer.mjs` (real PeerJS against a local matchmaking server) drop and rejoin players every way they can. Byte arrays arrive from PeerJS as `ArrayBuffer` or `Uint8Array` depending on size; `transport.js` evens them out.
 - `src/poc/loader.js` is the original proof of concept: a feel reference. Don't grow it.
 - XR, interaction and net code follow SWVR's design (the owner's other WebXR game); its lessons are in the file headers.
 - Nothing can be tested in VR from here. Say so rather than claiming it, and add what needs checking to `docs/quest-test-checklist.md`.

@@ -1,4 +1,4 @@
-// Two-player co-op (spec §6), host-authoritative:
+// Co-op for up to MAX_PLAYERS (spec §6, roadmap 0b: two players and a third), host-authoritative:
 //   host    runs the terrain worker and all machine physics; sends machine states and poses at 20 Hz, terrain deltas at
 //           10 Hz, container contents at 5 Hz, the river at 1 Hz, and clod spawn events (clients fly them cosmetically)
 //   client  builds the same starting map, draws interpolated host state 0.12 s behind, and sends its head/hand pose and
@@ -8,6 +8,7 @@ import { TerrainDeltaWriter, encodeWater } from './terrainDelta.js';
 import { SnapshotBuffer, lerpArr, nlerpQuat } from './snapshot.js';
 import { Avatar } from './avatar.js';
 
+export const MAX_PLAYERS = 4; // the host counts as one
 const NET_DT = 1 / 20, now = () => performance.now() / 1000;
 const _h = { x: 0, y: 0, z: 0 }, _q = { x: 0, y: 0, z: 0, w: 1 };
 
@@ -27,20 +28,25 @@ const packField = (f) => { const n = f.fill.length, fill = new Uint8Array(n); fo
 export async function startHost(game, S, transport, code) {
   S.THREE = game.THREE;
   await transport.host(code);
-  const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map(), silence: 12, drops: 0, admits: 0 };
+  const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map(), silence: 12, drops: 0, admits: 0, max: MAX_PLAYERS };
   const writer = new TerrainDeltaWriter(game.terrain); game.terrain.onChunks((c) => writer.markChunks(c));
   // record clod spawns for the clients
   const spawn = game.clods.spawn.bind(game.clods);
   game.clods.spawn = (x, y, z, vx, vy, vz, mat, vol) => { if (net.peers.size && net.clods.length < 8 * 250) net.clods.push(x, y, z, vx, vy, vz, mat, vol); spawn(x, y, z, vx, vy, vz, mat, vol); };
 
   const admit = (id) => { let p = net.peers.get(id); if (!p) { net.peers.set(id, p = { pose: null, last: now() }); net.admits++; } return p; };
-  transport.onPeer = (id) => { admit(id); };
+  transport.onPeer = () => {}; // a link alone is not a player: admitted on its first message, when there is room
   transport.onLeave = (id) => drop(id);
   function drop(id) { if (net.peers.delete(id)) net.drops++; net.avatars.get(id)?.dispose(); net.avatars.delete(id); for (const m of game.machines) if (m.driver === id) { m.driver = null; m.remoteInp = null; } }
   transport.onMessage = (msg, from) => {
     // A player dropped for going quiet (headset off, wifi blip) whose link is still up is let straight back in on its
     // next message, and brought up to date as a newcomer is. It used to be ignored for good: in the room, seeing the
     // host, unable to drive or be seen, and a fresh join was the only way back.
+    if (!net.peers.has(from)) {
+      // full: a player coming back on a new link (`was`) takes its old place, anyone else is turned away
+      if (msg.t === 'hello' && msg.was && net.peers.has(msg.was)) drop(msg.was);
+      if (net.peers.size >= net.max - 1) { if (msg.t === 'hello') transport.send({ t: 'full', max: net.max }, from); return; }
+    }
     const back = !net.peers.has(from), peer = admit(from); peer.last = now();
     if (msg.t === 'hello' || back) {
       if (msg.was && msg.was !== from) drop(msg.was); // the same player on a new link: free the old one's seat now
@@ -83,7 +89,7 @@ export async function startClient(game, S, transport, code) {
   /** Link up, say hello, wait for the host's site. Used for the first join and for every way back in. */
   async function connect() {
     await transport.join(code);
-    const got = new Promise((res, rej) => { welcomed = res; setTimeout(() => rej(new Error('the host did not answer')), 15000); });
+    const got = new Promise((res, rej) => { welcomed = (err) => (err ? rej(err) : res()); setTimeout(() => rej(new Error('the host did not answer')), 15000); });
     transport.send({ t: 'hello', was: net.id });
     await got;
   }
@@ -91,13 +97,14 @@ export async function startClient(game, S, transport, code) {
   async function rejoin() {
     if (net.rejoining || net.closed) return; net.rejoining = true; net.lost = true;
     for (let wait = 1; !net.closed; wait = Math.min(wait * 2, 8)) {
-      try { await connect(); net.rejoins++; net.error = null; break; } catch (e) { net.error = e.message; await sleep(wait); }
+      try { await connect(); net.rejoins++; net.error = null; break; } catch (e) { net.error = e.message; await sleep(net.full ? 8 : wait); }
     }
     net.rejoining = false;
   }
   net.rejoin = rejoin;
   transport.onLeave = () => { net.lost = true; rejoin(); };
   transport.onMessage = (msg) => {
+    if (msg.t === 'full') { net.full = msg.max; welcomed?.(new Error(`the room is full (${msg.max} players)`)); return; }
     if (msg.t === 'welcome') {
       if (net.id) game.terrain.resetRemote(); // coming back: start again from the map as built, the host may have reloaded
       net.id = msg.id; game.terrain.applyRemote(msg.terrain); if (msg.water) game.terrain.applyRemoteWater(msg.water);
@@ -128,10 +135,15 @@ export async function startClient(game, S, transport, code) {
       m.applyNet(tmp, dt);
     }
     const pr = net.poses.bracket(t);
-    if (pr) for (const id in pr.b) { // the other players
-      if (id === net.id) continue;
-      let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene, id, (x, z) => game.terrain.heightAt(x, z)));
-      a.update(pr.b[id], dt);
+    if (pr) {
+      for (const id in pr.b) { // the other players
+        if (id === net.id) continue;
+        let a = net.avatars.get(id); if (!a) net.avatars.set(id, a = new Avatar(game.scene, id, (x, z) => game.terrain.heightAt(x, z)));
+        a.update(pr.b[id], dt);
+      }
+      // anyone the host no longer lists has gone (or come back under a new id): with three or more, the other
+      // clients' figures used to stay standing where they were last seen
+      for (const [id, a] of net.avatars) if (!(id in pr.b)) { a.dispose(); net.avatars.delete(id); }
     }
     // someone else got the seat first: get out
     const mine = S.player.machine;
