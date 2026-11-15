@@ -38,7 +38,7 @@ Every machine can run on either of two models, and you can flip between them whi
 - **Custom** (the default): the proof of concept's hand-written approach, extended to all four machines. Speed and heading are integrated directly (articulated, front-steer or skid-steer), and the chassis rides a plane fitted through the ground under its wheels with a little suspension lag. Nothing bounces, tips over or fights a solver. Machines stop dead against each other rather than shoving.
 - **Rapier**: rigid bodies with spring suspension and tyre forces. Machines can pitch, roll over, push each other and get stuck.
 
-Switch: the **Physics** button under Extras on the start page; on desktop also `M`. The dash display shows which is active. `?physics=rapier` starts on Rapier. Hydraulics, digging, containers, sound and controls are identical in both.
+Switch: the **Physics** button under Extras on the start page; on desktop also `M`. The custom model carries its body on three damped springs (pitch, roll, heave; `sprung` in each machine's JSON), so it dips under braking, squats pulling away, leans out of turns and bounces over bumps as the rigid-body model does. The dash display shows which is active. `?physics=rapier` starts on Rapier. Hydraulics, digging, containers, sound and controls are identical in both.
 
 ## Playing
 

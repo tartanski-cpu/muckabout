@@ -232,6 +232,9 @@ export class Machine {
       this.wheels.push({ def: w, body, pos: new THREE.Vector3().fromArray(w.pos), r: w.r, share, k, c, mesh, comp: 0, N: 0, grounded: false, vf: 0, slip: 0, spin: 0, side: w.track || null, steer: 0, gx: 0, gz: 0 });
     }
     this.sus = sus;
+    // how the body rides on its tyres or tracks in the custom model: natural frequency (Hz), damping ratio, and how far it
+    // leans per m/s² along (rad), across (rad) and vertically (m)
+    this.sprung = { hz: 1.4, damp: 0.22, pitch: 0.008, roll: 0.008, heave: 0.004, ...(def.sprung || {}) };
     // ---- skid contacts (belly, bucket corners, stabiliser feet): stiff supports with friction
     this.contacts = [];
     for (const c of def.contacts || []) {
@@ -300,7 +303,7 @@ export class Machine {
     this.driver = null; // who is in the seat (multiplayer / AI)
     // ---- geometry for the custom (non-Rapier) vehicle model
     const meanZ = (ws) => ws.reduce((a, w) => a + w.pos.z, 0) / Math.max(1, ws.length);
-    const j0 = this.joints[0], k = this.kin = { custom: false, x: 0, z: 0, y: 0, vy: 0, psi: 0, v: 0, vl: 0, vr: 0, gamma: 0, pitch: 0, roll: 0 };
+    const j0 = this.joints[0], k = this.kin = { custom: false, x: 0, z: 0, y: 0, vy: 0, psi: 0, v: 0, vl: 0, vr: 0, gamma: 0, pitch: 0, roll: 0, sp: 0, spv: 0, sr: 0, srv: 0, sh: 0, shv: 0, pv: 0, ax: 0, ay: 0, ga: 0, gv: 0, pa: null };
     if (j0) { // articulated: rear axle leads the maths, as in the proof of concept
       const rear = this.wheels.filter((w) => w.body === this.bodies[j0.def.a]), front = this.wheels.filter((w) => w.body === this.bodies[j0.def.b]);
       k.refZ = meanZ(rear); k.hingeZ = j0.def.anchor[2]; k.LR = k.refZ - k.hingeZ; k.LF = k.hingeZ - meanZ(front);
@@ -338,6 +341,7 @@ export class Machine {
   _enterCustom() {
     const k = this.kin, o = this.bodyList[0].obj;
     k.psi = this.heading; k.v = this.speed || 0; k.vl = k.vr = k.v; k.vy = 0; k.pitch = 0; k.roll = 0;
+    k.sp = k.spv = k.sr = k.srv = k.sh = k.shv = k.ax = k.ay = k.ga = k.gv = 0; k.pv = k.v; k.pa = null;
     k.gamma = this.joints[0] ? this.joints[0].target : 0;
     const s = Math.sin(k.psi), c = Math.cos(k.psi);
     k.x = o.position.x + s * k.refZ; k.z = o.position.z + c * k.refZ; k.y = o.position.y; // the reference point: rear axle (or track centre)
@@ -431,8 +435,27 @@ export class Machine {
     if (k.y < a) { if (k.vy < -2) this.bump = Math.max(this.bump, Math.min(1, -k.vy * 0.25)); k.y += (a - k.y) * Math.min(1, dt * 16); if (k.vy < 0) k.vy = 0; }
     k.pitch += (Math.atan(-cc) - k.pitch) * Math.min(1, dt * 6); k.roll += (Math.atan(b) - k.roll) * Math.min(1, dt * 6);
     // too steep to hold: it slides (the brake check above already lets it roll)
+    // The body on its springs. The wheels follow the ground exactly (above); the body rides on tyres and suspension,
+    // so it leans against what the machine is doing and rocks until the damping eats it: nose down under braking
+    // and up pulling away, out of a turn, down and up over a bump. Three damped springs (pitch, roll, heave), each
+    // pushed by the matching acceleration; `sprung` in the machine's JSON sets how soft and how lively. This is
+    // what the rigid-body model gives by itself and this model lacked.
+    {
+      const sp = this.sprung, grounded = this.wheels.some((w) => w.grounded);
+      const load = 1 + this.payload() * 1600 / this.mass, w0 = 2 * Math.PI * sp.hz / Math.sqrt(load), c = 2 * sp.damp * w0, lp = Math.min(1, dt * 18);
+      k.ax += ((k.v - k.pv) / dt - k.ax) * lp; k.pv = k.v;                       // along: + pulling away, − braking
+      k.ay += (k.v * (k.psi - ppsi) / dt - k.ay) * lp;                          // across: + turning left
+      const gv = k.pa === null ? 0 : (a - k.pa) / dt; k.pa = a; k.ga += (clamp((gv - k.gv) / dt, -25, 25) - k.ga) * lp; k.gv = gv; // the ground coming up under it
+      const on = grounded ? 1 : 0;
+      // (not while a blade or bucket is cutting: the soil's push comes in at ground level, and a nose that dipped with it
+      // would drive the edge deeper, which slows the machine more: a loop that dug holes under the dozer's auto level)
+      const free = on / (1 + this.digRate * 4);
+      k.spv += (-w0 * w0 * k.sp - c * k.spv + w0 * w0 * sp.pitch * clamp(k.ax, -6, 6) * free) * dt; k.sp = clamp(k.sp + k.spv * dt, -0.09, 0.09);
+      k.srv += (-w0 * w0 * k.sr - c * k.srv - w0 * w0 * sp.roll * clamp(k.ay, -5, 5) * on) * dt; k.sr = clamp(k.sr + k.srv * dt, -0.08, 0.08);
+      k.shv += (-w0 * w0 * k.sh - c * k.shv - w0 * w0 * sp.heave * k.ga * on) * dt; k.sh = clamp(k.sh + k.shv * dt, -0.1, 0.1);
+    }
     // pose the bodies
-    const q = _q.setFromEuler(_eul.set(k.pitch, k.psi, k.roll, 'YXZ')), b0 = this.bodyList[0];
+    const q = _q.setFromEuler(_eul.set(k.pitch + k.sp, k.psi, k.roll + k.sr, 'YXZ')), b0 = this.bodyList[0], ky = k.y; k.y += k.sh;
     b0.rb.setTranslation({ x: ox, y: k.y, z: oz }, true); b0.rb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
     b0.rb.setNextKinematicTranslation({ x: ox, y: k.y, z: oz }); b0.rb.setNextKinematicRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
     if (this.joints[0]) {
@@ -443,6 +466,7 @@ export class Machine {
       bf.rb.setTranslation({ x: fx, y: fy, z: fz }, true); bf.rb.setRotation({ x: _qf.x, y: _qf.y, z: _qf.z, w: _qf.w }, true);
       bf.rb.setNextKinematicTranslation({ x: fx, y: fy, z: fz }); bf.rb.setNextKinematicRotation({ x: _qf.x, y: _qf.y, z: _qf.z, w: _qf.w });
     }
+    k.y = ky; // the springs move the body, not the model's own height
   }
 
   get position() { return this.bodyList[0].obj.position; }
@@ -669,7 +693,7 @@ export class Machine {
     _f.set(0, 0, -1).applyQuaternion(b0.obj.quaternion);
     this.speed = this.kin.custom ? this.kin.v : lv.x * _f.x + lv.y * _f.y + lv.z * _f.z;
     this.root.updateMatrixWorld(true);
-    for (const w of this.wheels) { w.mesh.position.y = w.pos.y + (this.kin.custom ? 0 : w.grounded ? w.comp : -this.sus.ext); w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); }
+    for (const w of this.wheels) { w.mesh.position.y = w.pos.y + (this.kin.custom ? -(this.kin.sh - w.pos.z * this.kin.sp + w.pos.x * this.kin.sr) : w.grounded ? w.comp : -this.sus.ext); w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); }
     // tools: cut what the edge swept, feed the container, remember resistance
     let dig = 0;
     for (const t of this.tools) {

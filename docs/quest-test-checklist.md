@@ -189,3 +189,15 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 
 - Clicking the left stick no longer does anything by itself, on foot or seated. Seated, **hold it in for a second**: the machine you are in is stood back on its wheels where it is, with a buzz. Try it after rolling one over. Is a second the right length, and do you ever trigger it by accident while working the stick?
 - If the Rapier "digger goes round and round" trouble was after an accidental left stick click, it should not come back: that click was what switched the physics model.
+
+## Body on its springs (custom physics, new)
+
+The custom model now rides on springs as the Rapier one does. None of it has been felt in a headset.
+
+- Loader or dumper, travel gear, full speed, then stamp on the brake: the nose should dip about 3°, rock back past level and settle in two or three swings. Too much, too little, too long? Queasy? (Right stick click is horizon lock.)
+- Pull away hard: the nose should lift a little. Turn hard at speed: the body should lean out of the turn.
+- Drive over a kerb or a rut: a bounce, then settled.
+- A full dumper should rock more slowly than an empty one.
+- Dozer: nearly rigid, as tracks are. Does digging with the blade or bucket still feel steady (the nose is not meant to dip from the soil's push)?
+- Do the tyres stay on the ground while the body rocks, or do they lift or sink visibly?
+- Each machine's numbers are in its JSON under `sprung` (hz, damp, pitch, roll, heave) if you want one softer or stiffer.
