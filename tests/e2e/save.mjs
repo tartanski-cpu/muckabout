@@ -20,7 +20,7 @@ try {
   await page.close();
 
   page = await open('?worker=0&map=test&save=1', { context });
-  await page.waitForFunction(() => __game.machines?.length && __game.save);
+  await page.waitForFunction(() => __game.machines?.length && __game.save?.savedAt > 0, null, { timeout: 60000 }); // (the load finishes a moment after the page is up)
   await page.evaluate(() => { __game.paused = true; });
   const after = await page.evaluate(snap), audit1 = await page.evaluate(() => __game.audit());
   const near = (a, b, tol) => a.every((v, i) => Math.abs(v - b[i]) < tol);
@@ -41,7 +41,7 @@ try {
   check(await page.evaluate(() => __game.save.save()), 'worker terrain: the site saves');
   await page.close();
   page = await open('?worker=1&map=test&save=1', { context });
-  await page.waitForFunction(() => __game.machines?.length && __game.save);
+  await page.waitForFunction(() => __game.machines?.length && __game.save?.savedAt > 0, null, { timeout: 60000 });
   const wh1 = await page.evaluate(() => __game.terrain.heightAt(-3, 15)), base = await page.evaluate(() => __game.terrain.heightAt(-3, 11));
   check(wh0 - base > 0.2 && Math.abs(wh1 - wh0) < 0.02, `worker terrain: the heap comes back (${(wh1 - base).toFixed(2)} m high)`);
   await page.evaluate(() => __game.save.forget());
