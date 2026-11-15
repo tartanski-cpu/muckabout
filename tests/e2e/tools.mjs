@@ -58,11 +58,11 @@ try {
   check(tow.pull > 20000 && tow.moved > 2 && !tow.dRun, `tow chain: the loader drags the dozer ${tow.moved.toFixed(1)} m with its engine off (peak pull ${(tow.pull / 1000).toFixed(0)} kN)`);
   check(tow.gap < 7.6, `tow chain: it holds at its length (${tow.gap.toFixed(2)} m between hooks)`);
   // ---- smooth drawing between simulation steps: the drawn pose lies between the last two simulated ones, and the true one comes back
-  const sm = await page.evaluate(() => { const g = __game, L = g.machine('loader'), o = L.bodyList[0].obj; g.sim(30);
+  const sm = await page.evaluate(() => { const g = __game, L = g.machine('dumper'), o = L.bodyList[0].obj; L.reset(10, 14, 0); g.sim(30); L.override = { key: 1, park: 0, throttle: 1, shuttle: 1, accel: 0.8 }; g.sim(240);
     const p1 = o.position.clone(), s = o.userData.smooth, step = s.p0.distanceTo(s.p1); g._blendPoses(0.25);
     const drawn = o.position.clone(), a = drawn.distanceTo(s.p0), b = drawn.distanceTo(s.p1); g._truePoses();
     return { step, a, b, back: o.position.distanceTo(p1) }; });
-  check(sm.step > 0.01 && Math.abs(sm.a - sm.step * 0.25) < 1e-4 && Math.abs(sm.b - sm.step * 0.75) < 1e-4, `smooth drawing: a quarter of the way into a step, the loader is drawn a quarter of the way along it (${(sm.a * 1000).toFixed(1)} of ${(sm.step * 1000).toFixed(1)} mm)`);
+  check(sm.step > 0.01 && Math.abs(sm.a - sm.step * 0.25) < 1e-4 && Math.abs(sm.b - sm.step * 0.75) < 1e-4, `smooth drawing: a quarter of the way into a step, the dumper is drawn a quarter of the way along it (${(sm.a * 1000).toFixed(1)} of ${(sm.step * 1000).toFixed(1)} mm)`);
   check(sm.back === 0, 'smooth drawing: the true pose is put back before the simulation runs again');
   check(page.errs.length === 0, 'no page errors' + (page.errs.length ? ':\n  ' + page.errs.join('\n  ') : ''));
 } finally { await done(); }
