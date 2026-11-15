@@ -42,6 +42,26 @@ export class TerrainClient {
     return this;
   }
 
+  /** The whole ground as it is now, for saving (see TerrainCore.snapshot). */
+  save() {
+    if (this.mode === 'remote') return Promise.resolve(null);
+    if (this.mode !== 'worker') return Promise.resolve(this.core.snapshot());
+    return new Promise((res) => { const id = ++this._saveId; this._audits.set('s' + id, res); this.worker.postMessage({ t: 'save', id: 's' + id }); });
+  }
+  /** Put a saved ground back, and wait until this side has seen it. Resolves false if the save does not fit this map. */
+  async load(state) {
+    if (this.mode === 'remote' || !state) return false;
+    this.cmds.length = 0; this.queuedDep = 0; this.results.clear(); this.sentDep.clear();
+    let ok;
+    if (this.mode === 'worker') ok = await new Promise((res) => { const id = ++this._saveId; this._audits.set('l' + id, res); this.worker.postMessage({ t: 'load', id: 'l' + id, state }); });
+    else ok = this.core.restore(state);
+    if (!ok) return false;
+    this.tick(); // delivers every chunk
+    if (this.mode === 'worker') await new Promise((res) => { this._firstTick = res; });
+    return true;
+  }
+  _saveId = 0;
+
   // ---- commands (applied on the next tick)
   cut(id, p0, p1, capacity, ahead, heap) { this.cmds.push({ k: 'cut', id, p0: Array.from(p0), p1: Array.from(p1), capacity, ahead, heap }); }
   deposit(x, z, m, v) { this.cmds.push({ k: 'deposit', x, z, m, v }); this.queuedDep += v; }
@@ -75,6 +95,7 @@ export class TerrainClient {
   _onMessage(m) {
     if (m.t === 'tick') { this.pending--; this._apply(m); if (this._firstTick) { this._firstTick(); this._firstTick = null; } }
     else if (m.t === 'audit') { this._audits.get(m.id)?.(m.audit); this._audits.delete(m.id); }
+    else if (m.t === 'save' || m.t === 'load') { this._audits.get(m.id)?.(m.t === 'save' ? m.state : m.ok); this._audits.delete(m.id); }
   }
   _apply(m) {
     this.stats = m.stats;

@@ -115,6 +115,15 @@ Key decisions:
 
 An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick looks round (in chase view it orbits the machine), hold **LB** and the right stick works the bucket/blade/bed instead (from the backhoe's rear seat the left stick works the hoe too; right stick click turns the seat), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
 
+## Saving
+
+`src/game/save.js`: the site is saved in the browser (IndexedDB, one save per map) every minute, when the page is hidden or closed and when a VR session ends, and loaded at the start. It holds the ground and water (`TerrainCore.snapshot` / `restore`, through the worker), each machine's pose, hydraulics and loads, the hopper, the checklist, the hand tools and the player's position. `?new=1` or the "Start a new site" button forgets it; `?save=0` switches saving off (the browser tests use that). In co-op only the host saves.
+
+| URL | |
+|---|---|
+| `/?new=1` | forget the saved site and start from the map as built |
+| `/?save=0` | no loading or saving |
+
 ## Backhoe control pattern
 
 From the rear seat the hoe is worked in the **SAE backhoe pattern** by default: left hand swing and boom, right hand dipper and bucket. The `ISO PATTERN` switch in the cab gives the excavator pattern, with boom and dipper on the other hands. The machine file is written in ISO; `handSwap` names the two functions SAE exchanges (`readControls` in `src/scenes/play.js`). The front loader lever is the usual single lever: back raises, forward lowers, left rolls back, right dumps.

@@ -271,6 +271,24 @@ export class TerrainCore {
   }
   markAllDirty() { this.chunkDirty.fill(1); }
 
+  /** Everything needed to put the ground back as it is now (game/save.js): copies, safe to keep or send. */
+  snapshot() {
+    const w = this.water;
+    return { nx: this.nx, nz: this.nz, bed: this.bed.slice(), nl: this.nl.slice(), lm: this.lm.slice(), lt: this.lt.slice(), dist: this.dist.slice(), rut: this.rut.slice(),
+      lost: this.lost, compacted: this.compacted, water: w ? { d: w.d.slice(), washed: w.washed } : null };
+  }
+  /** Put a snapshot back. Returns false (and changes nothing) if it is for a different size of map. */
+  restore(s) {
+    if (!s || s.nx !== this.nx || s.nz !== this.nz || s.lt.length !== this.lt.length) return false;
+    this.bed.set(s.bed); this.nl.set(s.nl); this.lm.set(s.lm); this.lt.set(s.lt); this.dist.set(s.dist); this.rut.set(s.rut);
+    this.lost = s.lost; this.compacted = s.compacted;
+    for (let c = 0; c < this.n; c++) this._fixH(c);
+    this.queued.fill(0); this.qHead = 0; this.qLen = 0;
+    if (this.water && s.water && s.water.d.length === this.water.d.length) { const w = this.water; w.d.set(s.water.d); w.washed = s.water.washed; for (const k of ['fl', 'fr', 'fu', 'fd', 'vx', 'vz']) w[k].fill(0); }
+    this.markAllDirty();
+    return true;
+  }
+
   /** Volume audit in m³: per material in the ground, plus everything booked as gone. */
   audit() {
     const byMat = new Float64Array(NMAT);

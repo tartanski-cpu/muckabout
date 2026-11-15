@@ -23,6 +23,16 @@ const join = q.get('join'), hosting = flag('host', false);
     if (!join) game.scene_.setPhysics(q.get('physics') === 'rapier' ? 'rapier' : 'custom'); // custom is the default; ?physics=rapier for the other
     game.hud.note = '';
     if (flag('stress', false)) game.scene_.setStress(true);
+    // the saved site, if there is one (game/save.js): loaded now, then saved by itself as you work. ?new=1 starts afresh, ?save=0 switches it off
+    if (!join && flag('save', true) && !flag('stress', false)) {
+      const { SaveGame } = await import('./game/save.js'), save = game.save = new SaveGame(game, game.scene_);
+      if (flag('new', false)) await save.forget(); else if (await save.load()) game.hud.note = 'SITE LOADED FROM YOUR LAST VISIT';
+      save.auto();
+      const when = document.getElementById('saveWhen'), show = () => { if (when) when.textContent = save.savedAt ? 'saved ' + new Date(save.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'not saved yet'; };
+      save.onChange = show; show();
+      document.getElementById('saveBtn')?.addEventListener('click', () => save.save());
+      document.getElementById('newBtn')?.addEventListener('click', async () => { if (!confirm('Start a new site? The saved one will be gone for good.')) return; await save.forget(); const u = new URL(location.href); u.searchParams.set('new', '1'); location.href = u.href; });
+    }
     coop(game);
   }
   game.start();

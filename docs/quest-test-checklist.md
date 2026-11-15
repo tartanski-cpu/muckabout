@@ -156,3 +156,10 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - Drive a loader fast off a terrace edge, bucket low. Before, the bucket buried itself and threw up a mound taller than the cab. Now the bucket should dig in no more than about 60 cm and then carry the nose. Still able to make a crater?
 - The same limit applies to the dozer blade: held right down on a long push, it should no longer bury the machine in its own trench.
 
+## Saving (new)
+
+- Do some work (dig, move machines, load the dumper), then close the browser tab or leave VR. Come back: the site should be as you left it, with "SITE LOADED FROM YOUR LAST VISIT" on the wrist panel. Machines come back with engines off and park brakes on.
+- It saves by itself every minute, when you leave VR and when the page is hidden. Does the frame rate hitch when it saves? (The ground is copied out of its worker each time.)
+- To start again: on the desktop page, "Start a new site" in the help panel, or add `?new=1` to the address. There is no button for it in VR yet.
+- The save lives in the Quest browser's storage for this site: clearing browsing data removes it, and it does not follow you to another device.
+
