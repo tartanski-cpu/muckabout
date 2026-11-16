@@ -49,6 +49,7 @@ try {
   check(moved.every((d) => d > 1), `both clients drive at once (dumper ${moved[0].toFixed(1)} m, loader ${moved[1].toFixed(1)} m)`);
 
   // the machine you drive answers at once on your own screen (net/predict.js), before the host has heard
+  await until('b to be current (not reconnecting)', () => joined(b));
   await b.bringToFront();
   const lever = await b.evaluate(async () => {
     const g = __game, m = g.machine('loader'), i = m.fnList.indexOf(m.fn.boom), buf = g.play.net.buffers.get('loader'), host = () => buf.snaps[buf.snaps.length - 1].s.f[i];
