@@ -7,6 +7,7 @@
 import { TerrainDeltaWriter, encodeWater } from './terrainDelta.js';
 import { SnapshotBuffer, lerpArr, nlerpQuat } from './snapshot.js';
 import { Avatar } from './avatar.js';
+import { OwnMachine } from './predict.js';
 
 export const MAX_PLAYERS = 4; // the host counts as one
 const NET_DT = 1 / 20, now = () => performance.now() / 1000;
@@ -56,7 +57,7 @@ export async function startHost(game, S, transport, code) {
       const w = game.terrain.water;
       transport.send({ t: 'welcome', id: from, map: game.terrain.mapName, terrain: writer.full(), water: w ? encodeWater(w) : null }, from);
       for (const r of game.rigs) net.sentRev.delete(r.key); // resend every container to the newcomer
-    } else if (msg.t === 'pose') peer.pose = msg.p;
+    } else if (msg.t === 'pose') { peer.pose = msg.p; if (msg.ct) { peer.ct = msg.ct; peer.ctAt = now(); } }
     else if (msg.t === 'sit') { const m = game.machine(msg.m); for (const x of game.machines) if (x.driver === from) x.driver = null; if (m && !m.driver) m.driver = from; }
     else if (msg.t === 'stand') { for (const m of game.machines) if (m.driver === from) { m.driver = null; m.remoteInp = null; } }
     else if (msg.t === 'inp') { const m = game.machine(msg.m); if (m && m.driver === from) { m.remoteInp = msg.inp; setCtlValues(m, msg.c); } } // inputs from anyone but the driver are ignored
@@ -71,7 +72,8 @@ export async function startHost(game, S, transport, code) {
     if (!net.peers.size) { net.clods.length = 0; writer.dirty.size > 4000 && writer.dirty.clear(); return; }
     const machines = {}; for (const m of game.machines) machines[m.id] = { ...m.netState(), d: m.driver === 'local' ? 'host' : m.driver, c: ctlValues(m), ev: m.netEvents?.splice(0) };
     const players = { host: localPose(game, S) }; for (const [id, p] of net.peers) players[id] = p.pose;
-    transport.send({ t: 'snap', time: now(), machines, players, clods: net.clods.splice(0), jobs: S.checklist ? S.checklist.items.map((i) => i.done) : null });
+    const echo = {}; for (const [id, p] of net.peers) if (p.ct) echo[id] = p.ct + (now() - p.ctAt); // each client's clock, less the time it waited here: its round trip
+    transport.send({ t: 'snap', time: now(), machines, players, echo, clods: net.clods.splice(0), jobs: S.checklist ? S.checklist.items.map((i) => i.done) : null });
     if (net.n % 2 === 0) { const d = writer.delta(); if (d) transport.send({ t: 'terrain', d }); }
     if (net.n % 4 === 0) { const c = {}; let any = false; for (const r of game.rigs) { const rev = r.field.rev || 0; if (net.sentRev.get(r.key) !== rev) { net.sentRev.set(r.key, rev); c[r.key] = packField(r.field); any = true; } } if (any) transport.send({ t: 'cont', c }); }
     if (net.n % 20 === 0 && game.terrain.water) transport.send({ t: 'water', d: encodeWater(game.terrain.water) });
@@ -118,6 +120,7 @@ export async function startClient(game, S, transport, code) {
       const t = now(); net.lastSnap = t; net.lost = false;
       for (const id in msg.machines) { const s = msg.machines[id], m = game.machine(id); if (!m) continue; net.buffers.get(id).push(msg.time, t, s); net.drivers[id] = s.d; if (s.d !== net.id) setCtlValues(m, s.c); if (s.ev) for (const e of s.ev) m.voice.play(e); }
       net.poses.push(msg.time, t, msg.players);
+      const back = msg.echo?.[net.id]; if (back) { const r = Math.max(0, t - back); net.rtt = net.rtt == null ? r : net.rtt + (r - net.rtt) * 0.1; if (net.own) net.own.rtt = Math.min(0.5, net.rtt); }
       const c = msg.clods; for (let i = 0; i < c.length; i += 8) game.clods.spawn(c[i], c[i + 1], c[i + 2], c[i + 3], c[i + 4], c[i + 5], c[i + 6], c[i + 7]);
       if (msg.jobs && S.checklist) msg.jobs.forEach((d, i) => { if (d) S.checklist.items[i].done = true; });
     } else if (msg.t === 'terrain') game.terrain.applyRemote(msg.d);
@@ -127,10 +130,12 @@ export async function startClient(game, S, transport, code) {
   for (let k = 0; ; k++) { try { await connect(); break; } catch (e) { if (k >= 2) throw e; await sleep(2); } } // three tries before giving up on a first join
   addEventListener('pagehide', () => { net.closed = true; });
 
-  const tmp = { b: [], f: [], w: [], e: [] };
+  const tmp = { b: [], f: [], w: [], e: [] }, own = net.own = new OwnMachine();
   game.frameUpdaters.push((dt) => {
-    const t = now();
+    const t = now(), seat = S.player.machine, driving = seat && !net.lost && net.drivers[seat.id] === net.id;
+    if (!driving) own.reset();
     for (const m of game.machines) { // pose every machine from the host's states
+      if (driving && m === seat && net.predict !== false) { const p = own.step(net.buffers.get(m.id), t, m, dt); if (p) m.applyNet(p, dt); continue; } // the one you drive: drawn ahead, where it is now (predict.js)
       const br = net.buffers.get(m.id).bracket(t); if (!br) continue;
       const { a, b, k } = br; tmp.b.length = a.b.length;
       for (let i = 0; i < a.b.length; i += 7) { for (let q = 0; q < 3; q++) tmp.b[i + q] = a.b[i + q] + (b.b[i + q] - a.b[i + q]) * k; nlerpQuat(a.b, b.b, k, tmp.b, i + 3); }
@@ -160,7 +165,7 @@ export async function startClient(game, S, transport, code) {
       if (!net.rejoining) { if (quiet > 10) rejoin(); else if (t - net.helloT > 2) { net.helloT = t; transport.send({ t: 'hello', was: null }); } }
     }
     net.acc += dt; if (net.acc < NET_DT) return; net.acc = Math.min(net.acc - NET_DT, NET_DT);
-    transport.send({ t: 'pose', p: localPose(game, S) });
+    transport.send({ t: 'pose', p: localPose(game, S), ct: t });
     if (mine) transport.send({ t: 'inp', m: mine.id, inp: { ...mine.inp }, c: ctlValues(mine) });
   });
   // seats go through the host

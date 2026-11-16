@@ -48,6 +48,18 @@ try {
   const p1 = await pos(), moved = p1.map((p, i) => Math.hypot(p[0] - p0[i][0], p[1] - p0[i][1]));
   check(moved.every((d) => d > 1), `both clients drive at once (dumper ${moved[0].toFixed(1)} m, loader ${moved[1].toFixed(1)} m)`);
 
+  // the machine you drive answers at once on your own screen (net/predict.js), before the host has heard
+  await b.bringToFront();
+  const lever = await b.evaluate(async () => {
+    const g = __game, m = g.machine('loader'), i = m.fnList.indexOf(m.fn.boom), buf = g.play.net.buffers.get('loader'), host = () => buf.snaps[buf.snaps.length - 1].s.f[i];
+    const t = g.play.net.transport, send = t.send; t.send = () => {}; // nothing reaches the host meanwhile
+    const before = m.fn.boom.pos, h0 = host(); m.override = { boom: 1 };
+    await new Promise((r) => { let k = 0; const f = () => (++k > 6 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    const after = m.fn.boom.pos, h1 = host(); m.override = {}; t.send = send;
+    return { before, after, h0, h1, rtt: g.play.net.rtt };
+  });
+  check(lever.after > lever.before + 0.01 && Math.abs(lever.h1 - lever.h0) < 1e-6, `the boom rises on the driver's screen as the lever moves, before the host has it (${lever.before.toFixed(3)} → ${lever.after.toFixed(3)}, host ${lever.h1.toFixed(3)}; round trip ${(lever.rtt * 1000).toFixed(0)} ms)`);
+
   // 3 ---- b's link dies; a must not keep b's old figure
   await b.evaluate(() => __game.play.net.transport.cut());
   await until('b to rejoin', async () => (await joined(b)) && (await idOf(b)) !== ib);
@@ -60,7 +72,7 @@ try {
   await a.reload(); await a.waitForFunction(() => globalThis.__game && __game.ready !== false, null, { timeout: 60000 });
   await until('a to join again', () => joined(a));
   ia = await idOf(a);
-  await until('everyone to settle', async () => { const h = await hostSees(); return h.peers.join() === [ia, ib2].sort().join() && h.avatars === 2 && h.drivers.dumper === null && (await seen(b)).join() === ['host', ia].sort().join(); });
+  await until('everyone to settle', async () => { const h = await hostSees(), ib3 = await idOf(b); return h.peers.join() === [ia, ib3].sort().join() && h.avatars === 2 && h.drivers.dumper === null && (await seen(b)).join() === ['host', ia].sort().join(); });
   check(true, 'a reloaded client is one player again; its old seat is free; the other client sees just it');
 
   // 5 ---- a full room

@@ -63,3 +63,39 @@ describe('snapshot interpolation', () => {
     expect(out[1]).toBeCloseTo(0.05, 2); expect(out[3]).toBeCloseTo(0.9987, 3);
   });
 });
+
+describe("a client's own machine (predict.js)", async () => {
+  const { OwnMachine, PREDICT } = await import('../src/net/predict.js');
+  const def = { engine: { idleRpm: 800, maxRpm: 2200 } };
+  const fn = { name: 'boom', rate: 0.75, min: -1, max: 1 };
+  // the host's machine runs at 5 m/s along -z, its boom still; states go out at 20 Hz and arrive 40 ms later
+  const run = (until, inp, own, buf) => {
+    let out = null;
+    for (let t = 0; t <= until + 1e-9; t += 1 / 72) {
+      const sent = Math.floor((t - 0.04) * 20) / 20; // newest host state that has arrived by local time t
+      if (sent >= 0 && (!buf.snaps.length || buf.snaps[buf.snaps.length - 1].t < sent + 100 - 1e-9)) {
+        const z = -5 * sent, boomHost = Math.max(-1, Math.min(1, 0.75 * (inp.boom || 0) * Math.max(0, sent - 1 - 0.05)));
+        buf.push(sent + 100, t, { b: [0, 0, z, 0, 0, 0, 1], f: [boomHost], w: [], e: [2200, 0, 1, 0] });
+      }
+      out = own.step(buf, t, { def, fnList: [fn], inp }, 1 / 72);
+    }
+    return out;
+  };
+  it('draws a moving machine where the host now has it, not where it was', () => {
+    const buf = new SnapshotBuffer(), own = new OwnMachine(); own.rtt = 0.08; const at = run(2, {}, own, buf);
+    const truth = -5 * 2, lagged = buf.bracket(2); // what every other machine shows
+    const laggedZ = lagged.a.b[2] + (lagged.b.b[2] - lagged.a.b[2]) * lagged.k;
+    expect(Math.abs(at.b[2] - truth)).toBeLessThan(0.3);
+    expect(Math.abs(laggedZ - truth)).toBeGreaterThan(0.6);
+  });
+  it('moves the boom as soon as the lever moves, before the host has answered', () => {
+    const buf = new SnapshotBuffer(), own = new OwnMachine(), inp = { boom: 0 };
+    run(1, inp, own, buf); inp.boom = 1;
+    own.rtt = 0.08; // as session.js measures it: the 40 ms each way this test sends with
+    const soon = own.step(buf, 1 + 1 / 72, { def, fnList: [fn], inp }, 1 / 72).f[0], more = own.step(buf, 1 + 4 / 72, { def, fnList: [fn], inp }, 1 / 72).f[0];
+    expect(buf.snaps[buf.snaps.length - 1].s.f[0]).toBe(0); // the host has not moved it yet
+    expect(soon).toBeGreaterThan(0);
+    expect(more).toBeGreaterThan(soon);
+    expect(more).toBeLessThan(0.75 * PREDICT.maxLead + 1e-6); // and never runs further ahead than the lead
+  });
+});
