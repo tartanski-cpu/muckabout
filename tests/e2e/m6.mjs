@@ -31,6 +31,7 @@ try {
   const c = await client.evaluate(() => ({ pile: [16, 17, 18, 19, 20].map((x) => __game.terrain.heightAt(x, -46)), loader: __game.machine('loader').position.toArray(), boom: __game.machine('loader').fn.boom.pos, bucket: __game.machine('loader').payload(), base: __game.terrain.heightAt(16, -40) }));
   const dh = Math.max(...h.pile.map((v, i) => Math.abs(v - c.pile[i])));
   const dug = await host.evaluate(() => __game.machine('loader').feel.counts.clunk);
+  if (h.peers !== 1) console.log('  debug:', JSON.stringify(await host.evaluate(() => ({ peers: [...__game.play.net.peers.entries()].map(([id, p]) => [id, +(performance.now() / 1000 - p.last).toFixed(1)]), drops: __game.play.net.drops, admits: __game.play.net.admits, replaced: [...__game.play.net.replaced] }))), JSON.stringify(await client.evaluate(() => { const n = __game.play.net; return { id: n.id, lost: n.lost, rejoining: n.rejoining, rejoins: n.rejoins, quiet: +(performance.now() / 1000 - n.lastSnap).toFixed(1), err: n.error, full: n.full }; })));
   check(h.peers === 1, 'host sees one client');
   check(dug > 3 && dh < 0.03, `client terrain matches the host's dug stockpile (worst difference ${(dh * 100).toFixed(1)} cm)`);
   const dpos = Math.hypot(h.loader[0] - c.loader[0], h.loader[1] - c.loader[1], h.loader[2] - c.loader[2]);

@@ -36,7 +36,7 @@ export class Quality {
     if (remember) try { localStorage.setItem(KEY, this.name); } catch { /* private window */ }
     r.setPixelRatio(Math.min(window.devicePixelRatio * Q.ratio, Q.ratio > 1 ? 3 : 2));
     r.setSize(window.innerWidth, window.innerHeight);
-    const on = Q.shadow > 0;
+    const on = Q.shadow > 0, was = r.shadowMap.enabled;
     r.shadowMap.enabled = on; r.shadowMap.type = THREE.PCFSoftShadowMap;
     sun.castShadow = on;
     if (on) {
@@ -51,8 +51,8 @@ export class Quality {
     u.uFogNear.value = this.base.near * Q.fog; u.uFogFar.value = this.base.far * Q.fog;
     if (g.water?.mat) { g.water.mat.uniforms.uFogNear.value = u.uFogNear.value; g.water.mat.uniforms.uFogFar.value = u.uFogFar.value; }
     this._casters(true);
-    // every material has to be rebuilt for shadows switched on or off
-    g.scene.traverse((o) => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+    // every material has to be rebuilt when shadows go on or off (only then: in a software renderer that takes seconds)
+    if (on !== was) g.scene.traverse((o) => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
     return this.name;
   }
   /** Things that cast: machines, other players, hand tools. Re-run now and then for players who join later. */
