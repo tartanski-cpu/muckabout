@@ -1,10 +1,17 @@
 // Ground renderer: static grids displaced in the vertex shader from a world-sized R32F height texture.
 // Terrain edits arrive as 32×32 chunk payloads and are written with texSubImage2D; no geometry is rebuilt.
+//
+// Detail by distance (each mesh is a draw call, the Quest's main cost, so far ground is drawn in fewer, coarser ones):
+//   tiles     96 × 96 cells (24 m), every cell within LOD.full m, every 2nd within LOD.half, every 4th beyond
+//   blocks    2 × 2 tiles as one mesh at every 4th cell, used when the whole block is beyond LOD.block
+//   regions   4 × 4 tiles as one mesh at every 8th cell, beyond LOD.region
+// Anything wholly beyond the haze is not drawn. A skirt round every mesh hides the cracks where detail changes.
 import * as THREE from 'three';
 import { CHUNK } from '../terrain/core.js';
 import { MATERIALS, GRASS_COLOR, NMAT } from '../terrain/materials.js';
 
 // Per material: x = speckle (gravel grit), y = strata on steep cut faces (clay), z = ripples (sand)
+export const LOD = { full: 26, half: 52, block: 64, region: 120 };
 const DETAIL = [[0, 0, 0], [0.2, 0.3, 0], [0.15, 0.25, 0], [0.15, 1.0, 0], [0.1, 0.1, 1.0], [1.0, 0, 0], [0.5, 0.6, 0], [0.35, 0.45, 0], [0.1, 0.2, 0]];
 
 const VERT = /* glsl */`
@@ -119,16 +126,24 @@ export class Ground {
         uDOn: { value: 0 }, uDRect: { value: new THREE.Vector4() }, uDPlane: { value: new THREE.Vector4() },
       },
     });
-    this.group = new THREE.Group(); this.tiles = [];
+    this.group = new THREE.Group(); this.tiles = []; this.blocks = []; this.regions = [];
+    let lo = Infinity, hi = -Infinity; for (let i = 0; i < terrain.h.length; i += 7) { const v = terrain.h[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    this.yRange = [Math.min(-8, lo - 10), Math.max(16, hi + 30)]; // room for digging down and heaping up
     const tx = Math.ceil(nx / 96), tz = Math.ceil(nz / 96), T = Math.ceil((nx - 1) / tx), U = Math.ceil((nz - 1) / tz);
-    for (let b = 0; b < tz; b++) for (let a = 0; a < tx; a++) {
-      const i0 = a * T, j0 = b * U, i1 = Math.min(nx - 1, i0 + T), j1 = Math.min(nz - 1, j0 + U);
-      const geos = [this._grid(i0, j0, i1, j1, 1), this._grid(i0, j0, i1, j1, 2)];
-      const mesh = new THREE.Mesh(geos[0], this.material);
-      const box = new THREE.Box3(new THREE.Vector3(ox + i0 * cell, -8, oz + j0 * cell), new THREE.Vector3(ox + i1 * cell, 16, oz + j1 * cell));
+    const span = (a0, b0, a1, b1) => [a0 * T, b0 * U, Math.min(nx - 1, a1 * T), Math.min(nz - 1, b1 * U)];
+    const piece = (rect, steps) => {
+      const [i0, j0, i1, j1] = rect, geos = steps.map((st) => this._grid(i0, j0, i1, j1, st)), mesh = new THREE.Mesh(geos[0], this.material);
+      const box = new THREE.Box3(new THREE.Vector3(ox + i0 * cell, this.yRange[0], oz + j0 * cell), new THREE.Vector3(ox + i1 * cell, this.yRange[1], oz + j1 * cell));
       for (const g of geos) { g.boundingBox = box; g.boundingSphere = box.getBoundingSphere(new THREE.Sphere()); }
-      mesh.matrixAutoUpdate = false;
-      this.group.add(mesh); this.tiles.push({ mesh, geos, center: box.getCenter(new THREE.Vector3()) });
+      mesh.matrixAutoUpdate = false; mesh.visible = false; this.group.add(mesh);
+      return { mesh, geos, x0: box.min.x, z0: box.min.z, x1: box.max.x, z1: box.max.z, center: box.getCenter(new THREE.Vector3()) };
+    };
+    for (let c = 0; c < tz; c += 4) for (let r = 0; r < tx; r += 4) {
+      const region = piece(span(r, c, Math.min(tx, r + 4), Math.min(tz, c + 4)), [8]); region.blocks = []; this.regions.push(region);
+      for (let b = c; b < Math.min(tz, c + 4); b += 2) for (let a = r; a < Math.min(tx, r + 4); a += 2) {
+        const block = piece(span(a, b, Math.min(tx, a + 2), Math.min(tz, b + 2)), [4]); block.tiles = []; region.blocks.push(block); this.blocks.push(block);
+        for (let jj = b; jj < Math.min(tz, b + 2); jj++) for (let ii = a; ii < Math.min(tx, a + 2); ii++) { const t = piece(span(ii, jj, ii + 1, jj + 1), [1, 2, 4]); block.tiles.push(t); this.tiles.push(t); }
+      }
     }
     this._queue = [];
     terrain.onChunks((chunks) => { for (const c of chunks) this._queue.push(c); });
@@ -191,9 +206,30 @@ export class Ground {
       r.state.bindTexture(gl.TEXTURE_2D, null);
       this._queue.length = 0;
     }
-    for (const t of this.tiles) {
-      const far = Math.hypot(t.center.x - camPos.x, t.center.z - camPos.z) > 48;
-      const g = t.geos[far ? 1 : 0]; if (t.mesh.geometry !== g) t.mesh.geometry = g;
+    this.pickLod(camPos);
+  }
+  /** Which meshes to draw, and how finely, for a viewer at camPos. */
+  pickLod(camPos) {
+    const fog = this.material.uniforms.uFogFar.value + 10, near = (p) => Math.hypot(Math.max(p.x0 - camPos.x, 0, camPos.x - p.x1), Math.max(p.z0 - camPos.z, 0, camPos.z - p.z1));
+    const show = (p, on) => { p.mesh.visible = on; };
+    let n = 0;
+    for (const R of this.regions) {
+      const dR = near(R);
+      if (dR > fog) { show(R, false); for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
+      if (dR > LOD.region) { show(R, true); n++; for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
+      show(R, false);
+      for (const B of R.blocks) {
+        const dB = near(B);
+        if (dB > fog) { show(B, false); for (const t of B.tiles) show(t, false); continue; }
+        if (dB > LOD.block) { show(B, true); n++; for (const t of B.tiles) show(t, false); continue; }
+        show(B, false);
+        for (const t of B.tiles) {
+          const d = near(t); if (d > fog) { show(t, false); continue; }
+          const g = t.geos[d < LOD.full ? 0 : d < LOD.half ? 1 : 2]; if (t.mesh.geometry !== g) t.mesh.geometry = g;
+          show(t, true); n++;
+        }
+      }
     }
+    this.drawn = n;
   }
 }

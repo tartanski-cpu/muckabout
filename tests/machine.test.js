@@ -377,7 +377,7 @@ describe('gears', () => {
   it('the travel gear is a good deal faster on a long straight and pulls far less', async () => {
     for (const [name, phys] of [['loader', 'custom'], ['loader', 'rapier'], ['dozer', 'custom'], ['dumper', 'custom'], ['backhoe', 'custom']]) {
       const run = async (high) => {
-        const r = await rig(name, { x: -50, z: -37 }, 'dirttown'); r.m.reset(-50, -37, -Math.PI / 2); r.m.setPhysics(phys); r.step(60); start(r.m); r.m.inp.throttle = 1; r.m.inp.range = high ? 1 : 0; r.step(90);
+        const r = await rig(name, { x: -50, z: -39.6 }, 'dirttown'); r.m.reset(-50, -39.6, -Math.PI / 2); r.m.setPhysics(phys); r.step(60); start(r.m); r.m.inp.throttle = 1; r.m.inp.range = high ? 1 : 0; r.step(90); // along the yard, clear of the office pad's heap and the gravel pile
         let top = 0; r.step(1300, (m) => { m.inp.shuttle = 1; m.inp.accel = 1; m.inp.left = 1; m.inp.right = 1; if (m.position.x < 45) top = Math.max(top, m.speed); });
         return { top, high: r.m.range.high, f: r.m.range.f };
       };

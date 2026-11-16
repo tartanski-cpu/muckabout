@@ -182,3 +182,30 @@ describe('bog', () => {
     expect(h0 - core.heightAt(14, -14)).toBeLessThan(rut * 0.95);
   });
 });
+
+describe('saving only the worked ground', () => {
+  const fresh = () => { const c = new TerrainCore(MAPS.test.cfg); MAPS.test.build(c); c.collectDirty(); return c; };
+  const work = (c) => { for (let i = 0; i < 40; i++) c.deposit(3 + (i % 5) * 0.2, -4, SAND, 0.05); for (let k = 0; k < 120; k++) c.step([]); c.collectDirty(); };
+  it('a snapshot holds only the chunks changed since the map was built', () => {
+    const c = fresh(); expect(c.snapshot().ids.length).toBe(0);
+    work(c); const s = c.snapshot();
+    expect(s.ids.length).toBeGreaterThan(0); expect(s.ids.length).toBeLessThan(6);
+    expect(s.bed.length).toBe(s.ids.length * 32 * 32);
+  });
+  it('put back on a freshly built map, it gives the same ground and the same volume', () => {
+    const a = fresh(); work(a); const s = a.snapshot(), b = fresh();
+    expect(b.restore(s)).toBe(true);
+    let worst = 0; for (let i = 0; i < a.n; i++) worst = Math.max(worst, Math.abs(a.h[i] - b.h[i]));
+    expect(worst).toBeLessThan(1e-5); // (heights are recomputed from the layers: float rounding)
+    expect(b.audit().total).toBeCloseTo(a.audit().total, 6);
+    expect(b.snapshot().ids).toEqual(s.ids); // and saving again keeps the same chunks
+  });
+  it('put back on ground already worked, the map is rebuilt first so nothing of the other work is left', () => {
+    const a = fresh(); work(a); const s = a.snapshot(), b = fresh();
+    for (let i = 0; i < 30; i++) b.deposit(-6, 8, GRAVEL, 0.05); for (let k = 0; k < 60; k++) b.step([]); b.collectDirty();
+    expect(b.restore(s)).toBe(false); // without a way to rebuild it, it refuses
+    expect(b.restore(s, () => MAPS.test.build(b))).toBe(true);
+    expect(Math.abs(b.heightAt(-6, 8) - fresh().heightAt(-6, 8))).toBeLessThan(1e-6);
+    expect(Math.abs(b.heightAt(3.4, -4) - a.heightAt(3.4, -4))).toBeLessThan(1e-6);
+  });
+});

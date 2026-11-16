@@ -30,7 +30,8 @@ export async function startHost(game, S, transport, code) {
   S.THREE = game.THREE;
   await transport.host(code);
   const net = S.net = { role: 'host', code, transport, peers: new Map(), avatars: new Map(), acc: 0, n: 0, clods: [], sentRev: new Map(), silence: 12, drops: 0, admits: 0, max: MAX_PLAYERS, replaced: new Set() };
-  const writer = new TerrainDeltaWriter(game.terrain); game.terrain.onChunks((c) => writer.markChunks(c));
+  // newcomers get what differs from the map as built, a loaded save included
+  const writer = new TerrainDeltaWriter(game.terrain, game.terrain.pristine); game.terrain.onChunks((c) => writer.markChunks(c));
   // record clod spawns for the clients
   const spawn = game.clods.spawn.bind(game.clods);
   game.clods.spawn = (x, y, z, vx, vy, vz, mat, vol) => { if (net.peers.size && net.clods.length < 8 * 250) net.clods.push(x, y, z, vx, vy, vz, mat, vol); spawn(x, y, z, vx, vy, vz, mat, vol); };

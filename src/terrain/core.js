@@ -20,6 +20,8 @@ export class TerrainCore {
     this.queued = new Uint8Array(n); this.queue = new Int32Array(n); this.qHead = 0; this.qLen = 0;
     this.cnx = Math.ceil(nx / CHUNK); this.cnz = Math.ceil(nz / CHUNK);
     this.chunkDirty = new Uint8Array(this.cnx * this.cnz); this.chunkStamp = new Int32Array(this.cnx * this.cnz);
+    // chunks changed since the map was built (saves hold only these): not counted until the first delivery of the whole map
+    this.touched = new Uint8Array(this.cnx * this.cnz); this.tracking = false;
     this.tickNo = 0; this.awakeChunks = 0;
     this.lost = 0; this.compacted = 0; // m³
     this.relaxBudget = 40000;
@@ -255,10 +257,10 @@ export class TerrainCore {
   // ---------------------------------------------------------------- output
   /** Pack and clear dirty chunks: [{id, h: Float32Array(32*32), info: Uint8Array(32*32*4)}] */
   collectDirty() {
-    const out = [];
+    const out = [], track = this.tracking; this.tracking = true;
     for (let id = 0; id < this.chunkDirty.length; id++) {
       if (!this.chunkDirty[id]) continue;
-      this.chunkDirty[id] = 0;
+      this.chunkDirty[id] = 0; if (track) this.touched[id] = 1;
       out.push(this.packChunk(id));
     }
     return out;
@@ -278,21 +280,44 @@ export class TerrainCore {
   }
   markAllDirty() { this.chunkDirty.fill(1); }
 
-  /** Everything needed to put the ground back as it is now (game/save.js): copies, safe to keep or send. */
+  /**
+   * Everything needed to put the ground back as it is now (game/save.js): copies, safe to keep or send.
+   * Only the chunks changed since the map was built are in it (every player builds the map the same way), so a save
+   * is as big as the work done, not as the map. Per chunk, CHUNK² cells of each array, in `ids` order.
+   */
   snapshot() {
-    const w = this.water;
-    return { nx: this.nx, nz: this.nz, bed: this.bed.slice(), nl: this.nl.slice(), lm: this.lm.slice(), lt: this.lt.slice(), dist: this.dist.slice(), rut: this.rut.slice(),
-      lost: this.lost, compacted: this.compacted, water: w ? { d: w.d.slice(), washed: w.washed } : null };
+    const w = this.water, ids = []; for (let id = 0; id < this.touched.length; id++) if (this.touched[id] || this.chunkDirty[id] && this.tracking) ids.push(id);
+    const K = CHUNK * CHUNK, m = ids.length, a = { bed: new Float32Array(m * K), nl: new Uint8Array(m * K), lm: new Uint8Array(m * K * 3), lt: new Float32Array(m * K * 3), dist: new Uint8Array(m * K), rut: new Float32Array(m * K) };
+    ids.forEach((id, q) => this._eachCell(id, (c, k) => { const o = q * K + k;
+      a.bed[o] = this.bed[c]; a.nl[o] = this.nl[c]; a.dist[o] = this.dist[c]; a.rut[o] = this.rut[c];
+      for (let l = 0; l < 3; l++) { a.lm[o * 3 + l] = this.lm[c * 3 + l]; a.lt[o * 3 + l] = this.lt[c * 3 + l]; } }));
+    return { v: 2, nx: this.nx, nz: this.nz, ids: Int32Array.from(ids), ...a, lost: this.lost, compacted: this.compacted, water: w ? { d: w.d.slice(), washed: w.washed } : null };
   }
-  /** Put a snapshot back. Returns false (and changes nothing) if it is for a different size of map. */
-  restore(s) {
-    if (!s || s.nx !== this.nx || s.nz !== this.nz || s.lt.length !== this.lt.length) return false;
-    this.bed.set(s.bed); this.nl.set(s.nl); this.lm.set(s.lm); this.lt.set(s.lt); this.dist.set(s.dist); this.rut.set(s.rut);
+  _eachCell(id, fn) { const ci = id % this.cnx, cj = (id / this.cnx) | 0; let k = 0; for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++, k++) { const x = ci * CHUNK + i, z = cj * CHUNK + j; if (x < this.nx && z < this.nz) fn(z * this.nx + x, k); } }
+  /**
+   * Put a snapshot back. Returns false (and changes nothing) if it is for a different size of map.
+   * `rebuild` puts the map back as built; it is called only if this ground has already been changed (a snapshot
+   * holds only the chunks its own site changed, so the rest must be as built). Whole-map snapshots (saves from
+   * before chunked ones) are still read.
+   */
+  restore(s, rebuild = null) {
+    if (!s || s.nx !== this.nx || s.nz !== this.nz) return false;
+    if (s.v === 2) {
+      if (this.touched.some((t) => t)) { if (!rebuild) return false; rebuild(); }
+      const K = CHUNK * CHUNK; this.touched.fill(0);
+      Array.from(s.ids).forEach((id, q) => { this.touched[id] = 1; this._eachCell(id, (c, k) => { const o = q * K + k;
+        this.bed[c] = s.bed[o]; this.nl[c] = s.nl[o]; this.dist[c] = s.dist[o]; this.rut[c] = s.rut[o];
+        for (let l = 0; l < 3; l++) { this.lm[c * 3 + l] = s.lm[o * 3 + l]; this.lt[c * 3 + l] = s.lt[o * 3 + l]; } }); });
+    } else {
+      if (s.lt.length !== this.lt.length) return false;
+      this.bed.set(s.bed); this.nl.set(s.nl); this.lm.set(s.lm); this.lt.set(s.lt); this.dist.set(s.dist); this.rut.set(s.rut);
+      this.touched.fill(1);
+    }
     this.lost = s.lost; this.compacted = s.compacted;
     for (let c = 0; c < this.n; c++) this._fixH(c);
     this.queued.fill(0); this.qHead = 0; this.qLen = 0;
     if (this.water && s.water && s.water.d.length === this.water.d.length) { const w = this.water; w.d.set(s.water.d); w.washed = s.water.washed; for (const k of ['fl', 'fr', 'fu', 'fd', 'vx', 'vz']) w[k].fill(0); }
-    this.markAllDirty();
+    this.markAllDirty(); this.tracking = false; // the next delivery is the whole ground again, not new work
     return true;
   }
 

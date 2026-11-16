@@ -39,6 +39,9 @@ export class TerrainClient {
     }
     this.tick(); // first tick delivers every chunk
     if (this.mode === 'worker') await new Promise((res) => { this._firstTick = res; });
+    // the ground as built, before any save is loaded: what every player builds for themselves, so co-op sends a
+    // newcomer only what differs from it (net/terrainDelta.js)
+    this.pristine = { h: this.h.slice(), info: this.info.slice() };
     return this;
   }
 
@@ -54,7 +57,7 @@ export class TerrainClient {
     this.cmds.length = 0; this.queuedDep = 0; this.results.clear(); this.sentDep.clear();
     let ok;
     if (this.mode === 'worker') ok = await new Promise((res) => { const id = ++this._saveId; this._audits.set('l' + id, res); this.worker.postMessage({ t: 'load', id: 'l' + id, state }); });
-    else ok = this.core.restore(state);
+    else ok = this.core.restore(state, () => this.map.build(this.core));
     if (!ok) return false;
     this.tick(); // delivers every chunk
     if (this.mode === 'worker') await new Promise((res) => { this._firstTick = res; });

@@ -12,18 +12,20 @@ const packInfo = (info, k) => (info[k] & 7) | (info[k + 1] ? 8 : 0) | (info[k + 
 
 /** Keeps what the peers have been sent and produces deltas against it. */
 export class TerrainDeltaWriter {
-  /** @param {{nx:number,nz:number,h:Float32Array,info:Uint8Array}} mirror the host's terrain mirror */
-  constructor(mirror) {
+  /** @param {{nx:number,nz:number,h:Float32Array,info:Uint8Array}} mirror the host's terrain mirror
+   *  @param {{h:Float32Array,info:Uint8Array}} [base] the map as built (what a client builds); defaults to the mirror as it is now */
+  constructor(mirror, base = null) {
     this.m = mirror; const n = mirror.nx * mirror.nz;
     this.cnx = mirror.nx / CHUNK; this.cnz = mirror.nz / CHUNK;
     this.sentH = new Int16Array(n); this.sentI = new Uint8Array(n); this.baseH = new Int16Array(n); this.baseI = new Uint8Array(n);
     this.dirty = new Set();
-    this.snapshotBase();
+    this.snapshotBase(base);
   }
-  /** Record the current mirror as the shared starting state (what a client builds locally). */
-  snapshotBase() {
-    const { h, info } = this.m;
-    for (let c = 0; c < this.sentH.length; c++) { this.baseH[c] = this.sentH[c] = Math.round(h[c] * Q); this.baseI[c] = this.sentI[c] = packInfo(info, c * 4); }
+  /** Record the shared starting state (what a client builds locally): `base` if given (the map as built, before a
+   *  saved site was loaded over it), else the mirror as it is now. What peers have been sent starts as the mirror. */
+  snapshotBase(base = null) {
+    const { h, info } = this.m, b = base || this.m;
+    for (let c = 0; c < this.sentH.length; c++) { this.sentH[c] = Math.round(h[c] * Q); this.sentI[c] = packInfo(info, c * 4); this.baseH[c] = Math.round(b.h[c] * Q); this.baseI[c] = packInfo(b.info, c * 4); }
   }
   markChunks(chunks) { for (const c of chunks) this.dirty.add(c.id); }
 
