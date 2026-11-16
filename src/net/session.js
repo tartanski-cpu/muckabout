@@ -38,7 +38,7 @@ export async function startHost(game, S, transport, code) {
   const admit = (id) => { let p = net.peers.get(id); if (!p) { net.peers.set(id, p = { pose: null, last: now() }); net.admits++; } return p; };
   transport.onPeer = () => {}; // a link alone is not a player: admitted on its first message, when there is room
   transport.onLeave = (id) => drop(id);
-  function drop(id) { if (net.peers.delete(id)) net.drops++; net.avatars.get(id)?.dispose(); net.avatars.delete(id); for (const m of game.machines) if (m.driver === id) { m.driver = null; m.remoteInp = null; } }
+  function drop(id) { if (net.peers.delete(id)) net.drops++; S.tools?.dropAll(id); net.avatars.get(id)?.dispose(); net.avatars.delete(id); for (const m of game.machines) if (m.driver === id) { m.driver = null; m.remoteInp = null; } }
   transport.onMessage = (msg, from) => {
     // A player dropped for going quiet (headset off, wifi blip) whose link is still up is let straight back in on its
     // next message, and brought up to date as a newcomer is. It used to be ignored for good: in the room, seeing the
@@ -60,6 +60,8 @@ export async function startHost(game, S, transport, code) {
     } else if (msg.t === 'pose') { peer.pose = msg.p; if (msg.ct) { peer.ct = msg.ct; peer.ctAt = now(); } }
     else if (msg.t === 'sit') { const m = game.machine(msg.m); for (const x of game.machines) if (x.driver === from) x.driver = null; if (m && !m.driver) m.driver = from; }
     else if (msg.t === 'stand') { for (const m of game.machines) if (m.driver === from) { m.driver = null; m.remoteInp = null; } }
+    else if (msg.t === 'tool') S.tools?.remoteMove(msg.i, from, msg.p, { drop: !!msg.drop, trigger: msg.trig || 0 });
+    else if (msg.t === 'slope') S.tools?.remoteSlope(from, msg.on);
     else if (msg.t === 'inp') { const m = game.machine(msg.m); if (m && m.driver === from) { m.remoteInp = msg.inp; setCtlValues(m, msg.c); } } // inputs from anyone but the driver are ignored
   };
   game.frameUpdaters.push((dt) => {
@@ -73,7 +75,7 @@ export async function startHost(game, S, transport, code) {
     const machines = {}; for (const m of game.machines) machines[m.id] = { ...m.netState(), d: m.driver === 'local' ? 'host' : m.driver, c: ctlValues(m), ev: m.netEvents?.splice(0) };
     const players = { host: localPose(game, S) }; for (const [id, p] of net.peers) players[id] = p.pose;
     const echo = {}; for (const [id, p] of net.peers) if (p.ct) echo[id] = p.ct + (now() - p.ctAt); // each client's clock, less the time it waited here: its round trip
-    transport.send({ t: 'snap', time: now(), machines, players, echo, clods: net.clods.splice(0), jobs: S.checklist ? S.checklist.items.map((i) => i.done) : null });
+    transport.send({ t: 'snap', time: now(), machines, players, echo, tools: S.tools?.netState('host'), clods: net.clods.splice(0), jobs: S.checklist ? S.checklist.items.map((i) => i.done) : null });
     if (net.n % 2 === 0) { const d = writer.delta(); if (d) transport.send({ t: 'terrain', d }); }
     if (net.n % 4 === 0) { const c = {}; let any = false; for (const r of game.rigs) { const rev = r.field.rev || 0; if (net.sentRev.get(r.key) !== rev) { net.sentRev.set(r.key, rev); c[r.key] = packField(r.field); any = true; } } if (any) transport.send({ t: 'cont', c }); }
     if (net.n % 20 === 0 && game.terrain.water) transport.send({ t: 'water', d: encodeWater(game.terrain.water) });
@@ -119,7 +121,7 @@ export async function startClient(game, S, transport, code) {
     else if (msg.t === 'snap') {
       const t = now(); net.lastSnap = t; net.lost = false;
       for (const id in msg.machines) { const s = msg.machines[id], m = game.machine(id); if (!m) continue; net.buffers.get(id).push(msg.time, t, s); net.drivers[id] = s.d; if (s.d !== net.id) setCtlValues(m, s.c); if (s.ev) for (const e of s.ev) m.voice.play(e); }
-      net.poses.push(msg.time, t, msg.players);
+      net.poses.push(msg.time, t, msg.players); if (msg.tools) net.tools = msg.tools;
       const back = msg.echo?.[net.id]; if (back) { const r = Math.max(0, t - back); net.rtt = net.rtt == null ? r : net.rtt + (r - net.rtt) * 0.1; if (net.own) net.own.rtt = Math.min(0.5, net.rtt); }
       const c = msg.clods; for (let i = 0; i < c.length; i += 8) game.clods.spawn(c[i], c[i + 1], c[i + 2], c[i + 3], c[i + 4], c[i + 5], c[i + 6], c[i + 7]);
       if (msg.jobs && S.checklist) msg.jobs.forEach((d, i) => { if (d) S.checklist.items[i].done = true; });
@@ -157,6 +159,13 @@ export async function startClient(game, S, transport, code) {
     const mine = S.player.machine;
     if (mine && !net.lost && net.drivers[mine.id] && net.drivers[mine.id] !== net.id) { if ((net.seatT += dt) > 1) { S.stand(); S.input.hands.left.pulse(0.8, 80); S.input.hands.right.pulse(0.8, 80); } }
     else net.seatT = 0; // only a steady second of someone else in the seat counts, not moments added up over a session
+    // hand tools: the host's state for all but what this player carries; a tool someone else got first is let go
+    if (S.tools && net.tools) {
+      S.tools.applyNet(net.tools, net.id, dt);
+      const lost = S.tools.all.find((x) => x.holders.length && x.remote);
+      if (lost && (net.toolT += dt) > 0.5) { for (const side of ['left', 'right']) if (S.inter.state[side].held === lost) S.inter._drop(S.input.hands[side], S.inter.state[side]); S.input.hands.right.pulse(0.8, 80); }
+      if (!lost) net.toolT = 0;
+    }
     // Nothing from the host: after 4 s say hello again down the same link (the host may only have timed us out);
     // after 10 s take the link for dead and make a new one.
     const quiet = t - net.lastSnap;
@@ -167,7 +176,14 @@ export async function startClient(game, S, transport, code) {
     net.acc += dt; if (net.acc < NET_DT) return; net.acc = Math.min(net.acc - NET_DT, NET_DT);
     transport.send({ t: 'pose', p: localPose(game, S), ct: t });
     if (mine) transport.send({ t: 'inp', m: mine.id, inp: { ...mine.inp }, c: ctlValues(mine) });
+    if (S.tools) S.tools.all.forEach((x, i) => { if (x.holders.length && !x.remote) transport.send({ t: 'tool', i, p: toolPose(x), trig: x.hand?.trigger || 0 }); });
   });
+  // a tool put down: tell the host where it was let go (before it settles here), so it lands in the same place there
+  const toolPose = (x) => { const a = x.root.position, q = x.root.quaternion; return [a.x, a.y, a.z, q.x, q.y, q.z, q.w]; };
+  net.toolT = 0;
+  S.tools?.all.forEach((x, i) => { const end = x.grabEnd.bind(x); x.grabEnd = (hand) => { const p = toolPose(x), mine = !x.remote; end(hand); if (mine && !x.holders.length) { x.putDown = true; transport.send({ t: 'tool', i, p, drop: true }); } }; });
+  // the line switched here (the trigger with a stake in hand): tell the host, and keep it so until the host has it too
+  if (S.tools) for (const st of S.tools.stakes) st.onTrigger = () => { const L = S.tools.line, on = !L.slope; L.setSlope(on); L.mineUntil = performance.now() + 1000; transport.send({ t: 'slope', on }); };
   // seats go through the host
   const sit = S.sit, stand = S.stand;
   S.sit = (m) => { const d = net.drivers[m.id]; if (d && d !== net.id) { S.input.hands.left.pulse(0.8, 80); S.input.hands.right.pulse(0.8, 80); return; } net.seatT = 0; sit(m); transport.send({ t: 'sit', m: m.id }); };

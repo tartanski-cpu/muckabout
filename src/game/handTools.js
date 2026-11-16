@@ -13,7 +13,11 @@
 //            another out of the bog.
 //
 // A tool let go of drops to the ground where it is (a stake plants itself upright; the shovel stands in the soil).
-// Not replicated in co-op yet: each player has their own.
+//
+// Co-op (roadmap 0b): one set of tools, owned by the host. A player on a client who picks one up carries it on their
+// own screen at once, and sends where it is to the host (session.js), which moves its copy there: the shovel digs on
+// the host, as everything that moves soil does, and a hook let go hitches on the host. The host sends every tool's
+// pose and who has it; a tool somebody else has cannot be taken (`remote` names its holder).
 import * as THREE from 'three';
 import { Control } from '../xr/controls/index.js';
 import { CutTool } from '../terrain/tool.js';
@@ -26,7 +30,9 @@ const cyl = (r, len, seg = 7) => new THREE.CylinderGeometry(r, r, len, seg);
 
 /** A thing you carry: follows the hand while held, and is put down where you let go. */
 class Carried extends Control {
-  constructor(name, game) { super({ name, pos: [0, 0, 0] }); this.game = game; this.reachBonus = 0.06; this.carried = true; this.grip = new THREE.Vector3(); }
+  constructor(name, game) { super({ name, pos: [0, 0, 0] }); this.game = game; this.reachBonus = 0.06; this.carried = true; this.grip = new THREE.Vector3(); this.remote = null; this.remoteTrigger = 0; }
+  /** Held here, or by another player (co-op). */
+  get held() { return this.holders.length > 0 || !!this.remote; }
   /** Distance to the part you take hold of: a segment from `grip` up the handle. */
   distanceTo(world) { const p = this.local(world); p.z -= THREE.MathUtils.clamp(p.z, this.gripZ[0], this.gripZ[1]); p.y -= THREE.MathUtils.clamp(p.y, this.gripY[0], this.gripY[1]); return p.length(); }
   grabPoint(out) { return this.root.localToWorld(out.copy(this.grip)); }
@@ -62,7 +68,7 @@ class Shovel extends Carried {
     // throw it off: the blade turned over, or the trigger
     this.cooldown -= dt;
     const over = _b.set(0, 1, 0).applyQuaternion(this.root.quaternion).y < 0.25, vol = this.volume();
-    if (vol > 1e-5 && this.held && (over || (this.hand && this.hand.trigger > 0.6)) && this.cooldown <= 0) {
+    if (vol > 1e-5 && this.held && (over || (this.hand && this.hand.trigger > 0.6) || this.remoteTrigger > 0.6) && this.cooldown <= 0) {
       const sp = this.vel.length() > 6 ? 6 / this.vel.length() : 1;
       for (let k = 1; k < NMAT; k++) if (this.load[k] > 0) { clods.pour('shovel', tip.x, tip.y + 0.05, tip.z, this.vel.x * sp, this.vel.y * sp + 0.6, this.vel.z * sp, k, this.load[k], 0.6); this.load[k] = 0; }
       this.cooldown = 0.3; if (this.hand) this.hand.pulse(0.5, 40);
@@ -200,6 +206,44 @@ export class HandTools {
   }
   /** Sim step, before the physics. */
   step(dt) { this.chain.step(dt); this.shovel.step(dt, this.game.clods); }
+
+  // ---- co-op (session.js)
+  /** Host → everyone: each tool's pose and holder, the line's mode, and what is on the shovel (to draw it). */
+  netState(localId = 'host') {
+    const p = [], h = [];
+    for (const t of this.all) { const a = t.root.position, q = t.root.quaternion; p.push(a.x, a.y, a.z, q.x, q.y, q.z, q.w); h.push(t.holders.length ? localId : t.remote); }
+    const sh = this.shovel; let top = 1; for (let k = 2; k < NMAT; k++) if (sh.load[k] > sh.load[top]) top = k;
+    return { p, h, slope: this.line.slope ? 1 : 0, sv: +sh.volume().toFixed(4), sm: top };
+  }
+  /** Client: take the host's state for every tool this player is not carrying. */
+  applyNet(s, me, dt) {
+    const k = Math.min(1, dt * 15);
+    this.all.forEach((t, i) => {
+      const holder = s.h[i]; t.remote = holder && holder !== me ? holder : null;
+      if (t.holders.length) return; // in this player's hand: theirs to move
+      if (t.putDown) { if (holder === me) return; t.putDown = false; } // just let go here: the host has not heard yet, so its pose is the carried one
+      const o = i * 7, P = t.root.position, Q = t.root.quaternion;
+      _a.set(s.p[o], s.p[o + 1], s.p[o + 2]); _q.set(s.p[o + 3], s.p[o + 4], s.p[o + 5], s.p[o + 6]);
+      if (P.distanceToSquared(_a) > 4) { P.copy(_a); Q.copy(_q); } else { P.lerp(_a, k); Q.slerp(_q, k); }
+      if (t.hitch !== undefined) t.hitch = null; // the host hitches hooks; here they just go where it says
+    });
+    if (performance.now() > (this.line.mineUntil || 0) && !!s.slope !== this.line.slope) this.line.setSlope(!!s.slope); // not straight after switching it here
+    const sh = this.shovel; sh.heap.visible = s.sv > 0.002;
+    if (sh.heap.visible) { sh.heap.material.color.setRGB(...MATERIALS[s.sm].color); const sc = 0.5 + 0.7 * Math.cbrt(s.sv / SHOVEL_CAP); sh.heap.scale.set(sc, sc * 0.6, sc * 1.1); }
+  }
+  /** Host: a client carries tool i to pose p (7 numbers), or puts it down there (drop). Refused if someone else has it. */
+  remoteMove(i, from, p, { drop = false, trigger = 0 } = {}) {
+    const t = this.all[i]; if (!t || t.holders.length || (t.remote && t.remote !== from)) return false;
+    if (!t.remote && !drop && t.hitch !== undefined) t.hitch = null; // a hook picked up comes off its machine
+    t.root.position.set(p[0], p[1], p[2]); t.root.quaternion.set(p[3], p[4], p[5], p[6]);
+    t.remoteTrigger = trigger;
+    if (drop) { t.remote = null; t.remoteTrigger = 0; t.hand = undefined; t.rest(); } else t.remote = from; // (hand undefined: not this player's let-go, so no buzz here)
+    return true;
+  }
+  /** Host: a client switched the line between level and sloped (the trigger with a stake in hand). */
+  remoteSlope(from, on) { if (this.stakes.some((t) => t.remote === from)) this.line.setSlope(!!on); }
+  /** Host: a player has gone; whatever they were carrying is put down where it is. */
+  dropAll(from) { for (const t of this.all) if (t.remote === from) { t.remote = null; t.remoteTrigger = 0; t.hand = undefined; t.rest(); } }
   /** Every drawn frame. */
   update(dt) { this.line.update(dt); this.chain.draw(); }
 }
