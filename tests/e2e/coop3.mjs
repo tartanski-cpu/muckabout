@@ -14,6 +14,8 @@ try {
   const code = await host.evaluate(() => __game.play.net.code);
   const a = await open(`?join=${code}&net=bc`, { context }), b = await open(`?join=${code}&net=bc`, { context });
   const pages = [host, a, b];
+  // no pictures needed: three pages drawing in software GL take seconds a frame, long enough to look like a dropped link
+  for (const p of pages) await p.evaluate(() => { __game.renderer.render = () => {}; });
   const turn = async (ms = 400) => { for (const p of pages) { await p.bringToFront(); await p.waitForTimeout(ms); } };
   const until = async (what, fn, tries = 60) => { for (let k = 0; k < tries; k++) { if (await fn()) return true; await turn(); } throw new Error('timed out waiting for ' + what); };
   const joined = (p) => p.evaluate(() => { const n = globalThis.__game?.play?.net; return !!(n && n.role === 'client' && n.id && !n.lost && !n.rejoining); });
@@ -66,7 +68,7 @@ try {
   await until('b to rejoin', async () => (await joined(b)) && (await idOf(b)) !== ib);
   const ib2 = await idOf(b);
   await until('a to see the new b only', async () => (await seen(a)).join() === ['host', ib2].sort().join());
-  await until('the host to settle', async () => { const h = await hostSees(); return h.peers.join() === [ia, ib2].sort().join() && h.avatars === 2 && h.drivers.loader === ib2; });
+  await until('the host to settle', async () => { const h = await hostSees(), nb = await idOf(b); return h.peers.join() === [ia, nb].sort().join() && h.avatars === 2 && h.drivers.loader === nb; }); // (b may rejoin again by itself while it waits in the background)
   check(true, 'a client that drops and comes back is one figure to the others, not two, and has its seat back');
 
   // 4 ---- a reloads
