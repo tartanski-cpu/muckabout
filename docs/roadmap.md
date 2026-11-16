@@ -66,7 +66,12 @@ Nothing has run on a Quest yet. Work through `docs/quest-test-checklist.md` befo
 **Progress:**
 - Done: three players. The host takes up to four and turns a fifth away; clients drop the figure of a player who has left. `tests/e2e/coop3.mjs`.
 - Done: the mouse works cab controls and handrails through the VR interaction code. `tests/e2e/pc.mjs`.
-- Still to do: client prediction, hand tools in co-op, the PC graphics tier, the start page, carried hand tools with the mouse tested, and the three-player MVP job test.
+- Done: a client's own machine is drawn ahead of the host's last word, by the measured round trip, and its boom, bucket, blade or bed moves with the lever at once (`src/net/predict.js`).
+- Done: hand tools in co-op: one set, owned by the host; a client carries them and the host follows and digs (`tests/e2e/cooptools.mjs`).
+- Done: carrying hand tools with the mouse: look at the ground to place them, walk to dig (`tests/e2e/pc.mjs`).
+- Done: a start page that offers the PC and VR alike, and graphics tiers (Quest, PC with sun shadows, PC high) that change only the drawing (`tests/e2e/start.mjs`).
+- Done: three players finish the MVP job together, the clients driving through their own inputs and one dropping out and back in on the way (`tests/e2e/coopjob.mjs`; road, crossing and most of the sand are shortcut as in `m5.mjs`).
+- Not checked anywhere real: how the prediction feels over a real internet link, the shadow tier on a real graphics card, and three people on three devices.
 
 Done early, because the friends cannot play at all without it, and every later chapter is cheaper if it is built for three players and two kinds of seat from the start.
 

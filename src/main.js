@@ -36,6 +36,15 @@ const join = q.get('join'), hosting = flag('host', false);
     coop(game);
   }
   game.start();
+  { const { startPage } = await import('./ui/start.js'); game.menu = startPage(game, { q }); }
+  { // graphics tier (render/quality.js): drawing only, the simulation is the same at every setting
+    const { Quality, defaultQuality, QUALITY } = await import('./render/quality.js');
+    const quality = game.quality = new Quality(game), sel = document.getElementById('quality'), note = document.getElementById('gfxNote');
+    const say = () => { if (note) note.textContent = quality.q.shadow ? `sun shadows ${quality.q.shadow}², ±${quality.q.span} m` : 'for the headset: shade pools, no shadow maps'; };
+    quality.set(defaultQuality(q)); say();
+    if (sel) { sel.value = quality.name; sel.addEventListener('change', () => { quality.set(sel.value, true); say(); }); }
+    void QUALITY;
+  }
   status.textContent = `${game.terrain.mode} terrain · ${game.opts.map} map`;
   if (hosting || join) {
     const { makeTransport, newRoomCode } = await import('./net/transport.js'), { startHost, startClient } = await import('./net/session.js');
@@ -56,7 +65,7 @@ const join = q.get('join'), hosting = flag('host', false);
   }
 })().catch((e) => { status.textContent = 'failed to start: ' + e.message; console.error(e); });
 
-/** The co-op row in the help panel: host a room, or join one by its five-digit code. Both reload the page with the choice in the URL. */
+/** The co-op row on the start page: host a room, or join one by its five-digit code. Both reload the page with the choice in the URL. */
 function coop() {
   const go = (params) => { const u = new URL(location.href); u.search = ''; for (const k in params) u.searchParams.set(k, params[k]); if (q.get('net')) u.searchParams.set('net', q.get('net')); location.href = u.toString(); };
   document.getElementById('hostBtn')?.addEventListener('click', () => go({ host: 1 }));

@@ -14,6 +14,8 @@ npm test           # unit tests (vitest): terrain, river, machines, net codec
 npm run test:e2e   # scripted headless browser runs (needs `npm run build` first; screenshots in shots/)
 ```
 
+The page opens on a start menu (`src/ui/start.js`): **Play on this computer** (mouse, keys or a gamepad), **Enter VR** (offered only when the browser can open a headset), co-op, the saved site, graphics quality and the controls. `Esc` brings it back while playing.
+
 On a Quest, open the GitHub Pages URL in the Quest Browser and press *Enter VR*. For local iteration, WebXR needs HTTPS or localhost: with the headset on USB, `adb reverse tcp:5173 tcp:5173` and open `http://localhost:5173` in the headset.
 
 `.github/workflows/ci.yml` builds and tests every push and deploys `dist/` to GitHub Pages from the repository's default branch (Settings → Pages → Source: GitHub Actions).
@@ -65,6 +67,16 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 **Desktop keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
 
 **Playing together (up to four):** one presses *Host a game* on the start page and reads out the five-digit room number; the others type it and press *Join*. The host runs the world; the others see it about 0.15 s behind. A fifth is told the room is full. First into a seat owns that machine. If a player drops out (headset off, wifi blip, page reload) they are put back by themselves: the dash says RECONNECTING until they are, and a seat they were in is given back. If the host reloads its page it reopens the same room (the number is in its address) and the other player finds it again.
+
+## Graphics quality
+
+`src/render/quality.js`, chosen on the start page and remembered; `?quality=quest|pc|ultra` overrides. Only drawing changes, so players on different settings share a game.
+
+- **Quest** (the default in a Quest's browser): no shadow maps, shade pools drawn in the ground shader. The 150 draw-call budget is for this one.
+- **PC** (the default elsewhere): real sun shadows from the machines, players and hand tools (2048² over ±30 m round you, filtered in the ground shader), and the haze a little further off.
+- **PC high**: a 4096² shadow map over ±45 m, the picture drawn at up to 1.5× the screen's resolution, haze further still.
+
+`tests/e2e/start.mjs` checks the start page, that the shadows appear, and that the simulation is the same at every setting; it saves `shots/gfx_*.png`.
 
 ## Light and effects
 

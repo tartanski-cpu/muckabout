@@ -74,6 +74,9 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 36c. Switch headset B's wifi off for 10 s and on again. Same recovery expected. If it never comes back, tell me what B's dash and start page say.
 36d. Does B see A's digging as it happens, not only the big changes? (Small ground updates used to arrive unreadable over the internet link; fixed, but never seen on two headsets.)
 36e. A third player (another headset, or a PC with the mouse) joins the same room. Does everyone see both others, and can all three drive at once? Drop the third one's wifi: when it comes back, there should be one figure of it, not two.
+36g. As a client (B), drive a machine and work its boom: does it answer the lever at once now, and does it ever jump or slide back noticeably when the host corrects it (into a pile, against another machine)?
+36h. B picks up the shovel and digs: does A see the soil go, and the shovel in B's hand? Can A take it while B has it (should not)?
+36i. The start page in the Quest browser: is *Enter VR* lit, and does it go straight into VR? Is the graphics setting on *Quest*?
 36f. On a PC in the same game: point at the loader's levers, key and wheel with the mouse and drag them (up pushes forward). Does it feel workable, and is anything impossible to reach or pick?
 
 ## Things I already suspect

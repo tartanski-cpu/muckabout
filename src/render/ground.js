@@ -41,7 +41,18 @@ uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar;
 uniform vec4 uShadow[8];   // x, z, radius, strength: a soft pool of shade under each machine half
 uniform vec4 uLamp[4];     // x, z, dir x, dir z: headlamp pools on the ground
 uniform float uLampOn;
+// PC graphics tier (render/quality.js): the sun's shadow map, cast by the machines, players and tools
+uniform float uSMOn; uniform sampler2D uSM; uniform mat4 uSMMat; uniform float uSMTexel;
 varying vec3 vWorld; varying vec3 vColor; varying vec3 vSmooth; varying vec4 vDetail;
+#include <packing>
+float sunShadow() {
+  if (uSMOn < 0.5) return 1.0;
+  vec4 sc = uSMMat * vec4(vWorld, 1.0); vec3 c = sc.xyz / sc.w;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float z = c.z - 0.0012, s = 0.0;
+  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) s += step(z, unpackRGBAToDepth(texture2D(uSM, c.xy + vec2(float(i), float(j)) * uSMTexel)));
+  return s / 9.0;
+}
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
@@ -63,7 +74,8 @@ void main() {
   vec3 light = uSunColor * d + mix(uGroundLight, uSky, n.y * 0.5 + 0.5);
   float shade = 1.0;
   for (int i = 0; i < 8; i++) { vec4 s = uShadow[i]; if (s.w > 0.0) shade *= 1.0 - s.w * smoothstep(1.0, 0.45, length(vWorld.xz - s.xy) / s.z); }
-  light = uSunColor * d * shade + mix(uGroundLight, uSky, n.y * 0.5 + 0.5) * (0.55 + 0.45 * shade);
+  float sun = uSMOn > 0.5 ? sunShadow() * mix(1.0, shade, 0.35) : shade; // with real shadows the pools only darken a little underneath
+  light = uSunColor * d * sun + mix(uGroundLight, uSky, n.y * 0.5 + 0.5) * (0.55 + 0.45 * shade);
   if (uLampOn > 0.01) for (int i = 0; i < 4; i++) { vec2 v = vWorld.xz - uLamp[i].xy; float al = dot(v, uLamp[i].zw), lat = length(v - uLamp[i].zw * al);
     light += vec3(1.0, 0.88, 0.62) * uLampOn * 1.1 * smoothstep(0.0, 2.5, al) * smoothstep(18.0, 5.0, al) * smoothstep(al * 0.42 + 1.2, 0.0, lat); }
   col *= light;
@@ -89,6 +101,7 @@ export class Ground {
         uSun: { value: env.sunDir }, uSunColor: { value: env.sunColor }, uSky: { value: env.skyLight }, uGroundLight: { value: env.groundLight },
         uFogColor: { value: env.fogColor }, uFogNear: { value: env.fogNear }, uFogFar: { value: env.fogFar },
         uShadow: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, uLamp: { value: Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, 1, 0)) }, uLampOn: env.lamps,
+        uSMOn: { value: 0 }, uSM: { value: null }, uSMMat: { value: new THREE.Matrix4() }, uSMTexel: { value: 1 / 2048 },
       },
     });
     this.group = new THREE.Group(); this.tiles = [];

@@ -37,6 +37,7 @@ export function makeEnvironment(scene, terrain) {
   const env = { // the ground and water shaders do their own lighting from these (shared objects, updated in place)
     sunDir: new THREE.Vector3(), sunColor: new THREE.Vector3(), skyLight: new THREE.Vector3(), groundLight: new THREE.Vector3(),
     fogColor: new THREE.Vector3(), fogNear: 70, fogFar: 210, lamps: { value: 0 }, name: '',
+    sunLight: sun, // the PC graphics tier (render/quality.js) casts real shadows from it
   };
   const skyU = { uZenith: { value: new THREE.Vector3() }, uHorizon: { value: new THREE.Vector3() }, uFog: { value: env.fogColor }, uSun: { value: env.sunDir }, uSunColor: { value: new THREE.Vector3() } };
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12), new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, uniforms: skyU, side: THREE.BackSide, depthWrite: false, depthTest: true, fog: false }));
