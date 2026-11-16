@@ -3,14 +3,21 @@
 // AUTO LEVEL on, push across the pad and off its far side; lift, back up, step over a blade's width, and again.
 import { harness } from './lib.mjs';
 
-const { open, check, done } = await harness();
+const { open, check, done, browser } = await harness();
 try {
-  const page = await open('?worker=0');
-  await page.waitForFunction(() => __game.play?.padJob && __game.machine('dozer'), null, { timeout: 60000 });
+  const context = await browser.newContext(); // shared storage: the save is read back in a second page
+  let page = await open('?worker=0&save=1&new=1', { context });
+  await page.waitForFunction(() => __game.play?.padJob && __game.machine('dozer') && __game.save, null, { timeout: 60000 });
   await page.evaluate(() => { __game.paused = true; });
   const v0 = await page.evaluate(async () => (await __game.audit()).total);
   const start = await page.evaluate(() => { const J = __game.play.padJob; J.update(1); return { ...J.live, y: J.design.y }; });
   check(start.within < 0.5 && start.cut > 3 && start.fill > 1, `the pad starts rough: ${(start.within * 100).toFixed(0)} % on grade, ${start.cut.toFixed(1)} m³ to cut, ${start.fill.toFixed(1)} m³ to fill (level ${start.y.toFixed(2)} m)`);
+  // the grading stakes read the ground against the design: one on the heap, one in the hollow, one off the pad
+  const tags = await page.evaluate(() => { const g = __game, P = g.play, T = g.terrain, [a, b] = P.tools.stakes, d = P.padJob.design;
+    const read = (x, z) => { a.root.position.set(x, T.heightAt(x, z), z); P.tools.tagT = 0; P.tools.update(0.01); return P.tools.tags[0].text; };
+    const r = { heap: read(d.x - 2.2, d.z), hollow: read(d.x + 3, d.z + 1), flat: read(d.x + 1, d.z - 2.6), off: read(d.x, d.z - 6) };
+    b.root.position.set(d.x - 2.2, T.heightAt(d.x - 2.2, d.z), d.z); return r; });
+  check(/^CUT \d+/.test(tags.heap) && /^FILL \d+/.test(tags.hollow) && /ON GRADE|CUT|FILL/.test(tags.flat) && / m$/.test(tags.off), `a stake reads the ground against the design: heap "${tags.heap}", hollow "${tags.hollow}", flat "${tags.flat}", off the pad "${tags.off}"`);
   await page.evaluate(() => { __game.play.overview = { from: [10, 20, -24], to: [10, 8, -35] }; __game.paused = false; });
   await page.waitForTimeout(1500); await page.screenshot({ path: 'shots/grade_before.png' }); await page.evaluate(() => { __game.paused = true; });
 
@@ -54,5 +61,14 @@ try {
   check(Math.abs(v1 - v0) / v0 < 1e-3, `volume conserved through the grading (${((v1 - v0) / v0 * 100).toExponential(1)} %)`);
   const card = await page.evaluate(() => { const S = __game.play; S.board.t = 1; S.board.update(1); return S.board.current === S.checklist; });
   check(card, 'with the pad done, the clipboard turns over to the next job');
+  // saved, and there next time
+  const level = await page.evaluate(() => __game.play.padJob.design.y);
+  check(await page.evaluate(() => __game.save.save()), 'the site saves');
+  await page.close();
+  page = await open('?worker=0&save=1', { context });
+  await page.waitForFunction(() => __game.play?.padJob && __game.save?.savedAt > 0, null, { timeout: 60000 });
+  const back = await page.evaluate(() => { const J = __game.play.padJob; return { done: J.done, grade: J.grade, y: J.design.y, office: J.office.visible, collider: !!J.collider, overlay: __game.ground.material.uniforms.uDOn.value }; });
+  check(back.done && back.grade === run.grade && back.y === level && back.office && back.collider && back.overlay === 0, `next visit: the pad is still done (grade ${back.grade}), the office still on it, and no design drawn`);
+  await page.evaluate(() => __game.save.forget());
   check(page.errs.length === 0, 'no page errors' + (page.errs.length ? ':\n  ' + page.errs.join('\n  ') : ''));
 } finally { await done(); }

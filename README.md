@@ -148,6 +148,17 @@ The dozer has `AUTO LEVEL` (`grade` in its file; `Y` on the desktop): the lift h
 
 From the rear seat the hoe is worked in the **SAE backhoe pattern** by default: left hand swing and boom, right hand dipper and bucket. The `ISO PATTERN` switch in the cab gives the excavator pattern, with boom and dipper on the other hands. The machine file is written in ISO; `handSwap` names the two functions SAE exchanges (`readControls` in `src/scenes/play.js`). The front loader lever is the usual single lever: back raises, forward lowers, left rolls back, right dumps.
 
+## Jobs: survey and grade
+
+`src/game/jobs.js` (roadmap chapter 1). The first job is the **site-office pad**: a 10 × 6 m patch of the yard with an old heap of topsoil and a hollow, to be levelled to ±5 cm over 90 % of it. Its level is the ground's median height there, set once and saved.
+
+- **On the ground:** the pad is drawn in cut and fill colours (red: too high, blue: too low, green: on grade), with a contour every 10 cm off grade and a pegged yellow edge.
+- **On the clipboard:** the job card shows the spec, the share on grade, and the volume still to cut and to fill. When it is good enough it says so; once every machine has been off the pad for 5 s it is signed off and graded (A 97 %, B 93 %, C 90 %), and the **site office** appears on the pad (solid to machines). The clipboard then turns over to the MVP checklist.
+- **The grading stakes** carry a level reading: CUT or FILL by so many centimetres, or ON GRADE, against the design; elsewhere the height.
+- In co-op the host signs jobs off; everyone sees the design, the live score and the office.
+
+`tests/e2e/grade.mjs`: a scripted dozer (blade lowered to the level, AUTO LEVEL on, rows across and off the far side) takes the pad from 36 % to over 90 % in two passes; it is not signed off while the dozer is on it; the grade, the office and the level survive a save.
+
 ## Hand tools
 
 `src/game/handTools.js`: a shovel, two grading stakes with a level string line, and a tow chain, lying beside where you start. Grip to pick up. The shovel's blade is a small cutting edge like a bucket's: it takes soil from the ground and throws it off as clods, and its load is in the volume audit. The line runs level with the first stake's foot, with droppers coloured by how the ground stands against it. A hook let go at the end of a machine hitches there; a taut chain pulls on both machines (`Machine.tow`), and a hitched machine with its park brake off rolls free. In co-op there is one set, owned by the host: a player on a client carries a tool on their own screen and the host follows, digs with the shovel and hitches the hooks; a tool someone has cannot be taken (`tests/e2e/cooptools.mjs`).

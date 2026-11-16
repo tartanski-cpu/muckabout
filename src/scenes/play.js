@@ -360,6 +360,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   player.place(sp[0], sp[1], sp[2] || 0);
   // hand tools on the ground beside where you start: shovel, grading stakes, tow chain (game/handTools.js)
   const tools = S.tools = new HandTools(game, inter, sp[0] + 1.6, sp[1] - 1.2);
+  tools.design = () => (S.padJob && !S.padJob.done ? S.padJob.design : null); // the stakes read cut and fill against it
   game.frameUpdaters.push((fdt) => tools.update(fdt));
   setHelp();
   return S;

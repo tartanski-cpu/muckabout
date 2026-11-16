@@ -79,6 +79,14 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 36i. The start page in the Quest browser: is *Enter VR* lit, and does it go straight into VR? Is the graphics setting on *Quest*?
 36f. On a PC in the same game: point at the loader's levers, key and wheel with the mouse and drag them (up pushes forward). Does it feel workable, and is anything impossible to reach or pick?
 
+## 9. Survey and grade (chapter 1)
+
+42. In the yard, south of the machines, the site-office pad is drawn on the ground: red heap, blue hollow, green round them, yellow edge. Is it readable from the dozer's seat? Too bright, too faint?
+43. Grab the clipboard in any cab: the pad's job card. Does the share on grade move as you work?
+44. Level it with the dozer (lower the blade to the level, AUTO LEVEL on). How long does it take you, and what grade do you get when you drive off?
+45. Plant a grading stake on the heap: its tag should read CUT and a number. Can you read the tag from the seat?
+46. When it is signed off the site office appears. Does it look right, and do the machines stop against it?
+
 ## Things I already suspect
 
 - Control positions are guesses made without seeing them in VR.

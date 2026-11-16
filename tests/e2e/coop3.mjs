@@ -63,6 +63,12 @@ try {
   });
   check(lever.after > lever.before + 0.01 && Math.abs(lever.h1 - lever.h0) < 1e-6, `the boom rises on the driver's screen as the lever moves, before the host has it (${lever.before.toFixed(3)} → ${lever.after.toFixed(3)}, host ${lever.h1.toFixed(3)}; round trip ${(lever.rtt * 1000).toFixed(0)} ms)`);
 
+  // the host signs a job off: every client sees it, and the office appears on its pad
+  const lvl = await host.evaluate(() => __game.play.padJob.design.y);
+  await host.evaluate(() => { const J = __game.play.padJob; J.finish('B', { ...J.live, within: 0.95 }); });
+  await until('the clients to see the pad signed off', async () => (await a.evaluate(() => __game.play.padJob.done && __game.play.padJob.office.visible)) && (await b.evaluate(() => __game.play.padJob.done)));
+  check(await a.evaluate((l) => __game.play.padJob.grade === 'B' && __game.play.padJob.design.y === l, lvl), 'a job the host signs off is done for every player, with its grade, and the office stands on the pad for all');
+
   // 3 ---- b's link dies; a must not keep b's old figure
   await b.evaluate(() => __game.play.net.transport.cut());
   await until('b to rejoin', async () => (await joined(b)) && (await idOf(b)) !== ib);

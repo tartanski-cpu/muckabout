@@ -8,6 +8,9 @@
 //            blue low (fill). Level (pink): the grade is the first stake's foot all the way along. Sloped (orange),
 //            for ramps and roads: the line runs from the top of one stake to the top of the other, and the grade is
 //            the straight line between their feet. The trigger, with a stake in the hand, switches between the two.
+//            Each stake carries a tag: a level reading of the ground at its foot. Inside a job's design it reads CUT
+//            or FILL by so many centimetres, or ON GRADE, as a surveyor's grade stake is marked; elsewhere it reads the
+//            height (`HandTools.design` says which design, if any).
 //   chain    a tow chain with a hook at each end. Let a hook go at the front or back of a machine and it hitches
 //            there. When the chain comes taut between two machines it pulls on both (Machine.tow), so one can drag
 //            another out of the bog.
@@ -98,6 +101,30 @@ class Stake extends Carried {
   grabMove(hand) { this.root.quaternion.identity(); this.root.position.copy(hand.pos).sub(this.grip); if (hand.triggerPressed && this.onTrigger) { this.onTrigger(); hand.pulse(0.6, 40); } }
   rest() { const p = this.root.position; p.y = this.ground(p.x, p.z); this.root.quaternion.identity(); }
 }
+/** The reading on a stake: a small board facing whoever looks at it. */
+class Tag {
+  constructor(parent) {
+    this.canvas = document.createElement('canvas'); this.canvas.width = 128; this.canvas.height = 56;
+    this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.114), new THREE.MeshBasicMaterial({ map: this.tex })); this.mesh.position.set(0, STAKE + 0.16, 0);
+    parent.add(this.mesh); this.text = '';
+  }
+  set(text, colour) {
+    if (text === this.text) return; this.text = text;
+    const g = this.canvas.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 128, 56); g.fillStyle = '#ffffff'; g.font = 'bold 26px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(text, 64, 37);
+    this.tex.needsUpdate = true;
+  }
+}
+/** The reading for ground height h at (x, z): against the design if inside it, else the height itself. */
+export function reading(h, x, z, design) {
+  if (design && design.inside(x, z)) {
+    const d = h - design.target(x, z), cm = Math.round(Math.abs(d) * 100);
+    if (Math.abs(d) <= design.tol) return { text: 'ON GRADE', colour: '#2f8f3a', d };
+    return d > 0 ? { text: `CUT ${cm}`, colour: '#b0302a', d } : { text: `FILL ${cm}`, colour: '#2a5ab0', d };
+  }
+  return { text: `${h.toFixed(2)} m`, colour: '#3a3e44', d: null };
+}
+
 class StringLine {
   constructor(game, a, b) {
     this.game = game; this.a = a; this.b = b; this.t = 0;
@@ -201,6 +228,7 @@ export class HandTools {
     const put = (t, dx, dz) => { t.root.position.set(x + dx, game.terrain.heightAt(x + dx, z + dz) + 1, z + dz); t.rest(); };
     put(this.shovel, 0, 0); put(this.stakes[0], 0.7, 0.2); put(this.stakes[1], 1.0, 0.2); put(this.hooks[0], 1.6, 0); put(this.hooks[1], 1.9, 0.3);
     this.line = new StringLine(game, this.stakes[0], this.stakes[1]); this.chain = new Chain(game, this.hooks[0], this.hooks[1]);
+    this.tags = this.stakes.map((st) => new Tag(st.root)); this.design = () => null; this.tagT = 0;
     inter.add(this.all);
     const before = game.extraVolume; game.extraVolume = () => (before ? before() : 0) + this.shovel.volume(); // soil on the shovel is still soil
   }
@@ -245,5 +273,12 @@ export class HandTools {
   /** Host: a player has gone; whatever they were carrying is put down where it is. */
   dropAll(from) { for (const t of this.all) if (t.remote === from) { t.remote = null; t.remoteTrigger = 0; t.hand = undefined; t.rest(); } }
   /** Every drawn frame. */
-  update(dt) { this.line.update(dt); this.chain.draw(); }
+  update(dt) {
+    this.line.update(dt); this.chain.draw();
+    const cam = this.game.camera; cam.getWorldPosition(_a);
+    for (const tag of this.tags) { const r = tag.mesh.parent; tag.mesh.lookAt(_a.x, r.position.y + STAKE + 0.16, _a.z); } // face the viewer, upright
+    if ((this.tagT -= dt) > 0) return; this.tagT = 0.2;
+    const T = this.game.terrain, D = this.design();
+    this.stakes.forEach((st, i) => { const p = st.root.position, r = reading(T.heightAt(p.x, p.z), p.x, p.z, D); this.tags[i].set(r.text, r.colour); this.tags[i].reading = r; });
+  }
 }

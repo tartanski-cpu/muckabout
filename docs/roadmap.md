@@ -96,6 +96,10 @@ The chapter the rest stand on. It builds the job and scoring framework every lat
 **Builds on:** the string line, the checklist, the dozer's auto level, `save.js`.
 **Done when:** a scripted dozer run grades a pad to tolerance in an e2e test and the score is asserted.
 
+**Progress:**
+- Done: `Design` (a level or sloping plane over a patch, scored for share on grade and volumes to cut and fill), drawn in the ground shader; the site-office pad job with its job card, grade, sign-off and office; the grading stakes read cut and fill. Saved and replicated. `tests/e2e/grade.mjs` grades the pad with a scripted dozer.
+- Not yet: setting a design out on foot with the stakes (designs come with the job for now), more than one job of this kind, and a real board of jobs to choose from.
+
 ### 2. The road in
 
 - **Roller:** a fifth machine, as a JSON file.
