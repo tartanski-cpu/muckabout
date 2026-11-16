@@ -11,11 +11,11 @@ try {
   await page.waitForFunction(() => typeof __game.machine === 'function' && __game.play?.mouse, null, { timeout: 60000 });
   // aim the seated camera at a control, as a player would by dragging, and return where it is on screen
   const aim = (name, machine = 'loader') => page.evaluate(([name, id]) => {
-    const g = __game, S = g.play, m = g.machine(id), c = m ? m.controls[name] : null; if (!c) return null;
+    const g = __game, S = g.play, m = g.machine(id), c = id === 'tools' ? S.tools[name] : m ? m.controls[name] : null; if (!c) return null;
     const THREE = g.THREE, cam = g.camera, p = new THREE.Vector3();
     (c.radius > 0 ? c.root.localToWorld(p.set(0, c.radius, 0)) : c.kind === 'press' ? c.pressPoint(p) : c.grabPoint(p));
-    if (S.player.machine) { g.rig.updateMatrixWorld(true); const l = g.rig.worldToLocal(p.clone()).sub(cam.position); S.look.yaw = Math.atan2(-l.x, -l.z); S.look.pitch = Math.atan2(l.y, Math.hypot(l.x, l.z)); }
-    if (S.player.machine) cam.rotation.set(S.look.pitch, S.look.yaw, 0, 'YXZ'); // as the next frame will have it
+    { g.rig.updateMatrixWorld(true); const l = g.rig.worldToLocal(p.clone()).sub(cam.position); S.look.yaw = Math.atan2(-l.x, -l.z); S.look.pitch = Math.atan2(l.y, Math.hypot(l.x, l.z)); }
+    cam.rotation.set(S.look.pitch, S.look.yaw, 0, 'YXZ'); // as the next frame will have it
     cam.updateMatrixWorld(true);
     const v = p.clone().project(cam), el = g.renderer.domElement, r = el.getBoundingClientRect();
     return [r.left + (v.x + 1) / 2 * el.clientWidth, r.top + (1 - v.y) / 2 * el.clientHeight];
@@ -73,6 +73,35 @@ try {
   await page.mouse.move(el[0], el[1]); await frames(3); await page.mouse.down(); await page.mouse.move(el[0] + 120, el[1], { steps: 6 }); await page.mouse.up(); await frames(2);
   check(Math.abs(await page.evaluate(() => __game.play.look.yaw) - y0) > 0.2, 'dragging where there is no control looks round');
   check(await page.evaluate(() => __game.play.input.fake.right === null || !__game.play.input.hands.right.holding), 'nothing is left held');
+
+  // ---- on foot with a hand tool: click the shovel to carry it, look down and walk to dig, right button to throw, click to put down
+  await page.evaluate(() => { const S = __game.play; S.stand(); const p = S.tools.shovel.grabPoint(new __game.THREE.Vector3()); S.player.place(p.x + 1.2, p.z + 0.4, 0); });
+  await frames(20);
+  const v0 = await page.evaluate(async () => (await __game.audit()).total);
+  const sp = await aim('shovel', 'tools'); await frames(2); await page.mouse.move(sp[0], sp[1]); await frames(4);
+  await page.mouse.down(); await frames(3); await page.mouse.up(); await frames(20);
+  check(await page.evaluate(() => __game.play.tools.shovel.holders.length === 1 && __game.play.mouse.carry === __game.play.tools.shovel), 'on foot, clicking the shovel picks it up and it stays in the hand with the button let go');
+  // dig: look well down so the blade is in the ground, and walk forward
+  await page.evaluate(() => { const S = __game.play; S.look.yaw = 0; S.look.pitch = -0.8; }); await frames(10);
+  await page.keyboard.down('KeyW'); await frames(90); await page.keyboard.up('KeyW');
+  await page.evaluate(() => { __game.play.look.pitch = 0; }); await frames(10);
+  const load = await page.evaluate(() => __game.play.tools.shovel.volume());
+  check(load > 0.005, `looking down and walking forward digs a shovelful (${(load * 1000).toFixed(0)} litres)`);
+  const mid = await page.evaluate(async () => (await __game.audit()).total);
+  check(Math.abs(mid - v0) / v0 < 1e-6, 'and the soil on the shovel is in the volume audit');
+  const c = await page.evaluate(() => { const r = __game.renderer.domElement.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await page.mouse.move(c[0], c[1]); await page.mouse.down({ button: 'right' }); await frames(10); await page.mouse.up({ button: 'right' }); await frames(5);
+  check(await page.evaluate(() => __game.play.tools.shovel.volume()) === 0, 'the right button throws the soil off');
+  // a drag with a tool in hand looks round and keeps it
+  const yy = await page.evaluate(() => __game.play.look.yaw);
+  await page.mouse.down(); await page.mouse.move(c[0] + 150, c[1], { steps: 6 }); await page.mouse.up(); await frames(5);
+  check(await page.evaluate(() => __game.play.tools.shovel.holders.length === 1) && Math.abs(await page.evaluate(() => __game.play.look.yaw) - yy) > 0.2, 'dragging with it in hand looks round, and keeps hold of it');
+  await page.mouse.move(c[0] + 150, c[1]); await page.mouse.down(); await frames(2); await page.mouse.up(); await frames(10);
+  check(await page.evaluate(() => !__game.play.tools.shovel.held && !__game.play.mouse.carry), 'a click puts it down');
+  await frames(120);
+  const end = await page.evaluate(async () => (await __game.audit()).total);
+  check(Math.abs(end - v0) / v0 < 1e-6, `volume conserved after digging and throwing with the mouse (${((end - v0) * 1000).toFixed(2)} litres adrift)`);
+
   check(page.errs.length === 0, 'no page errors' + (page.errs.length ? ':\n  ' + page.errs.join('\n  ') : ''));
   void at;
 } finally { await done(); }

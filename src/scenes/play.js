@@ -291,7 +291,8 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   let drag = false;
   const el = game.renderer.domElement;
   el.addEventListener('pointerdown', (e) => { bus.start(); if (!mouse.down(e)) drag = true; else el.setPointerCapture?.(e.pointerId); });
-  addEventListener('pointerup', () => { drag = false; mouse.up(); });
+  addEventListener('pointerup', (e) => { drag = false; mouse.up(e); });
+  el.addEventListener('contextmenu', (e) => e.preventDefault()); // the right button is the trigger while carrying a tool
   el.addEventListener('pointerleave', () => mouse.leave());
   el.addEventListener('wheel', (e) => { if (mouse.wheel(e)) e.preventDefault(); }, { passive: false });
   addEventListener('pointermove', (e) => { mouse.move(e); if (drag) { S.look.yaw -= e.movementX * 0.004; S.look.pitch = clamp(S.look.pitch - e.movementY * 0.004, -1.3, 1.3); } });
@@ -345,7 +346,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Grab the yellow handrail to climb in. `
       + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
-      + `<b>PC:</b> point at a lever, switch, key or the wheel and it lights up; drag it (up pushes forward), click a switch or button; on foot, click a handrail to climb in. Drag anywhere else to look round.<br>`
+      + `<b>PC:</b> point at a lever, switch, key or the wheel and it lights up; drag it (up pushes forward), click a switch or button; on foot, click a handrail to climb in, or click a hand tool to carry it (look at the ground to put it there, walk to dig, right button throws, click to put down). Drag anywhere else to look round.<br>`
       + `<b>Keys:</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
       + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ reset; on foot, sticks walk and look<br>`
