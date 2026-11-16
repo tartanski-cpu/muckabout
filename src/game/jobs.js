@@ -7,8 +7,10 @@
 //
 // The first job is the site-office pad: level a 10 × 6 m patch of the yard to ±5 cm over 90 % of it. Its level is
 // set once, from the ground as it lies (its median height, to the centimetre), and saved.
-// When it is done the job is graded (A at 97 %, B at 93 %, C at 90 %) and the site office is put on the pad: a
-// portacabin, one draw call, with a collider. The MVP checklist is the next job card on the clipboard.
+// It is signed off once it is within tolerance over 90 % and every machine has been off the pad for SIGN_OFF
+// seconds (so you can keep working it for a better grade, and the office is never dropped on a machine). Graded on
+// how it stands then (A at 97 %, B at 93 %, C at 90 %), and the site office is put on the pad: a portacabin, one draw
+// call, with a collider. The MVP checklist is the next job card on the clipboard.
 //
 // Host-authoritative in co-op: the host decides when a job is done and its grade; clients draw the overlay and the
 // live score from their own copy of the ground (it is the host's, replicated).
@@ -42,6 +44,7 @@ export class Design {
 }
 
 export const GRADES = [['A', 0.97], ['B', 0.93], ['C', 0.9]];
+export const SIGN_OFF = 5; // s with nothing on the pad
 export const gradeOf = (within) => (GRADES.find(([, k]) => within >= k) || [null])[0];
 
 /** The site office: a portacabin built from boxes, merged into one mesh. Its floor sits on the pad. */
@@ -73,16 +76,23 @@ export class PadJob {
     this.live = { within: 0, cut: 0, fill: 0, high: 0, low: 0, n: 0, worst: 0 };
     this.design.fitLevel(game.terrain);
     this.office = office(); this.office.visible = false; game.scene.add(this.office);
-    this.onDone = null; this.t = 0;
+    this.onDone = null; this.t = 0; this.clear = 0;
     this.show();
   }
   /** Draw (or stop drawing) the design on the ground. */
   show() { this.game.ground.setDesign(this.done ? null : this.design); }
   /** Every few frames: the live score; on the host, finish the job when it is met. */
   update(dt, { authority = true } = {}) {
-    if ((this.t += dt) < 0.25 && this.live.n) return; this.t = 0;
+    this.t += dt; if (this.t < 0.25 && this.live.n) return; const step = this.t; this.t = 0;
     this.design.score(this.game.terrain, this.live); this.best = Math.max(this.best, this.live.within);
-    if (authority && !this.done && this.live.within >= this.need) this.finish(gradeOf(this.live.within), { ...this.live });
+    if (!authority || this.done) return;
+    this.clear = this.live.within >= this.need && !this.occupied() ? this.clear + step : 0;
+    if (this.clear >= SIGN_OFF) this.finish(gradeOf(this.live.within), { ...this.live });
+  }
+  /** Is any machine on (or within 3 m of) the pad? */
+  occupied() {
+    const d = this.design;
+    return (this.game.machines || []).some((m) => m.bodyList.some((b) => Math.abs(b.obj.position.x - d.x) < d.w / 2 + 3 && Math.abs(b.obj.position.z - d.z) < d.d / 2 + 3));
   }
   finish(grade, result) {
     if (this.done) return;
@@ -120,6 +130,9 @@ export class PadJob {
       g.fillStyle = '#2f8f3a'; g.font = 'bold 40px system-ui, sans-serif'; g.fillText(`DONE · GRADE ${this.grade}`, 36, 470);
       g.font = '22px system-ui, sans-serif'; g.fillText(`${pc(this.result.within)} on grade when signed off`, 36, 506);
       g.fillText('The office is on its pad. Next job overleaf.', 36, 540);
+    } else if (L.within >= this.need) {
+      g.fillStyle = '#2f8f3a'; g.font = 'bold 24px system-ui, sans-serif'; g.fillText(`Good enough for grade ${gradeOf(L.within)}.`, 36, 470);
+      g.font = '21px system-ui, sans-serif'; g.fillText(this.occupied() ? 'Keep at it, or drive off the pad to sign off.' : `Signing off… ${Math.max(0, Math.ceil(SIGN_OFF - this.clear))} s`, 36, 502);
     } else { g.fillStyle = '#6a5a40'; g.font = 'italic 21px system-ui, sans-serif'; g.fillText('Dozer: AUTO LEVEL holds the blade there.', 36, 470); }
   }
 }
