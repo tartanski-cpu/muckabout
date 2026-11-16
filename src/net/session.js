@@ -75,7 +75,7 @@ export async function startHost(game, S, transport, code) {
     const machines = {}; for (const m of game.machines) machines[m.id] = { ...m.netState(), d: m.driver === 'local' ? 'host' : m.driver, c: ctlValues(m), ev: m.netEvents?.splice(0) };
     const players = { host: localPose(game, S) }; for (const [id, p] of net.peers) players[id] = p.pose;
     const echo = {}; for (const [id, p] of net.peers) if (p.ct) echo[id] = p.ct + (now() - p.ctAt); // each client's clock, less the time it waited here: its round trip
-    transport.send({ t: 'snap', time: now(), machines, players, echo, tools: S.tools?.netState('host'), clods: net.clods.splice(0), jobs: S.checklist ? S.checklist.items.map((i) => i.done) : null });
+    transport.send({ t: 'snap', time: now(), machines, players, echo, tools: S.tools?.netState('host'), pad: S.padJob?.state(), clods: net.clods.splice(0), jobs: S.checklist ? S.checklist.items.map((i) => i.done) : null });
     if (net.n % 2 === 0) { const d = writer.delta(); if (d) transport.send({ t: 'terrain', d }); }
     if (net.n % 4 === 0) { const c = {}; let any = false; for (const r of game.rigs) { const rev = r.field.rev || 0; if (net.sentRev.get(r.key) !== rev) { net.sentRev.set(r.key, rev); c[r.key] = packField(r.field); any = true; } } if (any) transport.send({ t: 'cont', c }); }
     if (net.n % 20 === 0 && game.terrain.water) transport.send({ t: 'water', d: encodeWater(game.terrain.water) });
@@ -125,6 +125,7 @@ export async function startClient(game, S, transport, code) {
       const back = msg.echo?.[net.id]; if (back) { const r = Math.max(0, t - back); net.rtt = net.rtt == null ? r : net.rtt + (r - net.rtt) * 0.1; if (net.own) net.own.rtt = Math.min(0.5, net.rtt); }
       const c = msg.clods; for (let i = 0; i < c.length; i += 8) game.clods.spawn(c[i], c[i + 1], c[i + 2], c[i + 3], c[i + 4], c[i + 5], c[i + 6], c[i + 7]);
       if (msg.jobs && S.checklist) msg.jobs.forEach((d, i) => { if (d) S.checklist.items[i].done = true; });
+      if (msg.pad && S.padJob && (msg.pad.y !== S.padJob.design.y || msg.pad.done !== S.padJob.done)) S.padJob.restore(msg.pad); // the host's level, and when it signs the pad off
     } else if (msg.t === 'terrain') game.terrain.applyRemote(msg.d);
     else if (msg.t === 'water') game.terrain.applyRemoteWater(msg.d);
     else if (msg.t === 'cont') for (const key in msg.c) { const r = rigByKey.get(key); if (!r) continue; const p = msg.c[key], f = r.field; for (let k = 0; k < f.fill.length; k++) { f.fill[k] = p.f[k] / 100; f.mat[k] = p.m[k]; } f.dirty = true; }

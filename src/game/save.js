@@ -1,7 +1,7 @@
 // Saving the site, so a session's work is still there next time.
 //
 // One save per map, kept in the browser's own storage (IndexedDB) on this device: the ground and the water as they
-// stand, every machine's position, hydraulics and load, the hopper, the checklist, the hand tools and where the
+// stand, every machine's position, hydraulics and load, the hopper, the checklist and the jobs, the hand tools and where the
 // player stood. It is written by itself every minute, when the page is hidden or closed, and when a VR session ends;
 // and loaded by itself at the start. "Start a new site" forgets it.
 //
@@ -38,6 +38,7 @@ export class SaveGame {
       tools: S.tools ? S.tools.all.map((t) => pose(t.root)) : [],
       slopedLine: !!S.tools?.line.slope,
       checklist: S.checklist ? S.checklist.items.map((i) => !!i.done) : [],
+      pad: S.padJob ? S.padJob.state() : null,
       player: [S.player.feet.x, S.player.feet.z, S.player.yaw],
     };
   }
@@ -64,6 +65,7 @@ export class SaveGame {
     if (S.tools) S.tools.all.forEach((t, i) => { const p = s.tools[i]; if (p) { t.root.position.fromArray(p); t.root.quaternion.fromArray(p, 3); if (t.hitch !== undefined) t.hitch = null; } });
     if (S.tools) S.tools.line.setSlope(!!s.slopedLine);
     if (S.checklist) S.checklist.items.forEach((it, i) => { it.done = !!s.checklist[i]; });
+    if (S.padJob && s.pad) S.padJob.restore(s.pad);
     S.player.place(s.player[0], s.player[1], s.player[2]);
     g.simTime = s.simTime || 0;
     this.savedAt = s.when;

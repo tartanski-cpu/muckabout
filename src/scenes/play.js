@@ -19,6 +19,7 @@ import { Avatar } from '../net/avatar.js';
 import { HandTools } from '../game/handTools.js';
 import { makeHopper } from '../game/hopper.js';
 import { makeChecklist, Clipboard } from '../game/checklist.js';
+import { PadJob, JobBoard } from '../game/jobs.js';
 import { startStress } from './stress.js';
 import { Rams } from '../render/rams.js';
 import { Particles } from '../render/particles.js';
@@ -64,13 +65,15 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   game.machines = machines; game.play = S; game.autopilot = autopilot;
   game.machine = (id) => machines.find((m) => m.id === id);
 
-  // the job: hopper in the yard, checklist on a clipboard in every cab
+  // the jobs: the site-office pad to level (game/jobs.js), then the MVP checklist; the current one on a clipboard in every cab
   if (map.hopper) {
     S.hopper = makeHopper(game, phys, map.hopper);
     S.checklist = makeChecklist(game, { machines, hopper: S.hopper, map });
     S.checklist.onTick = () => { for (const s of ['left', 'right']) input.hands[s].pulse(0.9, 150); };
+    if (map.pad) { S.padJob = new PadJob(game, phys, map.pad); S.padJob.onDone = (j) => { for (const s of ['left', 'right']) input.hands[s].pulse(1, 300); game.hud.note = `PAD DONE: GRADE ${j.grade}`; }; }
+    S.board = new JobBoard(S.padJob ? [S.padJob, S.checklist] : [S.checklist]);
     for (const m of machines) {
-      const e = m.seatDef.eye, cb = new Clipboard({ name: 'clipboard', pos: [e[0] - 0.5, e[1] - 0.45, e[2] - 0.62], rot: [-0.5, 0.45, 0] }, S.checklist.texture);
+      const e = m.seatDef.eye, cb = new Clipboard({ name: 'clipboard', pos: [e[0] - 0.5, e[1] - 0.45, e[2] - 0.62], rot: [-0.5, 0.45, 0] }, S.board.texture);
       m.nodes[m.seatDef.node].add(cb.root); m.controls.clipboard = cb; m.controlRoots.push(cb.root); inter.add([cb]);
     }
   }
@@ -279,7 +282,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       for (const m of machines) { const s = m.audioState(); if (m.tools[0]) { m.tools[0].node.getWorldPosition(_p); s.digMat = terrain.materialAt(_p.x, _p.z); } s.cab = player.machine === m; m.voice.drive(s, m.position); }
     }
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
-    if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); }
+    if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); S.padJob?.update(fdt * 15, { authority: !game.remote }); S.board.update(fdt * 15); }
     if (left.stickPressed && !left.busy && !player.seated) S.setStress(!S.stress);
     if (left.stickPressed && player.seated && !left.holding && !game.remote) { S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom'); left.pulse(0.6, 60); }
     // cab controls and their labels are many small draw calls: only draw them for machines within reach (handrails always: they are how you find the way in)

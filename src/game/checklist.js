@@ -43,7 +43,8 @@ export function makeChecklist(game, { machines, hopper, map }) {
     tex.needsUpdate = true;
   }
   let timer = 0; draw();
-  return { items, texture: tex, fordWidth,
+  return { items, texture: tex, fordWidth, canvas, // canvas: the job board (game/jobs.js) shows this card once the pad is done
+    get done() { return items.every((i) => i.done); },
     update(dt) {
       let changed = false;
       for (const it of items) if (!it.done && it.test(dt)) { it.done = true; changed = true; if (this.onTick) this.onTick(it); }

@@ -43,6 +43,8 @@ uniform vec4 uLamp[4];     // x, z, dir x, dir z: headlamp pools on the ground
 uniform float uLampOn;
 // PC graphics tier (render/quality.js): the sun's shadow map, cast by the machines, players and tools
 uniform float uSMOn; uniform sampler2D uSM; uniform mat4 uSMMat; uniform float uSMTexel;
+// a design to work to (game/jobs.js): centre and half size, and the plane (level at the centre, gradient, tolerance)
+uniform float uDOn; uniform vec4 uDRect; uniform vec4 uDPlane;
 varying vec3 vWorld; varying vec3 vColor; varying vec3 vSmooth; varying vec4 vDetail;
 #include <packing>
 float sunShadow() {
@@ -79,6 +81,18 @@ void main() {
   if (uLampOn > 0.01) for (int i = 0; i < 4; i++) { vec2 v = vWorld.xz - uLamp[i].xy; float al = dot(v, uLamp[i].zw), lat = length(v - uLamp[i].zw * al);
     light += vec3(1.0, 0.88, 0.62) * uLampOn * 1.1 * smoothstep(0.0, 2.5, al) * smoothstep(18.0, 5.0, al) * smoothstep(al * 0.42 + 1.2, 0.0, lat); }
   col *= light;
+  if (uDOn > 0.5) { // cut and fill: red where the ground stands above the design, blue where it is below, green on grade
+    vec2 q = vWorld.xz - uDRect.xy, o = abs(q) - uDRect.zw;
+    float edge = max(o.x, o.y);
+    if (edge < 0.0) {
+      float dh = vWorld.y - (uDPlane.x + uDPlane.y * q.x + uDPlane.z * q.y), tol = uDPlane.w;
+      vec3 tint = abs(dh) <= tol ? vec3(0.25, 0.85, 0.3) : dh > 0.0 ? vec3(0.95, 0.25, 0.18) : vec3(0.2, 0.45, 1.0);
+      float k = abs(dh) <= tol ? 0.35 : 0.3 + 0.4 * smoothstep(tol, 0.4, abs(dh));
+      float ring = 1.0 - smoothstep(0.0, 0.012, abs(fract(dh / 0.1 + 0.5) - 0.5) * 0.1);  // a contour every 10 cm off grade
+      col = mix(col, tint * (0.6 + 0.4 * light), k) * (1.0 - 0.35 * ring * step(tol, abs(dh)));
+    }
+    if (abs(edge) < 0.06) col = mix(col, vec3(1.0, 0.85, 0.2), 0.85);                 // the pad's edge, as if pegged out
+  }
   float fog = smoothstep(uFogNear, uFogFar, dist);
   gl_FragColor = vec4(mix(col, uFogColor, fog), 1.0);
   #include <colorspace_fragment>
@@ -102,6 +116,7 @@ export class Ground {
         uFogColor: { value: env.fogColor }, uFogNear: { value: env.fogNear }, uFogFar: { value: env.fogFar },
         uShadow: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, uLamp: { value: Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, 1, 0)) }, uLampOn: env.lamps,
         uSMOn: { value: 0 }, uSM: { value: null }, uSMMat: { value: new THREE.Matrix4() }, uSMTexel: { value: 1 / 2048 },
+        uDOn: { value: 0 }, uDRect: { value: new THREE.Vector4() }, uDPlane: { value: new THREE.Vector4() },
       },
     });
     this.group = new THREE.Group(); this.tiles = [];
@@ -144,6 +159,12 @@ export class Ground {
     g.setAttribute('skirt', new THREE.Float32BufferAttribute(skirt, 1));
     g.setIndex(pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
     return g;
+  }
+
+  /** Draw a design (game/jobs.js Design) as cut and fill colours over its patch, or nothing (null). */
+  setDesign(d) {
+    const u = this.material.uniforms; u.uDOn.value = d ? 1 : 0;
+    if (d) { u.uDRect.value.set(d.x, d.z, d.w / 2, d.d / 2); u.uDPlane.value.set(d.y, d.sx, d.sz, d.tol); }
   }
 
   /** Shade and lamp pools for the machines: list of {x, z, r} (up to 8) and {x, z, dx, dz} (up to 4). */
