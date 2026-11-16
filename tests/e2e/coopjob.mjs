@@ -17,14 +17,17 @@ try {
   const turn = async () => { for (const p of pages) { await p.bringToFront(); await p.waitForTimeout(250); } };
   const joined = (p) => p.evaluate(() => { const n = globalThis.__game?.play?.net; return !!(n && n.id && !n.lost && !n.rejoining); });
   for (let k = 0; !((await joined(A)) && (await joined(B))); k++) { if (k > 60) throw new Error('clients never joined'); await turn(); }
+  console.log('     both clients joined');
   const setup = () => { const g = __game; g.renderer.setAnimationLoop(null); window.frames = (n, each) => { for (let i = 0; i < n; i++) { if (each) each(); g.loop(1 / 60); } }; };
   for (const p of pages) await p.evaluate(setup);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   /** One round: each client steps its driver and its game three frames, then the host three frames */
-  const round = async () => {
-    for (const c of [A, B]) await c.evaluate(() => frames(3, () => window.drv?.step(1 / 60)));
-    await sleep(5); await host.evaluate(() => frames(3)); await sleep(5);
+  const round = async (n = 3) => {
+    for (const c of [A, B]) await c.evaluate((n) => frames(n, () => window.drv?.step(1 / 60)), n);
+    await sleep(5); const z = await host.evaluate((n) => { frames(n); return __game.machine('loader').position.z; }, n); await sleep(5);
+    return z;
   };
+  const log = (s) => console.log('     ' + s);
   const jobs = (p) => p.evaluate(() => __game.play.checklist.items.map((i) => i.done));
 
   // ---- the machines on the river flat; each client takes one
@@ -57,11 +60,15 @@ try {
     window.drv = new Script(m, [startUp, (mm) => !mm.fn.boom || setFn(mm, 'boom', 0.15), (mm) => driveTo(mm, x, 33, { speed: 3 }) < 1.5, (mm, t) => { halt(mm); return t > 1; }], { timeout: 90 }); };
   await A.evaluate(go, 0.8); await B.evaluate(go, 3.4);
   let cut = false, rounds = 0;
-  for (; rounds < 1400; rounds++) {
-    await round();
-    const z = await host.evaluate(() => __game.machine('loader').position.z);
-    if (!cut && z > 18) { cut = true; await B.evaluate(() => __game.play.net.transport.cut()); }
-    if (rounds % 20 === 0 && await A.evaluate(() => window.drv.done) && await B.evaluate(() => window.drv.done)) break;
+  for (; rounds < 600; rounds++) {
+    const z = await round(5);
+    if (!cut && z > 18) { cut = true; await B.evaluate(() => __game.play.net.transport.cut()); log(`cut B's link at loader z ${z.toFixed(1)}`); }
+    if (rounds % 25 === 0) {
+      const st = await host.evaluate(() => ({ d: __game.machine('dumper').position.z, l: __game.machine('loader').position.z, dd: __game.machine('dumper').driver, ld: __game.machine('loader').driver }));
+      const a = await A.evaluate(() => [window.drv.i, window.drv.done]), b = await B.evaluate(() => [window.drv.i, window.drv.done, __game.play.net.lost]);
+      log(`round ${rounds}: dumper z ${st.d.toFixed(1)} (${st.dd}, step ${a[0]}), loader z ${st.l.toFixed(1)} (${st.ld}, step ${b[0]}${b[2] ? ', lost' : ''})`);
+      if (a[1] && b[1]) break;
+    }
   }
   for (let k = 0; k < 10; k++) await round();
   const after = await host.evaluate(() => ({ d: __game.machine('dumper').position.z, l: __game.machine('loader').position.z, dl: __game.machine('loader').driver, CL: (__game.play.checklist.update(1), __game.play.checklist.items[2].done) }));
