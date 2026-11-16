@@ -73,3 +73,5 @@ export const MAPS = {
     },
   },
 };
+// A measuring stick for a bigger valley: the same layout on a 240 m square (four times the ground). Not a level.
+MAPS.xl = { ...MAPS.dirttown, cfg: { nx: 960, nz: 960, cell: 0.25, ox: -120, oz: -120 } };

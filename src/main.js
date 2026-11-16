@@ -8,7 +8,7 @@ const join = q.get('join'), hosting = flag('host', false);
 
 (async () => {
   const map = q.get('map') || (sceneName === 'stress' ? 'test' : 'dirttown');
-  const game = new Game({ map, worker: flag('worker', true), water: map === 'dirttown' && flag('water', true), seed: 1337, remote: !!join });
+  const game = new Game({ map, worker: flag('worker', true), water: (map === 'dirttown' || map === 'xl') && flag('water', true), seed: 1337, remote: !!join });
   await game.init();
   window.__game = game;
   if (sceneName === 'stress') {
