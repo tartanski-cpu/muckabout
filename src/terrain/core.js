@@ -291,7 +291,7 @@ export class TerrainCore {
     ids.forEach((id, q) => this._eachCell(id, (c, k) => { const o = q * K + k;
       a.bed[o] = this.bed[c]; a.nl[o] = this.nl[c]; a.dist[o] = this.dist[c]; a.rut[o] = this.rut[c];
       for (let l = 0; l < 3; l++) { a.lm[o * 3 + l] = this.lm[c * 3 + l]; a.lt[o * 3 + l] = this.lt[c * 3 + l]; } }));
-    return { v: 2, nx: this.nx, nz: this.nz, ids: Int32Array.from(ids), ...a, lost: this.lost, compacted: this.compacted, water: w ? { d: w.d.slice(), washed: w.washed } : null };
+    return { v: 2, nx: this.nx, nz: this.nz, ids: Int32Array.from(ids), ...a, lost: this.lost, compacted: this.compacted, water: w ? w.save() : null };
   }
   _eachCell(id, fn) { const ci = id % this.cnx, cj = (id / this.cnx) | 0; let k = 0; for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++, k++) { const x = ci * CHUNK + i, z = cj * CHUNK + j; if (x < this.nx && z < this.nz) fn(z * this.nx + x, k); } }
   /**
@@ -316,7 +316,7 @@ export class TerrainCore {
     this.lost = s.lost; this.compacted = s.compacted;
     for (let c = 0; c < this.n; c++) this._fixH(c);
     this.queued.fill(0); this.qHead = 0; this.qLen = 0;
-    if (this.water && s.water && s.water.d.length === this.water.d.length) { const w = this.water; w.d.set(s.water.d); w.washed = s.water.washed; for (const k of ['fl', 'fr', 'fu', 'fd', 'vx', 'vz']) w[k].fill(0); }
+    if (this.water && s.water) this.water.restore(s.water); // (water saved before tiles is not read: the river refills by itself)
     this.markAllDirty(); this.tracking = false; // the next delivery is the whole ground again, not new work
     return true;
   }

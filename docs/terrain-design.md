@@ -85,3 +85,7 @@ transferred, then written into the mirror and into two world-sized textures with
 `tests/terrain*.test.js` run the core directly: volume conservation (ground + containers + clods +
 lost + compacted constant within 0.1 %) over scripted cut/dump sequences, repose angles per material,
 swept cuts not tunnelling, determinism (same commands → identical arrays).
+
+## Water
+
+`src/terrain/water.js`: shallow water (virtual pipes) on a 0.5 m grid over the whole map, in tiles of 16 × 16 water cells (one terrain chunk each). Only awake tiles are stepped: water flowing into a sleeping tile wakes it within the same step, so none is lost; a tile dry for 120 steps sleeps again. Sources come from the map: the river (filled at the start, an inflow at the west edge and a free outflow at the east), `springs` (a rate at a point) and `ponds` (filled to a level at the start). The worker sends the main thread only the awake tiles (`pack`), and those put to sleep since; the main thread keeps a whole-map copy (`WaterMirror`) for depth queries, drawing and co-op. Saves hold the awake tiles' water. Today's river: 31 of 225 tiles awake, 0.6 ms a step.

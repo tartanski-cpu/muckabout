@@ -4,6 +4,7 @@ import { TerrainCore, CHUNK } from './core.js';
 import { MAPS } from './maps.js';
 import { MATERIALS, ROCK } from './materials.js';
 import { applyTerrainDelta, decodeWater, repackAll } from '../net/terrainDelta.js';
+import { WaterMirror } from './water.js';
 
 export class TerrainClient {
   /** @param {{map:string, mode?:'inline'|'worker', water?:boolean}} o */
@@ -119,7 +120,11 @@ export class TerrainClient {
       }
     }
     if (m.chunks.length) for (const l of this.listeners) l(m.chunks);
-    if (m.water) { this.water = m.water; for (const l of this.waterListeners) l(m.water); }
+    if (m.water) { // the worker's water: only the tiles that have it (terrain/water.js)
+      if (!this.water) this.water = new WaterMirror(m.water);
+      const changed = this.water.apply(m.water, this);
+      for (const l of this.waterListeners) l(this.water, changed);
+    }
   }
   /** Co-op client: apply a terrain delta / water message from the host. */
   /** Co-op client: the first call keeps the map as built; later calls put it back, ready to take a host's whole site
@@ -133,9 +138,8 @@ export class TerrainClient {
   applyRemoteWater(bytes) {
     const w = this.water; if (!w) return;
     decodeWater(bytes, w);
-    const k = Math.round(w.cell / this.cell), j0 = Math.round((w.oz - this.oz) / w.cell), h = this.h, nx = this.nx; // bed from our own copy of the ground
-    for (let j = 0; j < w.nz; j++) for (let i = 0; i < w.nx; i++) { const t = (j0 + j) * k * nx + i * k; w.bed[j * w.nx + i] = (h[t] + h[t + 1] + h[t + nx] + h[t + nx + 1]) * 0.25; }
-    for (const l of this.waterListeners) l(w);
+    w.rescan(this); // which tiles have water, and the bed from our own copy of the ground
+    for (const l of this.waterListeners) l(w, null);
   }
   /** Take (and clear) the latest result for a cut id. */
   takeResult(id) { const r = this.results.get(id); if (r) this.results.delete(id); return r; }

@@ -9,7 +9,8 @@ export function makeChecklist(game, { machines, hopper, map }) {
     const w = game.terrain.water; if (!w) return 0;
     let best = 0, run = 0;
     for (let i = 4; i < w.nx - 4; i++) {
-      let deep = 0; for (let j = 0; j < w.nz; j++) { const d = w.depth[j * w.nx + i]; if (d > deep) deep = d; }
+      const x = w.ox + (i + 0.5) * w.cell, zc = map.riverZ(x), j0 = Math.max(0, Math.floor((zc - 9 - w.oz) / w.cell)), j1 = Math.min(w.nz, Math.ceil((zc + 9 - w.oz) / w.cell)); // across the river only: not a pond or a stream elsewhere
+      let deep = 0; for (let j = j0; j < j1; j++) { const d = w.depth[j * w.nx + i]; if (d > deep) deep = d; }
       if (deep < 0.38) { run++; if (run > best) best = run; } else run = 0;
     }
     return best * w.cell;

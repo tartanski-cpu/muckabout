@@ -98,7 +98,7 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 
 ```
 machines/*.json          one file per machine: masses, geometry, hydraulics, tools, containers, cab control layout
-src/terrain/             core.js (layered heightfield, relaxation, cut/deposit/compact), water.js (river + erosion),
+src/terrain/             core.js (layered heightfield, relaxation, cut/deposit/compact), water.js (water anywhere: river, springs, ponds; only wet tiles are stepped; erosion),
                          containers.js, clods.js, tool.js, maps.js, worker.js, client.js (worker / inline / remote)
 src/vehicles/            physics.js (Rapier world), machine.js (generic machine from a definition), powertrain.js (engine,
                          governor, turbo: a torque balance that the pump and the drive load)
