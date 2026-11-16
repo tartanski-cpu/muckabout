@@ -87,6 +87,9 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 45. Plant a grading stake on the heap: its tag should read CUT and a number. Can you read the tag from the seat?
 46. When it is signed off the site office appears. Does it look right, and do the machines stop against it?
 
+47. On the start page in the Quest browser: make a *New site…* called "Family". Is the name box usable with the Quest keyboard? Does the site you last played open next time?
+48. *Save to a file* in the Quest browser: where does the file go, and can you find it again? (Downloads in the Quest browser may be awkward: tell me what happens.)
+
 ## Things I already suspect
 
 - Control positions are guesses made without seeing them in VR.

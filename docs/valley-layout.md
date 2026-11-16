@@ -65,7 +65,7 @@ Measured on a 240 m test map (`?map=xl`: today's layout on the same amount of gr
 ## Work before the valley can be built
 
 1. **Water in more than one place** (the first step): the stream, the reservoir and the pond, not only the river band. Being built now.
-2. **Named sites and site files** (above). Being built now.
+2. **Named sites and site files** (above). Done: `src/ui/sites.js`, `src/game/siteFile.js`, `tests/e2e/sites.mjs`.
 3. **The scenery follows the map's size:** the backdrop and tree ring are placed for the 120 m map.
 4. **Rock:** the quarry needs a hard material that only breaks with ripping. `ROCK` exists as a material, but nothing digs it yet.
 5. **Maps built from named features** (hills, stream, river, pads, tip), so each chapter can adjust its own area without touching the rest.

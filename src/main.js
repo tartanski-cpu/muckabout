@@ -25,13 +25,15 @@ const join = q.get('join'), hosting = flag('host', false);
     if (flag('stress', false)) game.scene_.setStress(true);
     // the saved site, if there is one (game/save.js): loaded now, then saved by itself as you work. ?new=1 starts afresh, ?save=0 switches it off
     if (!join && flag('save', true) && !flag('stress', false)) {
-      const { SaveGame } = await import('./game/save.js'), save = game.save = new SaveGame(game, game.scene_);
-      if (flag('new', false)) await save.forget(); else if (await save.load()) game.hud.note = 'SITE LOADED FROM YOUR LAST VISIT';
+      const { SaveGame } = await import('./game/save.js'), { siteName, siteRow } = await import('./ui/sites.js');
+      const save = game.save = new SaveGame(game, game.scene_, siteName(q)); // a valley each (ui/sites.js): ?site=<name>, else the last one played
+      if (flag('new', false)) await save.forget(); else if (await save.load()) game.hud.note = `SITE LOADED: ${save.name.toUpperCase()}`;
       save.auto();
       const when = document.getElementById('saveWhen'), show = () => { if (when) when.textContent = save.savedAt ? 'saved ' + new Date(save.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'not saved yet'; };
       save.onChange = show; show();
       document.getElementById('saveBtn')?.addEventListener('click', () => save.save());
-      document.getElementById('newBtn')?.addEventListener('click', async () => { if (!confirm('Start a new site? The saved one will be gone for good.')) return; await save.forget(); const u = new URL(location.href); u.searchParams.set('new', '1'); location.href = u.href; });
+      game.sites = await siteRow(game, save);
+      document.getElementById('newBtn')?.addEventListener('click', async () => { if (!confirm(`Start "${save.name}" again from the map as built? Its saved work will be gone for good.`)) return; await save.forget(); const u = new URL(location.href); u.searchParams.set('new', '1'); location.href = u.href; });
     }
     coop(game);
   }

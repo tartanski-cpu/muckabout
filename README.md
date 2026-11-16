@@ -139,9 +139,12 @@ The dozer has `AUTO LEVEL` (`grade` in its file; `Y` on the desktop): the lift h
 
 `src/game/save.js`: the site is saved in the browser (IndexedDB, one save per map) every minute, when the page is hidden or closed and when a VR session ends, and loaded at the start. It holds the ground and water (`TerrainCore.snapshot` / `restore`, through the worker), each machine's pose, hydraulics and loads, the hopper, the checklist, the hand tools and the player's position. `?new=1` or the "Start a new site" button forgets it; `?save=0` switches saving off (the browser tests use that). In co-op only the host saves.
 
+**A valley each.** Sites have names: the start page's *Site* row picks one, makes a *New site…*, deletes one, or starts one again. The site last played opens next time. *Save to a file* writes the site as a small `.muck` file (`src/game/siteFile.js`, only the worked ground, gzipped); *Open a file* on another computer's start page brings it in under its own name, never over a site already there. `tests/e2e/sites.mjs` carries a site between two browser profiles.
+
 | URL | |
 |---|---|
 | `/?new=1` | forget the saved site and start from the map as built |
+| `/?site=Friends` | open (or start) the site of that name |
 | `/?save=0` | no loading or saving |
 
 ## Backhoe control pattern
