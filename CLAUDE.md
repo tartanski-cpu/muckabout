@@ -1,6 +1,6 @@
 # Muck About
 
-WebXR earthmoving sandbox for Meta Quest. Spec and milestones: `docs/mvp-spec.md`. Terrain design: `docs/terrain-design.md`. What comes after the MVP, and who it has to entertain: `docs/roadmap.md`. State and known gaps: `README.md`. What the owner checks on the headset: `docs/quest-test-checklist.md`.
+WebXR earthmoving sandbox for Meta Quest. Spec and milestones: `docs/mvp-spec.md`. Terrain design: `docs/terrain-design.md`. What comes after the MVP, and who it has to entertain: `docs/roadmap.md`. Where it all goes: `docs/valley-layout.md`. State and known gaps: `README.md`. What the owner checks on the headset: `docs/quest-test-checklist.md`.
 
 - `npm test` (vitest), `npm run build && npm run test:e2e` (headless Playwright; one file: `node tests/e2e/run.mjs m5`). Screenshots land in `shots/`.
 - Machines are data: change tuning and cab layout in `machines/*.json`, not in code. `src/vehicles/machine.js` is the one generic machine.

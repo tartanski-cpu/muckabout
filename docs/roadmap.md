@@ -41,6 +41,8 @@ And three rules that carry over from the MVP:
 - Draw calls stay under 150. Vegetation, buildings and placed parts are instanced or merged.
 - New machines are data (`machines/*.json`) on the one generic machine.
 
+Where each chapter is built on the map: `docs/valley-layout.md` (a 240 m valley around today's map, proposed).
+
 ## The sequence
 
 | # | Chapter | New toy | What the valley gains |

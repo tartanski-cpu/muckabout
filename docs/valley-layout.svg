@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-130 -130 260 268" width="780" height="804" font-family="system-ui, sans-serif">
+  <title>Valley layout sketch: 240 by 240 m, north at the top</title>
+  <style>
+    .lbl { font-size: 5.2px; fill: #1f2a2e; }
+    .sm { font-size: 3.8px; fill: #3a4a50; }
+    .ch { font-size: 4.2px; font-weight: 700; fill: #ffffff; }
+    .dash { stroke-dasharray: 3 2; }
+  </style>
+  <!-- ground: high in the north, falling south -->
+  <defs>
+    <linearGradient id="fall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9aa883"/><stop offset="0.45" stop-color="#b9c79a"/><stop offset="1" stop-color="#d6d0a8"/>
+    </linearGradient>
+  </defs>
+  <rect x="-120" y="-120" width="240" height="240" fill="url(#fall)" stroke="#55595e" stroke-width="0.8"/>
+  <!-- grid every 40 m -->
+  <g stroke="#ffffff" stroke-opacity="0.35" stroke-width="0.3">
+    <path d="M-80 -120V120M-40 -120V120M0 -120V120M40 -120V120M80 -120V120M-120 -80H120M-120 -40H120M-120 0H120M-120 40H120M-120 80H120"/>
+  </g>
+  <!-- today's map, kept as it is -->
+  <rect x="-60" y="-60" width="120" height="120" fill="none" stroke="#c98a3a" stroke-width="0.9" class="dash"/>
+  <text x="-58" y="-62" class="sm">today's 120 m map, kept unchanged</text>
+  <!-- hills and reservoir in the north -->
+  <path d="M-120 -120H120V-92C80 -84 40 -96 0 -88C-40 -80 -80 -96 -120 -86Z" fill="#7d8a6a" opacity="0.7"/>
+  <text x="40" y="-104" class="lbl">hills, ~25 m</text>
+  <ellipse cx="-62" cy="-100" rx="22" ry="11" fill="#5b8fc0" opacity="0.85"/>
+  <text x="-78" y="-99" class="lbl" fill="#ffffff">reservoir</text>
+  <rect x="-70" y="-90" width="18" height="3" fill="#6d6e70"/>
+  <text x="-50" y="-87" class="lbl">dam site (6)</text>
+  <!-- the stream from the dam down to the river -->
+  <path d="M-62 -87C-66 -60 -78 -40 -74 -10C-72 6 -66 14 -60 20" fill="none" stroke="#5b8fc0" stroke-width="2"/>
+  <text x="-100" y="-30" class="lbl">stream</text>
+  <rect x="-70" y="-80" width="8" height="5" fill="#8a5a3a"/>
+  <text x="-104" y="-74" class="sm">turbine house (6)</text>
+  <!-- quarry and woodland -->
+  <path d="M-118 -70H-86V-38H-118Z" fill="#a8a29a" stroke="#6d6e70" stroke-width="0.5"/>
+  <text x="-116" y="-56" class="lbl">quarry (7)</text>
+  <g fill="#2f6b2c" opacity="0.8">
+    <circle cx="70" cy="-78" r="4"/><circle cx="80" cy="-72" r="4"/><circle cx="92" cy="-80" r="4"/><circle cx="104" cy="-70" r="4"/><circle cx="86" cy="-62" r="4"/><circle cx="100" cy="-58" r="4"/>
+  </g>
+  <text x="66" y="-88" class="lbl">woodland, sawmill (7)</text>
+  <!-- the yard and terraces (today) -->
+  <rect x="-60" y="-60" width="120" height="30" fill="#c9b98a" opacity="0.6"/>
+  <text x="-34" y="-50" class="lbl">yard (9 m): machines, hopper, office pad (1)</text>
+  <rect x="5" y="-38" width="10" height="6" fill="#4caf50" opacity="0.8"/>
+  <text x="-58" y="-24" class="sm">terraces stepping down: 6 m, 3 m</text>
+  <!-- road in from the east -->
+  <path d="M120 -46C100 -48 84 -40 68 -44C62 -46 60 -46 58 -46" fill="none" stroke="#7a5a3a" stroke-width="3"/>
+  <path d="M120 -46C100 -48 84 -40 68 -44C62 -46 60 -46 58 -46" fill="none" stroke="#e0c890" stroke-width="1" class="dash"/>
+  <text x="70" y="-36" class="lbl">road in (2)</text>
+  <path d="M92 -60L90 -30" stroke="#5b8fc0" stroke-width="1" class="dash"/>
+  <text x="74" y="-26" class="sm">gully: culvert (3)</text>
+  <!-- the river, across the whole valley -->
+  <path d="M-120 22C-80 18 -40 26 0 20C40 14 80 24 120 18" fill="none" stroke="#4a7fb0" stroke-width="7"/>
+  <text x="-118" y="34" class="lbl">river</text>
+  <rect x="0" y="12" width="5" height="16" fill="#c98a3a" opacity="0.8"/>
+  <text x="-8" y="10" class="sm">ford today</text>
+  <rect x="28" y="10" width="4" height="18" fill="#6d6e70"/>
+  <text x="34" y="8" class="lbl">bridge (4)</text>
+  <!-- south: sand site, flats, orchard, the wasteland to restore -->
+  <circle cx="0" cy="42" r="14" fill="#e3cf8c" stroke="#b09a50" stroke-width="0.5"/>
+  <text x="-12" y="44" class="lbl">sand site</text>
+  <path d="M40 40H110V110H40Z" fill="#8a7a5a" opacity="0.55"/>
+  <text x="46" y="60" class="lbl">spoil heaps and scrub:</text>
+  <text x="46" y="67" class="lbl">topsoil, seed, orchard (5)</text>
+  <path d="M-110 50H-40V110H-110Z" fill="#9a8a6a" opacity="0.45"/>
+  <text x="-104" y="72" class="lbl">old tip, rubble,</text>
+  <text x="-104" y="79" class="lbl">a ruined pond (3, 5)</text>
+  <!-- compass and scale -->
+  <g transform="translate(108 100)"><path d="M0 -8L3 2H-3Z" fill="#1f2a2e"/><text x="-2" y="-10" class="lbl">N</text></g>
+  <path d="M-116 116H-76" stroke="#1f2a2e" stroke-width="0.8"/><text x="-116" y="113" class="sm">40 m</text>
+  <!-- legend -->
+  <text x="-120" y="128" class="sm">Numbers are roadmap chapters. Falls north to south; x runs west to east, z north to south, as in the code (z up the page is negative).</text>
+</svg>
