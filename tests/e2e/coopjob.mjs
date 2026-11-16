@@ -18,7 +18,8 @@ try {
   const joined = (p) => p.evaluate(() => { const n = globalThis.__game?.play?.net; return !!(n && n.id && !n.lost && !n.rejoining); });
   for (let k = 0; !((await joined(A)) && (await joined(B))); k++) { if (k > 60) throw new Error('clients never joined'); await turn(); }
   console.log('     both clients joined');
-  const setup = () => { const g = __game; g.renderer.setAnimationLoop(null); window.frames = (n, each) => { for (let i = 0; i < n; i++) { if (each) each(); g.loop(1 / 60); } }; };
+  // no pictures needed: drawing three pages in software GL takes seconds a frame, long enough for players to time out
+  const setup = () => { const g = __game; g.renderer.setAnimationLoop(null); g.renderer.render = () => {}; window.frames = (n, each) => { for (let i = 0; i < n; i++) { if (each) each(); g.loop(1 / 60); } }; };
   for (const p of pages) await p.evaluate(setup);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   /** One round: each client steps its driver and its game three frames, then the host three frames */
@@ -35,8 +36,8 @@ try {
   for (let k = 0; k < 6; k++) await round();
   await A.evaluate(() => __game.play.sit(__game.machine('dumper')));
   await B.evaluate(() => __game.play.sit(__game.machine('loader')));
-  const ids = { A: await A.evaluate(() => __game.play.net.id), B: await B.evaluate(() => __game.play.net.id) };
   for (let k = 0; k < 10; k++) await round();
+  const ids = { A: await A.evaluate(() => __game.play.net.id), B: await B.evaluate(() => __game.play.net.id) };
   const seats = await host.evaluate(() => ({ dumper: __game.machine('dumper').driver, loader: __game.machine('loader').driver }));
   check(seats.dumper === ids.A && seats.loader === ids.B, 'player A has the dumper and player B the loader');
   await host.evaluate(() => { __game.play.checklist.update(1); });
