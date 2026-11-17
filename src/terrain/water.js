@@ -41,7 +41,7 @@ export class Water {
     this.pinned = new Uint8Array(this.tnx * this.tnz); // sources: never sleep
     this.cleared = [];                                  // tiles put to sleep since the last pack (their wet flags and drawing to clear)
     this.inflow = r?.inflow ?? 3.0;          // m³/s at the river's west edge
-    this.erodeK = r?.erodeK ?? 0.009;        // m of mud per second per m/s of flow above its scour speed (set with Manning friction on: a mud ford still washes out in a couple of minutes)
+    this.erodeK = r?.erodeK ?? 0.004;        // m of mud per second per m/s of flow above its scour speed (a mud ford washes out in a couple of minutes)
     this.outLevel = r ? r.level - (r.fall ?? 0.45) : -1e9;  // water surface just beyond the east edge
     this.springs = (map.springs || []).map((s) => ({ ...s, c: this.cellAt(s.x, s.z) }));
     this.tick = 0; this.washed = 0; this._vol = new Float64Array(NMAT); this.eroding = true;
@@ -109,9 +109,12 @@ export class Water {
         let R = i < nx - 1 ? Math.max(0, fr[c] + kf * (hc - b[c + 1] - d[c + 1])) : (d[c] > 0.02 ? Math.max(0, fr[c] + kf * (hc - this.outLevel)) : 0); // east edge: a fixed stage beyond the map
         let U = j > 0 ? Math.max(0, fu[c] + kf * (hc - b[c - nx] - d[c - nx])) : 0;
         let D = j < nz - 1 ? Math.max(0, fd[c] + kf * (hc - b[c + nx] - d[c + nx])) : 0;
-        // bed friction: a light damping (tuned on the river), and Manning's, which holds fast shallow water (a stream on a
-        // steep bed) to a few centimetres deep and a metre or two a second instead of a sheet racing downhill
-        const sp = Math.hypot(this.vx[c], this.vz[c]), dm4 = Math.max(d[c], 0.01), man = 1 / (1 + dt * G * N2 * sp / (dm4 * Math.cbrt(dm4))); // d^(4/3)
+        // bed friction: a light damping (tuned on the river), and on a steep bed Manning's as well, which holds fast shallow
+        // water (a stream, a gully, water running down a bank) to a few centimetres deep and a metre or two a second
+        // instead of a sheet racing downhill. Not on the nearly flat river, or over a ford: they stay as tuned.
+        const sl = Math.max(Math.abs(b[i < nx - 1 ? c + 1 : c] - b[i > 0 ? c - 1 : c]), Math.abs(b[j < nz - 1 ? c + nx : c] - b[j > 0 ? c - nx : c])) / (2 * cell);
+        const steep = sl <= 0.01 ? 0 : sl >= 0.03 ? 1 : (sl - 0.01) / 0.02;
+        const sp = Math.hypot(this.vx[c], this.vz[c]), dm4 = Math.max(d[c], 0.01), man = steep ? 1 / (1 + steep * dt * G * N2 * sp / (dm4 * Math.cbrt(dm4))) : 1; // d^(4/3)
         const damp = (1 - Math.min(0.5, dt * (0.035 + 0.012 / Math.max(d[c], 0.03)))) * man;
         L *= damp; R *= damp; U *= damp; D *= damp;
         const sum = (L + R + U + D) * dt, avail = d[c] * a2;
