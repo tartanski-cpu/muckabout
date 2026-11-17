@@ -7,7 +7,10 @@ const status = document.getElementById('status');
 const join = q.get('join'), hosting = flag('host', false);
 
 (async () => {
-  const map = q.get('map') || (sceneName === 'stress' ? 'test' : 'dirttown');
+  // the map: ?map=<name>, any capitalisation; a name this build does not have falls back to the main map, and says so
+  const { MAPS } = await import('./terrain/maps.js'), fallback = sceneName === 'stress' ? 'test' : 'dirttown', asked = (q.get('map') || '').trim().toLowerCase();
+  const map = !asked ? fallback : MAPS[asked] ? asked : fallback;
+  if (asked && !MAPS[asked]) setTimeout(() => { status.textContent = `There is no map called "${q.get('map')}" in this version (maps: ${Object.keys(MAPS).join(', ')}). Showing ${map}.`; }, 4000);
   const game = new Game({ map, worker: flag('worker', true), water: (map === 'dirttown' || map === 'valley') && flag('water', true), seed: 1337, remote: !!join });
   await game.init();
   window.__game = game;
