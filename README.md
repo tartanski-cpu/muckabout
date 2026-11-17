@@ -28,6 +28,7 @@ Pages and switches:
 | `/?physics=rapier` | start on the Rapier vehicle model instead of the custom one |
 | `/?stress=1` | the same with scripted drivers on all four machines and the clod budget held full |
 | `/?map=test` | small 40 m test patch (no river) |
+| `/?map=valley` | the 192 × 288 m valley round today's map (`src/terrain/valley.js`, `docs/valley-layout.md`): stream, gully, road in, old quarry, tip and pond, spoil heaps |
 | `/?worker=0` | terrain on the main thread instead of the worker (what the tests fast-forward) |
 | `/?host=1` · `/?join=12345` | two-player co-op; add `&net=bc` to link two tabs of one browser without the internet |
 | `/?scene=stress` | terrain-only stress scene (ghost buckets) |

@@ -9,16 +9,21 @@
 //            and a free outflow at the east edge (to a fixed stage just beyond the map)
 //   springs  [{ x, z, rate }] m³/s welling up at a point: a stream's source
 //   ponds    [{ x, z, r, level }] filled to that level at the start (wherever the ground lies below it)
+//   streams  [{ pts, half, depth }] a little water laid along a line at the start, so a stream runs from the first
+//            minute instead of filling its bed from its spring
 // Flowing water erodes the top material of the ground under it at a rate set by the material's erosion factor and
 // carries it downstream; what leaves the map is booked as `washed`. Lives beside TerrainCore (same thread) and
 // reads/writes its columns.
 import { MATERIALS, NMAT } from './materials.js';
 
 const G = 9.81;
+const N2 = 0.035 ** 2; // Manning's n² for a natural channel: friction that grows with speed and bites in shallow water
 export const TILE = 16;                 // water cells per tile side (= 32 terrain cells, one chunk)
 const SLEEP = 120;                      // steps a tile must stay dry before it sleeps
 // flow speed (m/s) below which a material stays put: the natural river bed is stable, a mud bank is not
 const SCOUR = [9, 0.6, 0.35, 1.6, 1.0, 3.6, 9, 0.5];
+
+const lineDist = (pts, x, z) => { let best = 1e9; for (let k = 0; k < pts.length - 1; k++) { const [ax, az] = pts[k], [bx, bz] = pts[k + 1], dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz))); best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t)); } return best; };
 
 export class Water {
   /** @param {import('./core.js').TerrainCore} core @param {object} map map definition (river / springs / ponds) */
@@ -36,7 +41,7 @@ export class Water {
     this.pinned = new Uint8Array(this.tnx * this.tnz); // sources: never sleep
     this.cleared = [];                                  // tiles put to sleep since the last pack (their wet flags and drawing to clear)
     this.inflow = r?.inflow ?? 3.0;          // m³/s at the river's west edge
-    this.erodeK = r?.erodeK ?? 0.004;        // m of mud per second per m/s of flow above its scour speed
+    this.erodeK = r?.erodeK ?? 0.009;        // m of mud per second per m/s of flow above its scour speed (set with Manning friction on: a mud ford still washes out in a couple of minutes)
     this.outLevel = r ? r.level - (r.fall ?? 0.45) : -1e9;  // water surface just beyond the east edge
     this.springs = (map.springs || []).map((s) => ({ ...s, c: this.cellAt(s.x, s.z) }));
     this.tick = 0; this.washed = 0; this._vol = new Float64Array(NMAT); this.eroding = true;
@@ -51,6 +56,7 @@ export class Water {
       if (r && Math.abs(z - map.riverZ(x)) < 8) lvl = r.level;
       for (const p of map.ponds || []) if (Math.hypot(x - p.x, z - p.z) < p.r) lvl = Math.max(lvl, p.level);
       if (lvl > this.b[c]) { this.d[c] = lvl - this.b[c]; this.wake(this.tileOf(c)); }
+      else for (const st of map.streams || []) if (lineDist(st.pts, x, z) < st.half) { this.d[c] = st.depth; this.wake(this.tileOf(c)); break; }
     }
     for (const c of this.inCells) { const t = this.tileOf(c); this.pinned[t] = 1; this.wake(t); }
     for (const s of this.springs) { const t = this.tileOf(s.c); this.pinned[t] = 1; this.wake(t); }
@@ -98,11 +104,15 @@ export class Water {
       const [i0, j0, i1, j1] = this._range(list[q]);
       for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
         const c = j * nx + i, hc = b[c] + d[c];
+        if (d[c] <= 0) { fl[c] = fr[c] = fu[c] = fd[c] = 0; continue; } // dry: nothing to send
         let L = i > 0 ? Math.max(0, fl[c] + kf * (hc - b[c - 1] - d[c - 1])) : 0;
         let R = i < nx - 1 ? Math.max(0, fr[c] + kf * (hc - b[c + 1] - d[c + 1])) : (d[c] > 0.02 ? Math.max(0, fr[c] + kf * (hc - this.outLevel)) : 0); // east edge: a fixed stage beyond the map
         let U = j > 0 ? Math.max(0, fu[c] + kf * (hc - b[c - nx] - d[c - nx])) : 0;
         let D = j < nz - 1 ? Math.max(0, fd[c] + kf * (hc - b[c + nx] - d[c + nx])) : 0;
-        const damp = 1 - Math.min(0.5, dt * (0.035 + 0.012 / Math.max(d[c], 0.03))); // bed friction, stronger in shallows
+        // bed friction: a light damping (tuned on the river), and Manning's, which holds fast shallow water (a stream on a
+        // steep bed) to a few centimetres deep and a metre or two a second instead of a sheet racing downhill
+        const sp = Math.hypot(this.vx[c], this.vz[c]), dm4 = Math.max(d[c], 0.01), man = 1 / (1 + dt * G * N2 * sp / (dm4 * Math.cbrt(dm4))); // d^(4/3)
+        const damp = (1 - Math.min(0.5, dt * (0.035 + 0.012 / Math.max(d[c], 0.03)))) * man;
         L *= damp; R *= damp; U *= damp; D *= damp;
         const sum = (L + R + U + D) * dt, avail = d[c] * a2;
         if (sum > avail) { const s = avail / sum; L *= s; R *= s; U *= s; D *= s; }
@@ -219,7 +229,7 @@ export class WaterMirror {
 }
 
 export function attachWater(core, map) {
-  if (!map.river && !map.springs && !map.ponds) return null;
+  if (!map.river && !map.springs && !map.ponds && !map.streams) return null;
   core.water = new Water(core, map);
   return core.water;
 }

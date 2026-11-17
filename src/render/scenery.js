@@ -55,22 +55,29 @@ export function makeEnvironment(scene, terrain) {
   };
   env.next = () => { const names = Object.keys(LIGHTING); env.apply(names[(names.indexOf(env.name) + 1) % names.length]); return env.name; };
   env.apply('golden');
-  // backdrop: a wide skirt sloping away from the map edge, and a ring of trees to hide the seam
-  const half = terrain.nx * terrain.cell / 2, cx = terrain.ox + half, cz = terrain.oz + half;
-  const skirt = new THREE.Mesh(new THREE.CircleGeometry(320, 48).rotateX(-Math.PI / 2), // a full disc: nothing but ground under and around the map
-    new THREE.MeshLambertMaterial({ color: new THREE.Color(...GRASS_COLOR).multiplyScalar(0.9) }));
-  skirt.position.set(cx, -2.6, cz); scene.add(skirt);
-  const rnd = makeRng(99), NT = 220;
+  // backdrop: ground carried on outwards from every point of the map's edge at that point's height, rising a little
+  // into low hills, so a map of any size or shape of edge (a valley 30 m high at its head) meets it without a cliff;
+  // trees along it, and in the map's own woods (map.woods). One mesh, two instanced meshes.
+  const ex0 = terrain.ox, ex1 = terrain.ox + (terrain.nx - 1) * terrain.cell, ez0 = terrain.oz, ez1 = terrain.oz + (terrain.nz - 1) * terrain.cell;
+  const rim = []; // {x, z, nx, nz, h}: points round the edge, anticlockwise from the north-west corner, with the outward normal
+  const side = (ax, az, bx, bz, nx, nz) => { const L = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.round(L / 4)); for (let k = 0; k < n; k++) { const t = k / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t; rim.push({ x, z, nx, nz }); } };
+  const corner = (x, z, a0) => { for (let k = 1; k < 4; k++) { const a = a0 + k * Math.PI / 8; rim.push({ x, z, nx: Math.cos(a), nz: Math.sin(a) }); } };
+  side(ex0, ez0, ex0, ez1, -1, 0); corner(ex0, ez1, Math.PI); side(ex0, ez1, ex1, ez1, 0, 1); corner(ex1, ez1, Math.PI / 2); side(ex1, ez1, ex1, ez0, 1, 0); corner(ex1, ez0, 0); side(ex1, ez0, ex0, ez0, 0, -1); corner(ex0, ez0, -Math.PI / 2);
+  for (const p of rim) p.h = terrain.heightAt(Math.min(ex1, Math.max(ex0, p.x)), Math.min(ez1, Math.max(ez0, p.z)));
+  const RINGS = [[0, 0], [6, 0.3], [30, 2.5], [90, 7], [420, 9]]; // [out m, rise m above that point of the edge]
+  const pos = [], col = [], idx = [], base = new THREE.Color(...GRASS_COLOR).multiplyScalar(0.9), far = new THREE.Color(...GRASS_COLOR).multiplyScalar(0.75);
+  rim.forEach((p) => RINGS.forEach(([r, rise], q) => { pos.push(p.x + p.nx * r, p.h + rise - (q === 0 ? 0.25 : 0), p.z + p.nz * r); const cc = q < 2 ? base : far; col.push(cc.r, cc.g, cc.b); }));
+  const R = RINGS.length; for (let i = 0; i < rim.length; i++) { const j = (i + 1) % rim.length; for (let q = 0; q < R - 1; q++) { const a = i * R + q, b = j * R + q; idx.push(a, a + 1, b, b, a + 1, b + 1); } }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const skirt = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); skirt.name = 'backdrop'; scene.add(skirt);
+  const backdropAt = (p, r) => { let i = 0; while (i < RINGS.length - 2 && RINGS[i + 1][0] < r) i++; const [r0, s0] = RINGS[i], [r1, s1] = RINGS[i + 1], t = Math.min(1, (r - r0) / (r1 - r0)); return p.h + s0 + (s1 - s0) * t; };
+  const rnd = makeRng(99), woods = terrain.map?.woods || [], NW = woods.reduce((a, w) => a + w.n, 0), NT = 220 + NW;
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.22, 1.6, 5).translate(0, 0.8, 0), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }), NT);
   const crowns = new THREE.InstancedMesh(new THREE.ConeGeometry(1.4, 4.5, 6).translate(0, 3.6, 0), new THREE.MeshLambertMaterial({ color: 0x2f6b2c }), NT);
   const o = new THREE.Object3D(), c = new THREE.Color();
-  for (let n = 0; n < NT; n++) {
-    const a = rnd() * Math.PI * 2, r = half * 1.45 + rnd() * 40, s = 1.2 + rnd() * 1.6;
-    const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
-    o.position.set(x, -2.5, z); o.scale.setScalar(s); o.rotation.y = rnd() * 6; o.updateMatrix();
-    trunks.setMatrixAt(n, o.matrix); crowns.setMatrixAt(n, o.matrix);
-    crowns.setColorAt(n, c.setHSL(0.31 + rnd() * 0.05, 0.45, 0.22 + rnd() * 0.1));
-  }
+  const tree = (n, x, y, z, s) => { o.position.set(x, y - 0.1, z); o.scale.setScalar(s); o.rotation.y = rnd() * 6; o.updateMatrix(); trunks.setMatrixAt(n, o.matrix); crowns.setMatrixAt(n, o.matrix); crowns.setColorAt(n, c.setHSL(0.31 + rnd() * 0.05, 0.45, 0.22 + rnd() * 0.1)); };
+  for (let n = 0; n < 220; n++) { const p = rim[Math.floor(rnd() * rim.length)], r = 12 + rnd() * 45; tree(n, p.x + p.nx * r, backdropAt(p, r), p.z + p.nz * r, 1.2 + rnd() * 1.6); }
+  let n = 220; for (const w of woods) for (let k = 0; k < w.n; k++, n++) { const x = w.x0 + rnd() * (w.x1 - w.x0), z = w.z0 + rnd() * (w.z1 - w.z0); tree(n, x, terrain.heightAt(x, z), z, 1.0 + rnd() * 1.4); }
   scene.add(trunks, crowns);
   return env;
 }

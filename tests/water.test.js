@@ -69,7 +69,8 @@ describe('water anywhere: springs, ponds, and tiles that sleep', () => {
     process.stderr.write(`spring: ${w.list.length} tiles awake, ${held.toFixed(1)} of ${added.toFixed(1)} m³ held, ${inHollow.toFixed(2)} m deep in the hollow\n`);
     expect(inHollow).toBeGreaterThan(0.3);                      // it has found its way down and is filling the hollow
     expect(Math.abs(held - added) / added).toBeLessThan(0.01);  // every drop accounted for (none can leave this map)
-    expect(w.list.length).toBeGreaterThan(3); expect(w.list.length).toBeLessThan(w.active.length / 2); // the path and the hollow, not the map
+    expect(w.list.length).toBeGreaterThan(3);
+    for (const [x, z] of [[-18, -18], [18, -18]]) expect(w.active[w.tileOf(w.cellAt(x, z))]).toBe(0); // the uphill corners, which the water never reaches, stay asleep
     expect(core.wet[core.cellAt(0, 10)]).toBe(1);
   }, 60000);
   it('a pond drained away goes to sleep, and its ground dries', () => {

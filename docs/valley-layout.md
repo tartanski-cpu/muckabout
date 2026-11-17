@@ -28,7 +28,7 @@ Where everything the roadmap (`docs/roadmap.md`) needs will be built, so each ch
 | Yard and office pad | today's, about (0, −45) | 1 | Machines, hopper, the site office on its levelled pad; later the charging shed (6) |
 | Road in | from the east edge (96, −110), down along the slope to the yard (58, −46) | 2 | A rough track to build up, roll and open to supply trucks |
 | Gully | across the road in, about (78, −82) | 3 | Run-off from the woodland crosses the road: a culvert job |
-| Stream | from the dam (−50, −136) down the west side (x ≈ −72) to the river at (−62, 20) | 3, 6 | Runs wild past the quarry and the terraces until it is drained and dammed |
+| Stream | from its spring (−50, −150), through the dam site, down the west side (x ≈ −72) to the river at (−72, 22) | 3, 6 | Runs in a bed falling steadily all the way: a valley head where the dam goes, a ravine through the terraces |
 | Old tip and silted pond | south-west, (−92…−40, 46…106) | 3, 5 | Rubble and a silted pond: drainage, then a clean pond |
 | River | across the valley, z ≈ 20 | 3, 4 | Today's river, carried on to both edges |
 | Bridge site | (30, 18), a narrow, firm-banked reach | 4 | Abutments, footings, a deck lifted on; replaces the ford |
@@ -52,21 +52,23 @@ Where everything the roadmap (`docs/roadmap.md`) needs will be built, so each ch
 
 ## What the engine can carry
 
-Measured on a 240 m test map (`?map=xl`: today's layout on the same amount of ground as the valley), desktop software rendering. These show how cost scales, not Quest frame rates.
+The valley as built (`?map=valley`), desktop software rendering. These show how cost scales, not Quest frame rates.
 
-| | 120 m today | 240 m |
+| | Today's map | The valley |
 |---|---|---|
-| Draw calls, standing in the yard | 100 | 136 (budget 150) |
-| Triangles, standing in the yard | 287k | 363k |
-| Terrain simulation per tick | under 1 ms | under 1 ms (untouched ground costs nothing) |
-| Load to first frames | 3.2 s | 4.5 s (mostly the river settling at start-up) |
-| Save, and a newcomer's download in co-op | 0.6 MB | 0.6 MB (only worked ground is kept and sent) |
+| Draw calls, worst of three views | 99 | 109 (budget 150) |
+| Triangles, worst of three views | 268k | 357k (budget 400k) |
+| Water patches awake | 31 of 225 | 133 of 864 (river, stream, gully, pond) |
+| Water step | 0.7 ms | 3 ms |
+| Load to first frames | about 3 s | about 8 s (building the ground 1.5 s, settling the water 5 s) |
+| Save, and a newcomer's download in co-op | 0.6 MB | under 1 MB (only worked ground is kept and sent) |
 
 ## Work before the valley can be built
 
 1. **Water in more than one place.** Done: water anywhere on the map, stepped only where it is wet; springs and ponds from the map (`src/terrain/water.js`). A stream from a spring finds its own way down and fills a hollow, as the reservoir will fill behind the dam.
 2. **Named sites and site files** (above). Done: `src/ui/sites.js`, `src/game/siteFile.js`, `tests/e2e/sites.mjs`.
-3. **The scenery follows the map's size:** the backdrop and tree ring are placed for the 120 m map.
+3. **The scenery follows the map's size.** Done: the backdrop carries on outwards from every point of the map's edge at its own height, with trees along it and in the map's woods (`src/render/scenery.js`).
 4. **Rock:** the quarry needs a hard material that only breaks with ripping. `ROCK` exists as a material, but nothing digs it yet.
-5. **Maps built from named features** (hills, stream, river, pads, tip), so each chapter can adjust its own area without touching the rest.
-6. **The river warm-up:** about 1 s of start-up per 60 m of river. If the stream and reservoir add much, cache the settled water.
+5. **Maps built from named features.** Done: `src/terrain/valley.js`, ten features round today's map (`dirtColumn` in `maps.js`, unchanged); `?map=valley`. A watercourse is cut to a bed falling evenly from source to river, so it never runs uphill whatever it crosses.
+6. **The water warm-up:** about 5 s at start-up in the valley. Cache the settled water if it grows.
+7. **Rock that only breaks with ripping** (above, item 4), and then **making the valley the default map**, once it has been looked at on the headset.

@@ -89,3 +89,9 @@ swept cuts not tunnelling, determinism (same commands → identical arrays).
 ## Water
 
 `src/terrain/water.js`: shallow water (virtual pipes) on a 0.5 m grid over the whole map, in tiles of 16 × 16 water cells (one terrain chunk each). Only awake tiles are stepped: water flowing into a sleeping tile wakes it within the same step, so none is lost; a tile dry for 120 steps sleeps again. Sources come from the map: the river (filled at the start, an inflow at the west edge and a free outflow at the east), `springs` (a rate at a point) and `ponds` (filled to a level at the start). The worker sends the main thread only the awake tiles (`pack`), and those put to sleep since; the main thread keeps a whole-map copy (`WaterMirror`) for depth queries, drawing and co-op. Saves hold the awake tiles' water. Today's river: 31 of 225 tiles awake, 0.6 ms a step.
+
+Friction: a light damping tuned on the river, and Manning's (n = 0.035), which grows with speed and bites in shallow water, so a stream on a steep bed runs a few centimetres deep at a metre or two a second instead of as a sheet. River erosion was retuned with it (`erodeK` 0.009), so a mud ford still washes out in a couple of minutes.
+
+## Maps
+
+`src/terrain/maps.js`: a map is `cfg` (grid), placement data, and `build(core)`, which fills every column. Today's map is `dirtColumn(x, z, edge)`. The valley (`src/terrain/valley.js`) uses it unchanged inside today's square and builds the ground round it from named FEATURES: each adjusts the surface `g` and flags (bare, rock, surface material, silt, spoil, added material) only within its own area, then the column's layers are made from the flags. Watercourses are cut to a bed falling evenly along their line. Water sources (`springs`, `ponds`, `streams`) and `woods` (for the scenery) are map data.

@@ -209,3 +209,24 @@ describe('saving only the worked ground', () => {
     expect(Math.abs(b.heightAt(3.4, -4) - a.heightAt(3.4, -4))).toBeLessThan(1e-6);
   });
 });
+
+describe('the valley', () => {
+  it('has today\'s map unchanged in its middle, joined without a step, and its features where the layout puts them', async () => {
+    const { FEATURES } = await import('../src/terrain/valley.js');
+    const v = new TerrainCore(MAPS.valley.cfg); MAPS.valley.build(v);
+    const d = new TerrainCore(MAPS.dirttown.cfg); MAPS.dirttown.build(d);
+    let worst = 0; for (let z = -60; z < 60; z += 0.25) for (let x = -60; x < 60; x += 0.25) worst = Math.max(worst, Math.abs(v.heightAt(x, z) - d.heightAt(x, z)));
+    expect(worst).toBeLessThan(1e-4);
+    let seam = 0; // the step across the square's edge is no worse than the slope either side of it
+    for (let t = -59; t < 59; t += 0.5) for (const [a, b] of [[[-60.25, t], [-60, t]], [[59.75, t], [60, t]], [[t, -60.25], [t, -60]], [[t, 59.75], [t, 60]]]) seam = Math.max(seam, Math.abs(v.heightAt(...a) - v.heightAt(...b)));
+    expect(seam).toBeLessThan(0.25);
+    expect(FEATURES.map((f) => f.name)).toEqual(expect.arrayContaining(['stream', 'road in', 'old quarry', 'old tip', 'silted pond', 'spoil heaps']));
+    expect(v.heightAt(0, -177)).toBeGreaterThan(25);           // the hills at the head
+    expect(v.topMat(v.cellAt(-84, -95))).toBe(6);                // the quarry floor is rock
+    expect(v.topMat(v.cellAt(90, -103))).toBe(MUD);              // the road in is a rutted mud track
+    // the stream's bed never runs uphill, from the spring to the river
+    let up = 0, prev = Infinity; const P = [[-50, -150], [-50, -136], [-62, -112], [-72, -96], [-72, -60], [-72, 0], [-72, 22]];
+    for (let k = 0; k < P.length - 1; k++) for (let t = 0; t < 1; t += 0.05) { const h = v.heightAt(P[k][0] + (P[k + 1][0] - P[k][0]) * t, P[k][1] + (P[k + 1][1] - P[k][1]) * t); up = Math.max(up, h - prev); prev = h; }
+    expect(up).toBeLessThan(0.05);
+  }, 60000);
+});
