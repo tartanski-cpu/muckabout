@@ -1,11 +1,18 @@
 // Ground renderer: static grids displaced in the vertex shader from a world-sized R32F height texture.
 // Terrain edits arrive as 32×32 chunk payloads and are written with texSubImage2D; no geometry is rebuilt.
+//
+// Detail by distance (each mesh is a draw call, the Quest's main cost, so far ground is drawn in fewer, coarser ones):
+//   tiles     96 × 96 cells (24 m), every cell within LOD.full m, every 2nd within LOD.half, every 4th beyond
+//   blocks    2 × 2 tiles as one mesh at every 4th cell, used when the whole block is beyond LOD.block
+//   regions   4 × 4 tiles as one mesh at every 8th cell, beyond LOD.region
+// Anything wholly beyond the haze is not drawn. A skirt round every mesh hides the cracks where detail changes.
 import * as THREE from 'three';
 import { CHUNK } from '../terrain/core.js';
 import { MATERIALS, GRASS_COLOR, NMAT } from '../terrain/materials.js';
 
 // Per material: x = speckle (gravel grit), y = strata on steep cut faces (clay), z = ripples (sand)
-const DETAIL = [[0, 0, 0], [0.2, 0.3, 0], [0.15, 0.25, 0], [0.15, 1.0, 0], [0.1, 0.1, 1.0], [1.0, 0, 0], [0.5, 0.6, 0], [0.35, 0.45, 0], [0.1, 0.2, 0]];
+export const LOD = { full: 22, half: 44, block: 56, region: 104 };
+const DETAIL = [[0, 0, 0], [0.2, 0.3, 0], [0.15, 0.25, 0], [0.15, 1.0, 0], [0.1, 0.1, 1.0], [1.0, 0, 0], [0.5, 0.6, 0], [0.35, 0.45, 0], [0.1, 0.2, 0], [1.0, 0.15, 0]];
 
 const VERT = /* glsl */`
 uniform highp sampler2D uH; uniform highp sampler2D uInfo;
@@ -41,7 +48,20 @@ uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar;
 uniform vec4 uShadow[8];   // x, z, radius, strength: a soft pool of shade under each machine half
 uniform vec4 uLamp[4];     // x, z, dir x, dir z: headlamp pools on the ground
 uniform float uLampOn;
+// PC graphics tier (render/quality.js): the sun's shadow map, cast by the machines, players and tools
+uniform float uSMOn; uniform sampler2D uSM; uniform mat4 uSMMat; uniform float uSMTexel;
+// a design to work to (game/jobs.js): centre and half size, and the plane (level at the centre, gradient, tolerance)
+uniform float uDOn; uniform vec4 uDRect; uniform vec4 uDPlane;
 varying vec3 vWorld; varying vec3 vColor; varying vec3 vSmooth; varying vec4 vDetail;
+#include <packing>
+float sunShadow() {
+  if (uSMOn < 0.5) return 1.0;
+  vec4 sc = uSMMat * vec4(vWorld, 1.0); vec3 c = sc.xyz / sc.w;
+  if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float z = c.z - 0.0012, s = 0.0;
+  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) s += step(z, unpackRGBAToDepth(texture2D(uSM, c.xy + vec2(float(i), float(j)) * uSMTexel)));
+  return s / 9.0;
+}
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
@@ -63,10 +83,23 @@ void main() {
   vec3 light = uSunColor * d + mix(uGroundLight, uSky, n.y * 0.5 + 0.5);
   float shade = 1.0;
   for (int i = 0; i < 8; i++) { vec4 s = uShadow[i]; if (s.w > 0.0) shade *= 1.0 - s.w * smoothstep(1.0, 0.45, length(vWorld.xz - s.xy) / s.z); }
-  light = uSunColor * d * shade + mix(uGroundLight, uSky, n.y * 0.5 + 0.5) * (0.55 + 0.45 * shade);
+  float sun = uSMOn > 0.5 ? sunShadow() * mix(1.0, shade, 0.35) : shade; // with real shadows the pools only darken a little underneath
+  light = uSunColor * d * sun + mix(uGroundLight, uSky, n.y * 0.5 + 0.5) * (0.55 + 0.45 * shade);
   if (uLampOn > 0.01) for (int i = 0; i < 4; i++) { vec2 v = vWorld.xz - uLamp[i].xy; float al = dot(v, uLamp[i].zw), lat = length(v - uLamp[i].zw * al);
     light += vec3(1.0, 0.88, 0.62) * uLampOn * 1.1 * smoothstep(0.0, 2.5, al) * smoothstep(18.0, 5.0, al) * smoothstep(al * 0.42 + 1.2, 0.0, lat); }
   col *= light;
+  if (uDOn > 0.5) { // cut and fill: red where the ground stands above the design, blue where it is below, green on grade
+    vec2 q = vWorld.xz - uDRect.xy, o = abs(q) - uDRect.zw;
+    float edge = max(o.x, o.y);
+    if (edge < 0.0) {
+      float dh = vWorld.y - (uDPlane.x + uDPlane.y * q.x + uDPlane.z * q.y), tol = uDPlane.w;
+      vec3 tint = abs(dh) <= tol ? vec3(0.25, 0.85, 0.3) : dh > 0.0 ? vec3(0.95, 0.25, 0.18) : vec3(0.2, 0.45, 1.0);
+      float k = abs(dh) <= tol ? 0.35 : 0.3 + 0.4 * smoothstep(tol, 0.4, abs(dh));
+      float ring = 1.0 - smoothstep(0.0, 0.012, abs(fract(dh / 0.1 + 0.5) - 0.5) * 0.1);  // a contour every 10 cm off grade
+      col = mix(col, tint * (0.6 + 0.4 * light), k) * (1.0 - 0.35 * ring * step(tol, abs(dh)));
+    }
+    if (abs(edge) < 0.06) col = mix(col, vec3(1.0, 0.85, 0.2), 0.85);                 // the pad's edge, as if pegged out
+  }
   float fog = smoothstep(uFogNear, uFogFar, dist);
   gl_FragColor = vec4(mix(col, uFogColor, fog), 1.0);
   #include <colorspace_fragment>
@@ -89,18 +122,28 @@ export class Ground {
         uSun: { value: env.sunDir }, uSunColor: { value: env.sunColor }, uSky: { value: env.skyLight }, uGroundLight: { value: env.groundLight },
         uFogColor: { value: env.fogColor }, uFogNear: { value: env.fogNear }, uFogFar: { value: env.fogFar },
         uShadow: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, uLamp: { value: Array.from({ length: 4 }, () => new THREE.Vector4(0, 0, 1, 0)) }, uLampOn: env.lamps,
+        uSMOn: { value: 0 }, uSM: { value: null }, uSMMat: { value: new THREE.Matrix4() }, uSMTexel: { value: 1 / 2048 },
+        uDOn: { value: 0 }, uDRect: { value: new THREE.Vector4() }, uDPlane: { value: new THREE.Vector4() },
       },
     });
-    this.group = new THREE.Group(); this.tiles = [];
+    this.group = new THREE.Group(); this.tiles = []; this.blocks = []; this.regions = [];
+    let lo = Infinity, hi = -Infinity; for (let i = 0; i < terrain.h.length; i += 7) { const v = terrain.h[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    this.yRange = [Math.min(-8, lo - 10), Math.max(16, hi + 30)]; // room for digging down and heaping up
     const tx = Math.ceil(nx / 96), tz = Math.ceil(nz / 96), T = Math.ceil((nx - 1) / tx), U = Math.ceil((nz - 1) / tz);
-    for (let b = 0; b < tz; b++) for (let a = 0; a < tx; a++) {
-      const i0 = a * T, j0 = b * U, i1 = Math.min(nx - 1, i0 + T), j1 = Math.min(nz - 1, j0 + U);
-      const geos = [this._grid(i0, j0, i1, j1, 1), this._grid(i0, j0, i1, j1, 2)];
-      const mesh = new THREE.Mesh(geos[0], this.material);
-      const box = new THREE.Box3(new THREE.Vector3(ox + i0 * cell, -8, oz + j0 * cell), new THREE.Vector3(ox + i1 * cell, 16, oz + j1 * cell));
+    const span = (a0, b0, a1, b1) => [a0 * T, b0 * U, Math.min(nx - 1, a1 * T), Math.min(nz - 1, b1 * U)];
+    const piece = (rect, steps) => {
+      const [i0, j0, i1, j1] = rect, geos = steps.map((st) => this._grid(i0, j0, i1, j1, st)), mesh = new THREE.Mesh(geos[0], this.material);
+      const box = new THREE.Box3(new THREE.Vector3(ox + i0 * cell, this.yRange[0], oz + j0 * cell), new THREE.Vector3(ox + i1 * cell, this.yRange[1], oz + j1 * cell));
       for (const g of geos) { g.boundingBox = box; g.boundingSphere = box.getBoundingSphere(new THREE.Sphere()); }
-      mesh.matrixAutoUpdate = false;
-      this.group.add(mesh); this.tiles.push({ mesh, geos, center: box.getCenter(new THREE.Vector3()) });
+      mesh.matrixAutoUpdate = false; mesh.visible = false; this.group.add(mesh);
+      return { mesh, geos, x0: box.min.x, z0: box.min.z, x1: box.max.x, z1: box.max.z, center: box.getCenter(new THREE.Vector3()) };
+    };
+    for (let c = 0; c < tz; c += 4) for (let r = 0; r < tx; r += 4) {
+      const region = piece(span(r, c, Math.min(tx, r + 4), Math.min(tz, c + 4)), [8]); region.blocks = []; this.regions.push(region);
+      for (let b = c; b < Math.min(tz, c + 4); b += 2) for (let a = r; a < Math.min(tx, r + 4); a += 2) {
+        const block = piece(span(a, b, Math.min(tx, a + 2), Math.min(tz, b + 2)), [4]); block.tiles = []; region.blocks.push(block); this.blocks.push(block);
+        for (let jj = b; jj < Math.min(tz, b + 2); jj++) for (let ii = a; ii < Math.min(tx, a + 2); ii++) { const t = piece(span(ii, jj, ii + 1, jj + 1), [1, 2, 4]); block.tiles.push(t); this.tiles.push(t); }
+      }
     }
     this._queue = [];
     terrain.onChunks((chunks) => { for (const c of chunks) this._queue.push(c); });
@@ -133,6 +176,12 @@ export class Ground {
     return g;
   }
 
+  /** Draw a design (game/jobs.js Design) as cut and fill colours over its patch, or nothing (null). */
+  setDesign(d) {
+    const u = this.material.uniforms; u.uDOn.value = d ? 1 : 0;
+    if (d) { u.uDRect.value.set(d.x, d.z, d.w / 2, d.d / 2); u.uDPlane.value.set(d.y, d.sx, d.sz, d.tol); }
+  }
+
   /** Shade and lamp pools for the machines: list of {x, z, r} (up to 8) and {x, z, dx, dz} (up to 4). */
   setMachineLighting(shadows, lamps) {
     const S = this.material.uniforms.uShadow.value, Lm = this.material.uniforms.uLamp.value, sun = this.env.sunDir;
@@ -157,9 +206,30 @@ export class Ground {
       r.state.bindTexture(gl.TEXTURE_2D, null);
       this._queue.length = 0;
     }
-    for (const t of this.tiles) {
-      const far = Math.hypot(t.center.x - camPos.x, t.center.z - camPos.z) > 48;
-      const g = t.geos[far ? 1 : 0]; if (t.mesh.geometry !== g) t.mesh.geometry = g;
+    this.pickLod(camPos);
+  }
+  /** Which meshes to draw, and how finely, for a viewer at camPos. */
+  pickLod(camPos) {
+    const fog = this.material.uniforms.uFogFar.value + 10, near = (p) => Math.hypot(Math.max(p.x0 - camPos.x, 0, camPos.x - p.x1), Math.max(p.z0 - camPos.z, 0, camPos.z - p.z1));
+    const show = (p, on) => { p.mesh.visible = on; };
+    let n = 0;
+    for (const R of this.regions) {
+      const dR = near(R);
+      if (dR > fog) { show(R, false); for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
+      if (dR > LOD.region) { show(R, true); n++; for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
+      show(R, false);
+      for (const B of R.blocks) {
+        const dB = near(B);
+        if (dB > fog) { show(B, false); for (const t of B.tiles) show(t, false); continue; }
+        if (dB > LOD.block) { show(B, true); n++; for (const t of B.tiles) show(t, false); continue; }
+        show(B, false);
+        for (const t of B.tiles) {
+          const d = near(t); if (d > fog) { show(t, false); continue; }
+          const g = t.geos[d < LOD.full ? 0 : d < LOD.half ? 1 : 2]; if (t.mesh.geometry !== g) t.mesh.geometry = g;
+          show(t, true); n++;
+        }
+      }
     }
+    this.drawn = n;
   }
 }

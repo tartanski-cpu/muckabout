@@ -17,9 +17,12 @@ try {
     g.play.tools.stakes[0].root.position.set(6, T.heightAt(6, 9), 9); g.play.player.place(3, 11, 1.2); g.sim(40); });
   const audit0 = await page.evaluate(() => __game.audit()), before = await page.evaluate(snap);
   check(await page.evaluate(() => __game.save.save()), 'the site saves');
+  const stored = await page.evaluate(async () => { const s = await __game.terrain.save(); return { chunks: s.ids.length, of: (__game.terrain.nx / 32) * (__game.terrain.nz / 32) }; });
+  check(stored.chunks > 0 && stored.chunks < stored.of / 4, `the save holds only the ground that was worked (${stored.chunks} of ${stored.of} chunks)`);
   await page.close();
 
-  page = await open('?worker=0&map=test&save=1', { context });
+  // the next visit hosts a game: a player joining must get the saved site, not the map as built
+  page = await open('?worker=0&map=test&save=1&host=1&net=bc', { context });
   await page.waitForFunction(() => __game.machines?.length && __game.save?.savedAt > 0, null, { timeout: 60000 }); // (the load finishes a moment after the page is up)
   await page.evaluate(() => { __game.paused = true; });
   const after = await page.evaluate(snap), audit1 = await page.evaluate(() => __game.audit());
@@ -30,6 +33,13 @@ try {
   check(Math.abs(after.bucket - before.bucket) < 1e-6 && Math.abs(after.bed - before.bed) < 1e-6 && before.bucket > 1, `their loads are still aboard (${after.bucket.toFixed(2)} m³ in the bucket, ${after.bed.toFixed(2)} m³ in the bed)`);
   check(near(after.stake, before.stake, 1e-4) && near(after.feet, before.feet, 0.02), 'tools and the player are where they were');
   check(Math.abs(audit1.total - audit0.total) / audit0.total < 1e-6, `no soil lost or made by saving and loading (${((audit1.total - audit0.total) * 1000).toFixed(1)} litres)`);
+  await page.waitForFunction(() => __game.play?.net?.role === 'host', null, { timeout: 60000 });
+  const code = await page.evaluate(() => { __game.paused = false; return __game.play.net.code; });
+  const guest = await open(`?join=${code}&net=bc&map=test`, { context });
+  for (let k = 0; k < 60 && !(await guest.evaluate(() => !!globalThis.__game?.play?.net?.id)); k++) { await page.bringToFront(); await page.waitForTimeout(300); await guest.bringToFront(); await guest.waitForTimeout(300); }
+  const seen = await guest.evaluate(() => __game.terrain.heightAt(2, 8));
+  check(Math.abs(seen - after.h[0]) < 0.02, `a player joining a host that loaded its saved site sees that site (heap ${seen.toFixed(2)} vs ${after.h[0].toFixed(2)} m)`);
+  await guest.close();
   check(page.errs.length === 0, 'no page errors' + (page.errs.length ? ':\n  ' + page.errs.join('\n  ') : ''));
   await page.close();
 

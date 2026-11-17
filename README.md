@@ -14,6 +14,8 @@ npm test           # unit tests (vitest): terrain, river, machines, net codec
 npm run test:e2e   # scripted headless browser runs (needs `npm run build` first; screenshots in shots/)
 ```
 
+The page opens on a start menu (`src/ui/start.js`): **Play on this computer** (mouse, keys or a gamepad), **Enter VR** (offered only when the browser can open a headset), co-op, the saved site, graphics quality and the controls. `Esc` brings it back while playing.
+
 On a Quest, open the GitHub Pages URL in the Quest Browser and press *Enter VR*. For local iteration, WebXR needs HTTPS or localhost: with the headset on USB, `adb reverse tcp:5173 tcp:5173` and open `http://localhost:5173` in the headset.
 
 `.github/workflows/ci.yml` builds and tests every push and deploys `dist/` to GitHub Pages from the repository's default branch (Settings → Pages → Source: GitHub Actions).
@@ -26,6 +28,7 @@ Pages and switches:
 | `/?physics=rapier` | start on the Rapier vehicle model instead of the custom one |
 | `/?stress=1` | the same with scripted drivers on all four machines and the clod budget held full |
 | `/?map=test` | small 40 m test patch (no river) |
+| `/?map=valley` | the 192 × 288 m valley round today's map (`src/terrain/valley.js`, `docs/valley-layout.md`): stream, gully, road in, old quarry, tip and pond, spoil heaps |
 | `/?worker=0` | terrain on the main thread instead of the worker (what the tests fast-forward) |
 | `/?host=1` · `/?join=12345` | two-player co-op; add `&net=bc` to link two tabs of one browser without the internet |
 | `/?scene=stress` | terrain-only stress scene (ghost buckets) |
@@ -55,14 +58,26 @@ Everything in the cab is physical: reach, squeeze the grip, move your hand. The 
 |---|---|
 | Wheel loader | steering wheel · loader joystick (back: raise, left: curl) · R/N/F shuttle · hand throttle · park brake · key |
 | Dumper | steering wheel · shuttle · hand throttle · tipper lever (back: raise) · park brake · key |
-| Bulldozer | two track levers (spring to neutral) · blade joystick (back: raise, sideways: tilt) · hand throttle · left trigger decelerator · key |
+| Bulldozer | two track levers (spring to neutral) · blade joystick (back: raise, sideways: tilt) · ripper lever (push: down) · hand throttle · left trigger decelerator · key |
 | Backhoe | front: wheel, shuttle, loader joystick · swivel-seat rocker → rear: two hoe joysticks (ISO: left = swing/dipper, right = boom/bucket), two stabiliser levers |
 
 The job is on the clipboard in every cab: cut a road down the terraces, build a crossing (mud for bulk, gravel on top; mud alone washes out), get the dumper and loader across, haul 20 m³ of sand back to the hopper.
 
-**Desktop debug keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
+**On a PC, the mouse** works the cab's own controls (`src/xr/mouseHand.js`, driving the same interaction code as a VR hand): point at a lever, joystick, switch, key or the wheel and it lights up; drag it (mouse up pushes forward, in the seat's frame wherever you look) or click it. On foot, click a handrail to climb in, or click a hand tool to carry it: it stays in hand with the mouse free to look, goes where you look on the ground within reach (the shovel's blade just into the soil: walk forward to fill it, the wheel digs deeper), the right button is its trigger, and a click puts it down. Dragging where there is no control looks round. `tests/e2e/pc.mjs` drives a loader this way with real mouse events.
 
-**Two players:** one presses *Host a game* on the start page and reads out the five-digit room number; the other types it and presses *Join*. The host's headset runs the world; the other player sees it about 0.15 s behind. First into a seat owns that machine. If a player drops out (headset off, wifi blip, page reload) they are put back by themselves: the dash says RECONNECTING until they are, and a seat they were in is given back. If the host reloads its page it reopens the same room (the number is in its address) and the other player finds it again.
+**Desktop keys:** `1`–`4` take a seat · `Q` get out · `Enter` ignition · `P` park brake · `W` `A` `S` `D` drive · `Space` brake · `T`/`G` throttle · `I` `K` `J` `L` hydraulics · `B` swivel (backhoe; then `W` `S` `A` `D` `I` `K` `J` `L` work the hoe, `N`/`M` legs) · `V` chase view · `R` reset machine · `X` stress test · `F` perf HUD · `O` horizon lock · drag to look.
+
+**Playing together (up to four):** one presses *Host a game* on the start page and reads out the five-digit room number; the others type it and press *Join*. The host runs the world; the others see it about 0.15 s behind. A fifth is told the room is full. First into a seat owns that machine. If a player drops out (headset off, wifi blip, page reload) they are put back by themselves: the dash says RECONNECTING until they are, and a seat they were in is given back. If the host reloads its page it reopens the same room (the number is in its address) and the other player finds it again.
+
+## Graphics quality
+
+`src/render/quality.js`, chosen on the start page and remembered; `?quality=quest|pc|ultra` overrides. Only drawing changes, so players on different settings share a game.
+
+- **Quest** (the default in a Quest's browser): no shadow maps, shade pools drawn in the ground shader. The 150 draw-call budget is for this one.
+- **PC** (the default elsewhere): real sun shadows from the machines, players and hand tools (2048² over ±30 m round you, filtered in the ground shader), and the haze a little further off.
+- **PC high**: a 4096² shadow map over ±45 m, the picture drawn at up to 1.5× the screen's resolution, haze further still.
+
+`tests/e2e/start.mjs` checks the start page, that the shadows appear, and that the simulation is the same at every setting; it saves `shots/gfx_*.png`.
 
 ## Light and effects
 
@@ -84,7 +99,7 @@ The job is on the clipboard in every cab: cut a road down the terraces, build a 
 
 ```
 machines/*.json          one file per machine: masses, geometry, hydraulics, tools, containers, cab control layout
-src/terrain/             core.js (layered heightfield, relaxation, cut/deposit/compact), water.js (river + erosion),
+src/terrain/             core.js (layered heightfield, relaxation, cut/deposit/compact), water.js (water anywhere: river, springs, ponds; only wet tiles are stepped; erosion),
                          containers.js, clods.js, tool.js, maps.js, worker.js, client.js (worker / inline / remote)
 src/vehicles/            physics.js (Rapier world), machine.js (generic machine from a definition), powertrain.js (engine,
                          governor, turbo: a torque balance that the pump and the drive load)
@@ -125,20 +140,38 @@ The dozer has `AUTO LEVEL` (`grade` in its file; `Y` on the desktop): the lift h
 
 `src/game/save.js`: the site is saved in the browser (IndexedDB, one save per map) every minute, when the page is hidden or closed and when a VR session ends, and loaded at the start. It holds the ground and water (`TerrainCore.snapshot` / `restore`, through the worker), each machine's pose, hydraulics and loads, the hopper, the checklist, the hand tools and the player's position. `?new=1` or the "Start a new site" button forgets it; `?save=0` switches saving off (the browser tests use that). In co-op only the host saves.
 
+**A valley each.** Sites have names: the start page's *Site* row picks one, makes a *New site…*, deletes one, or starts one again. The site last played opens next time. *Save to a file* writes the site as a small `.muck` file (`src/game/siteFile.js`, only the worked ground, gzipped); *Open a file* on another computer's start page brings it in under its own name, never over a site already there. `tests/e2e/sites.mjs` carries a site between two browser profiles.
+
 | URL | |
 |---|---|
 | `/?new=1` | forget the saved site and start from the map as built |
+| `/?site=Friends` | open (or start) the site of that name |
 | `/?save=0` | no loading or saving |
 
 ## Backhoe control pattern
 
 From the rear seat the hoe is worked in the **SAE backhoe pattern** by default: left hand swing and boom, right hand dipper and bucket. The `ISO PATTERN` switch in the cab gives the excavator pattern, with boom and dipper on the other hands. The machine file is written in ISO; `handSwap` names the two functions SAE exchanges (`readControls` in `src/scenes/play.js`). The front loader lever is the usual single lever: back raises, forward lowers, left rolls back, right dumps.
 
+## Jobs: survey and grade
+
+`src/game/jobs.js` (roadmap chapter 1). The first job is the **site-office pad**: a 10 × 6 m patch of the yard with an old heap of topsoil and a hollow, to be levelled to ±5 cm over 90 % of it. Its level is the ground's median height there, set once and saved.
+
+- **On the ground:** the pad is drawn in cut and fill colours (red: too high, blue: too low, green: on grade), with a contour every 10 cm off grade and a pegged yellow edge.
+- **On the clipboard:** the job card shows the spec, the share on grade, and the volume still to cut and to fill. When it is good enough it says so; once every machine has been off the pad for 5 s it is signed off and graded (A 97 %, B 93 %, C 90 %), and the **site office** appears on the pad (solid to machines). The clipboard then turns over to the MVP checklist.
+- **The grading stakes** carry a level reading: CUT or FILL by so many centimetres, or ON GRADE, against the design; elsewhere the height.
+- In co-op the host signs jobs off; everyone sees the design, the live score and the office.
+
+`tests/e2e/grade.mjs`: a scripted dozer (blade lowered to the level, AUTO LEVEL on, rows across and off the far side) takes the pad from 36 % to over 90 % in two passes; it is not signed off while the dozer is on it; the grade, the office and the level survive a save.
+
 ## Hand tools
 
-`src/game/handTools.js`: a shovel, two grading stakes with a level string line, and a tow chain, lying beside where you start. Grip to pick up. The shovel's blade is a small cutting edge like a bucket's: it takes soil from the ground and throws it off as clods, and its load is in the volume audit. The line runs level with the first stake's foot, with droppers coloured by how the ground stands against it. A hook let go at the end of a machine hitches there; a taut chain pulls on both machines (`Machine.tow`), and a hitched machine with its park brake off rolls free. Not replicated in co-op.
+`src/game/handTools.js`: a shovel, two grading stakes with a level string line, and a tow chain, lying beside where you start. Grip to pick up. The shovel's blade is a small cutting edge like a bucket's: it takes soil from the ground and throws it off as clods, and its load is in the volume audit. The line runs level with the first stake's foot, with droppers coloured by how the ground stands against it. A hook let go at the end of a machine hitches there; a taut chain pulls on both machines (`Machine.tow`), and a hitched machine with its park brake off rolls free. In co-op there is one set, owned by the host: a player on a client carries a tool on their own screen and the host follows, digs with the shovel and hitches the hooks; a tool someone has cannot be taken (`tests/e2e/cooptools.mjs`).
 
 Machines are drawn smoothly between simulation steps (`Game._blendPoses`): the sim runs at 60 steps a second whatever the display rate.
+
+## Rock and the ripper
+
+Rock (the valley's old quarry, and 1.5 m under its west hill) is solid: a bucket or blade takes only what lies on it, and feels it hard. The dozer's **ripper** (a single shank on the back; lever beside the blade joystick, push to lower; `Z`/`E` on the desktop) breaks rock into **shot rock** where it lies, as deep as the tooth reaches and less deep out to the sides (it breaks out at about 45°), without taking anything away, so the volume audit holds. Shot rock then digs, carries and tips like coarse gravel. Rip a few passes side by side before bringing the loader in. `tests/e2e/rip.mjs`.
 
 ## The bog
 
@@ -156,7 +189,7 @@ All sound is synthesised; there are no samples. The engine note is not mixed fro
 ## Known gaps and deviations from the spec
 
 - **Not run on a Quest.** Frame rate, control reach and placement, hand fit and comfort are untested. Desktop numbers for the stress scene: terrain worker ≈ 0.6 ms a tick, main-thread sim ≈ 2 ms a frame, ~75–150 draw calls, ~230k triangles.
-- **Co-op over the internet is only partly tested.** `tests/e2e/coop.mjs` drops and rejoins a player every way it can between two browser tabs; `tests/e2e/peer.mjs` runs real PeerJS and WebRTC against a matchmaking server on the build machine (`?broker=host:port`), including that server going away and coming back. PeerJS's public server, a home router and two headsets are not reachable from here. If the public server is down nobody new can join until it is back; players already in carry on. A client's own machine is not predicted locally, so it responds about 0.15 s late.
+- **Co-op over the internet is only partly tested.** `tests/e2e/coop.mjs` (two tabs) and `tests/e2e/coop3.mjs` (three) drop and rejoin players every way they can between browser tabs; `tests/e2e/peer.mjs` runs real PeerJS and WebRTC against a matchmaking server on the build machine (`?broker=host:port`), including that server going away and coming back. PeerJS's public server, a home router and two headsets are not reachable from here. If the public server is down nobody new can join until it is back; players already in carry on. A client's own machine is drawn ahead of the host's last word (`src/net/predict.js`): carried forward by the measured round trip, with its boom, bucket, blade or bed moving at once with the lever; the host still decides where it really is.
 - **Workboat World / SWVR code** could not be copied as-is (Workboat World is Godot; SWVR's controls depend on its vessel state). The interaction rules, grab maths, haptic values, locomotion numbers and network model are ported from SWVR. The avatar is a simple head, body and gloves.
 - **Booms, buckets, blades, beds** are kinematic parts, not Rapier joints with motors. Only the articulation hinge is a real joint.
 - **`diesel.dsp`** was not in the handover; the engine is a new AudioWorklet synth (see Sound below). It is tuned by measurement and spectrogram, not yet by ear on the headset.

@@ -1,6 +1,8 @@
 // Layered heightfield terrain: the authoritative sim. Pure data + maths (no DOM, no three.js) so it
 // runs unchanged in a worker, inline on the main thread, and in node tests. See docs/terrain-design.md.
-import { MATERIALS, NMAT, ROCK } from './materials.js';
+import { MATERIALS, NMAT, ROCK, SHOT } from './materials.js';
+const RIP_BREAKOUT = 1; // a tooth breaks rock out to the sides as well as below it: 1 m less deep for each 1 m aside (45°)
+const RIP_EFFORT = 6; // resistance per m³ of rock broken by a ripper, against dig for soil (rock to a blade or bucket is `dig` 99)
 
 export const CHUNK = 32;
 const D2R = Math.PI / 180;
@@ -20,6 +22,8 @@ export class TerrainCore {
     this.queued = new Uint8Array(n); this.queue = new Int32Array(n); this.qHead = 0; this.qLen = 0;
     this.cnx = Math.ceil(nx / CHUNK); this.cnz = Math.ceil(nz / CHUNK);
     this.chunkDirty = new Uint8Array(this.cnx * this.cnz); this.chunkStamp = new Int32Array(this.cnx * this.cnz);
+    // chunks changed since the map was built (saves hold only these): not counted until the first delivery of the whole map
+    this.touched = new Uint8Array(this.cnx * this.cnz); this.tracking = false;
     this.tickNo = 0; this.awakeChunks = 0;
     this.lost = 0; this.compacted = 0; // m³
     this.relaxBudget = 40000;
@@ -54,6 +58,8 @@ export class TerrainCore {
     this.nl[c] = n; this._fixH(c);
     return dh - rem;
   }
+  /** Thickness of loose material on top of column c, down to the first solid layer (rock), or all of it. */
+  softAbove(c) { const b = c * 3; let s = 0; for (let k = this.nl[c] - 1; k >= 0; k--) { if (MATERIALS[this.lm[b + k]].solid) return s; s += this.lt[b + k]; } return s; }
   addTop(c, mat, dh) {
     const b = c * 3; let n = this.nl[c];
     if (n > 0 && this.lm[b + n - 1] === mat) this.lt[b + n - 1] += dh;
@@ -139,6 +145,8 @@ export class TerrainCore {
    * cmd.capacity: m³ the tool's container can still take. Excess is windrowed `ahead` metres beyond the lip, and, if
    * cmd.heap is given (a blade: it has no bucket to dig a face with), only up to that many metres above the edge;
    * beyond that it spills round the ends of the edge.
+   * Solid material (rock) is never taken: a bucket or blade cuts only what lies on it, and meets heavy resistance.
+   * cmd.rip (a ripper tooth): breaks the rock it sweeps into shot rock where it lies, and takes nothing.
    * Returns { taken: Float64Array(NMAT) m³, pushed, resist }.
    */
   cut(cmd) {
@@ -172,8 +180,21 @@ export class TerrainCore {
         if (a < 0 || a > 1 || b < 0 || b > 1) continue;
         const c = j * nx + i, yf = P[1] - (nxx * rx + nzz * rz) / nyy;
         if (this.h[c] <= yf + 1e-4) continue;
+        const soft = this.softAbove(c), reach = this.h[c] - yf - (cmd.rip ? Math.abs(a - 0.5) * Math.sqrt(wl) * RIP_BREAKOUT : 0); // (a ripper's floor is wide: the rock breaks less deep away from its line)
+        if (reach <= 1e-4) continue;
+        if (cmd.rip) { // a ripper: breaks the rock it reaches into shot rock, where it lies; takes nothing away
+          if (reach <= soft + 1e-4) continue;
+          vol.fill(0); this.removeTop(c, reach, vol);
+          let broke = 0; for (let m = 1; m < NMAT; m++) if (MATERIALS[m].solid && vol[m] > 0) { broke += vol[m]; vol[m] = 0; }
+          if (broke > 0) this.addTop(c, MATERIALS[ROCK].loosens || SHOT, broke);
+          for (let m = 1; m < NMAT; m++) if (vol[m] > 0) this.addTop(c, m, vol[m]); // what lay on the rock goes back on top
+          resist += broke * area * RIP_EFFORT; this.dist[c] = 255; this.wake(c);
+          continue;
+        }
+        if (reach > soft) resist += (reach - soft) * area * MATERIALS[ROCK].dig; // scraping solid rock: it takes nothing, and the machine feels it
+        if (soft <= 1e-4) continue;
         vol.fill(0);
-        const got = this.removeTop(c, this.h[c] - yf, vol);
+        const got = this.removeTop(c, Math.min(reach, soft), vol); // only what lies on the rock
         if (got <= 0) continue;
         this.dist[c] = 255; this.wake(c);
         for (let m = 1; m < NMAT; m++) {
@@ -255,10 +276,10 @@ export class TerrainCore {
   // ---------------------------------------------------------------- output
   /** Pack and clear dirty chunks: [{id, h: Float32Array(32*32), info: Uint8Array(32*32*4)}] */
   collectDirty() {
-    const out = [];
+    const out = [], track = this.tracking; this.tracking = true;
     for (let id = 0; id < this.chunkDirty.length; id++) {
       if (!this.chunkDirty[id]) continue;
-      this.chunkDirty[id] = 0;
+      this.chunkDirty[id] = 0; if (track) this.touched[id] = 1;
       out.push(this.packChunk(id));
     }
     return out;
@@ -278,21 +299,44 @@ export class TerrainCore {
   }
   markAllDirty() { this.chunkDirty.fill(1); }
 
-  /** Everything needed to put the ground back as it is now (game/save.js): copies, safe to keep or send. */
+  /**
+   * Everything needed to put the ground back as it is now (game/save.js): copies, safe to keep or send.
+   * Only the chunks changed since the map was built are in it (every player builds the map the same way), so a save
+   * is as big as the work done, not as the map. Per chunk, CHUNK² cells of each array, in `ids` order.
+   */
   snapshot() {
-    const w = this.water;
-    return { nx: this.nx, nz: this.nz, bed: this.bed.slice(), nl: this.nl.slice(), lm: this.lm.slice(), lt: this.lt.slice(), dist: this.dist.slice(), rut: this.rut.slice(),
-      lost: this.lost, compacted: this.compacted, water: w ? { d: w.d.slice(), washed: w.washed } : null };
+    const w = this.water, ids = []; for (let id = 0; id < this.touched.length; id++) if (this.touched[id] || this.chunkDirty[id] && this.tracking) ids.push(id);
+    const K = CHUNK * CHUNK, m = ids.length, a = { bed: new Float32Array(m * K), nl: new Uint8Array(m * K), lm: new Uint8Array(m * K * 3), lt: new Float32Array(m * K * 3), dist: new Uint8Array(m * K), rut: new Float32Array(m * K) };
+    ids.forEach((id, q) => this._eachCell(id, (c, k) => { const o = q * K + k;
+      a.bed[o] = this.bed[c]; a.nl[o] = this.nl[c]; a.dist[o] = this.dist[c]; a.rut[o] = this.rut[c];
+      for (let l = 0; l < 3; l++) { a.lm[o * 3 + l] = this.lm[c * 3 + l]; a.lt[o * 3 + l] = this.lt[c * 3 + l]; } }));
+    return { v: 2, nx: this.nx, nz: this.nz, ids: Int32Array.from(ids), ...a, lost: this.lost, compacted: this.compacted, water: w ? w.save() : null };
   }
-  /** Put a snapshot back. Returns false (and changes nothing) if it is for a different size of map. */
-  restore(s) {
-    if (!s || s.nx !== this.nx || s.nz !== this.nz || s.lt.length !== this.lt.length) return false;
-    this.bed.set(s.bed); this.nl.set(s.nl); this.lm.set(s.lm); this.lt.set(s.lt); this.dist.set(s.dist); this.rut.set(s.rut);
+  _eachCell(id, fn) { const ci = id % this.cnx, cj = (id / this.cnx) | 0; let k = 0; for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++, k++) { const x = ci * CHUNK + i, z = cj * CHUNK + j; if (x < this.nx && z < this.nz) fn(z * this.nx + x, k); } }
+  /**
+   * Put a snapshot back. Returns false (and changes nothing) if it is for a different size of map.
+   * `rebuild` puts the map back as built; it is called only if this ground has already been changed (a snapshot
+   * holds only the chunks its own site changed, so the rest must be as built). Whole-map snapshots (saves from
+   * before chunked ones) are still read.
+   */
+  restore(s, rebuild = null) {
+    if (!s || s.nx !== this.nx || s.nz !== this.nz) return false;
+    if (s.v === 2) {
+      if (this.touched.some((t) => t)) { if (!rebuild) return false; rebuild(); }
+      const K = CHUNK * CHUNK; this.touched.fill(0);
+      Array.from(s.ids).forEach((id, q) => { this.touched[id] = 1; this._eachCell(id, (c, k) => { const o = q * K + k;
+        this.bed[c] = s.bed[o]; this.nl[c] = s.nl[o]; this.dist[c] = s.dist[o]; this.rut[c] = s.rut[o];
+        for (let l = 0; l < 3; l++) { this.lm[c * 3 + l] = s.lm[o * 3 + l]; this.lt[c * 3 + l] = s.lt[o * 3 + l]; } }); });
+    } else {
+      if (s.lt.length !== this.lt.length) return false;
+      this.bed.set(s.bed); this.nl.set(s.nl); this.lm.set(s.lm); this.lt.set(s.lt); this.dist.set(s.dist); this.rut.set(s.rut);
+      this.touched.fill(1);
+    }
     this.lost = s.lost; this.compacted = s.compacted;
     for (let c = 0; c < this.n; c++) this._fixH(c);
     this.queued.fill(0); this.qHead = 0; this.qLen = 0;
-    if (this.water && s.water && s.water.d.length === this.water.d.length) { const w = this.water; w.d.set(s.water.d); w.washed = s.water.washed; for (const k of ['fl', 'fr', 'fu', 'fd', 'vx', 'vz']) w[k].fill(0); }
-    this.markAllDirty();
+    if (this.water && s.water) this.water.restore(s.water); // (water saved before tiles is not read: the river refills by itself)
+    this.markAllDirty(); this.tracking = false; // the next delivery is the whole ground again, not new work
     return true;
   }
 

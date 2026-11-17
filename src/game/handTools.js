@@ -8,12 +8,19 @@
 //            blue low (fill). Level (pink): the grade is the first stake's foot all the way along. Sloped (orange),
 //            for ramps and roads: the line runs from the top of one stake to the top of the other, and the grade is
 //            the straight line between their feet. The trigger, with a stake in the hand, switches between the two.
+//            Each stake carries a tag: a level reading of the ground at its foot. Inside a job's design it reads CUT
+//            or FILL by so many centimetres, or ON GRADE, as a surveyor's grade stake is marked; elsewhere it reads the
+//            height (`HandTools.design` says which design, if any).
 //   chain    a tow chain with a hook at each end. Let a hook go at the front or back of a machine and it hitches
 //            there. When the chain comes taut between two machines it pulls on both (Machine.tow), so one can drag
 //            another out of the bog.
 //
 // A tool let go of drops to the ground where it is (a stake plants itself upright; the shovel stands in the soil).
-// Not replicated in co-op yet: each player has their own.
+//
+// Co-op (roadmap 0b): one set of tools, owned by the host. A player on a client who picks one up carries it on their
+// own screen at once, and sends where it is to the host (session.js), which moves its copy there: the shovel digs on
+// the host, as everything that moves soil does, and a hook let go hitches on the host. The host sends every tool's
+// pose and who has it; a tool somebody else has cannot be taken (`remote` names its holder).
 import * as THREE from 'three';
 import { Control } from '../xr/controls/index.js';
 import { CutTool } from '../terrain/tool.js';
@@ -26,7 +33,9 @@ const cyl = (r, len, seg = 7) => new THREE.CylinderGeometry(r, r, len, seg);
 
 /** A thing you carry: follows the hand while held, and is put down where you let go. */
 class Carried extends Control {
-  constructor(name, game) { super({ name, pos: [0, 0, 0] }); this.game = game; this.reachBonus = 0.06; this.carried = true; this.grip = new THREE.Vector3(); }
+  constructor(name, game) { super({ name, pos: [0, 0, 0] }); this.game = game; this.reachBonus = 0.06; this.carried = true; this.grip = new THREE.Vector3(); this.remote = null; this.remoteTrigger = 0; }
+  /** Held here, or by another player (co-op). */
+  get held() { return this.holders.length > 0 || !!this.remote; }
   /** Distance to the part you take hold of: a segment from `grip` up the handle. */
   distanceTo(world) { const p = this.local(world); p.z -= THREE.MathUtils.clamp(p.z, this.gripZ[0], this.gripZ[1]); p.y -= THREE.MathUtils.clamp(p.y, this.gripY[0], this.gripY[1]); return p.length(); }
   grabPoint(out) { return this.root.localToWorld(out.copy(this.grip)); }
@@ -62,7 +71,7 @@ class Shovel extends Carried {
     // throw it off: the blade turned over, or the trigger
     this.cooldown -= dt;
     const over = _b.set(0, 1, 0).applyQuaternion(this.root.quaternion).y < 0.25, vol = this.volume();
-    if (vol > 1e-5 && this.held && (over || (this.hand && this.hand.trigger > 0.6)) && this.cooldown <= 0) {
+    if (vol > 1e-5 && this.held && (over || (this.hand && this.hand.trigger > 0.6) || this.remoteTrigger > 0.6) && this.cooldown <= 0) {
       const sp = this.vel.length() > 6 ? 6 / this.vel.length() : 1;
       for (let k = 1; k < NMAT; k++) if (this.load[k] > 0) { clods.pour('shovel', tip.x, tip.y + 0.05, tip.z, this.vel.x * sp, this.vel.y * sp + 0.6, this.vel.z * sp, k, this.load[k], 0.6); this.load[k] = 0; }
       this.cooldown = 0.3; if (this.hand) this.hand.pulse(0.5, 40);
@@ -92,6 +101,30 @@ class Stake extends Carried {
   grabMove(hand) { this.root.quaternion.identity(); this.root.position.copy(hand.pos).sub(this.grip); if (hand.triggerPressed && this.onTrigger) { this.onTrigger(); hand.pulse(0.6, 40); } }
   rest() { const p = this.root.position; p.y = this.ground(p.x, p.z); this.root.quaternion.identity(); }
 }
+/** The reading on a stake: a small board facing whoever looks at it. */
+class Tag {
+  constructor(parent) {
+    this.canvas = document.createElement('canvas'); this.canvas.width = 128; this.canvas.height = 56;
+    this.tex = new THREE.CanvasTexture(this.canvas); this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.114), new THREE.MeshBasicMaterial({ map: this.tex })); this.mesh.position.set(0, STAKE + 0.16, 0);
+    parent.add(this.mesh); this.text = '';
+  }
+  set(text, colour) {
+    if (text === this.text) return; this.text = text;
+    const g = this.canvas.getContext('2d'); g.fillStyle = colour; g.fillRect(0, 0, 128, 56); g.fillStyle = '#ffffff'; g.font = 'bold 26px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(text, 64, 37);
+    this.tex.needsUpdate = true;
+  }
+}
+/** The reading for ground height h at (x, z): against the design if inside it, else the height itself. */
+export function reading(h, x, z, design) {
+  if (design && design.inside(x, z)) {
+    const d = h - design.target(x, z), cm = Math.round(Math.abs(d) * 100);
+    if (Math.abs(d) <= design.tol) return { text: 'ON GRADE', colour: '#2f8f3a', d };
+    return d > 0 ? { text: `CUT ${cm}`, colour: '#b0302a', d } : { text: `FILL ${cm}`, colour: '#2a5ab0', d };
+  }
+  return { text: `${h.toFixed(2)} m`, colour: '#3a3e44', d: null };
+}
+
 class StringLine {
   constructor(game, a, b) {
     this.game = game; this.a = a; this.b = b; this.t = 0;
@@ -195,11 +228,57 @@ export class HandTools {
     const put = (t, dx, dz) => { t.root.position.set(x + dx, game.terrain.heightAt(x + dx, z + dz) + 1, z + dz); t.rest(); };
     put(this.shovel, 0, 0); put(this.stakes[0], 0.7, 0.2); put(this.stakes[1], 1.0, 0.2); put(this.hooks[0], 1.6, 0); put(this.hooks[1], 1.9, 0.3);
     this.line = new StringLine(game, this.stakes[0], this.stakes[1]); this.chain = new Chain(game, this.hooks[0], this.hooks[1]);
+    this.tags = this.stakes.map((st) => new Tag(st.root)); this.design = () => null; this.tagT = 0;
     inter.add(this.all);
     const before = game.extraVolume; game.extraVolume = () => (before ? before() : 0) + this.shovel.volume(); // soil on the shovel is still soil
   }
   /** Sim step, before the physics. */
   step(dt) { this.chain.step(dt); this.shovel.step(dt, this.game.clods); }
+
+  // ---- co-op (session.js)
+  /** Host → everyone: each tool's pose and holder, the line's mode, and what is on the shovel (to draw it). */
+  netState(localId = 'host') {
+    const p = [], h = [];
+    for (const t of this.all) { const a = t.root.position, q = t.root.quaternion; p.push(a.x, a.y, a.z, q.x, q.y, q.z, q.w); h.push(t.holders.length ? localId : t.remote); }
+    const sh = this.shovel; let top = 1; for (let k = 2; k < NMAT; k++) if (sh.load[k] > sh.load[top]) top = k;
+    return { p, h, slope: this.line.slope ? 1 : 0, sv: +sh.volume().toFixed(4), sm: top };
+  }
+  /** Client: take the host's state for every tool this player is not carrying. */
+  applyNet(s, me, dt) {
+    const k = Math.min(1, dt * 15);
+    this.all.forEach((t, i) => {
+      const holder = s.h[i]; t.remote = holder && holder !== me ? holder : null;
+      if (t.holders.length) return; // in this player's hand: theirs to move
+      if (t.putDown) { if (holder === me) return; t.putDown = false; } // just let go here: the host has not heard yet, so its pose is the carried one
+      const o = i * 7, P = t.root.position, Q = t.root.quaternion;
+      _a.set(s.p[o], s.p[o + 1], s.p[o + 2]); _q.set(s.p[o + 3], s.p[o + 4], s.p[o + 5], s.p[o + 6]);
+      if (P.distanceToSquared(_a) > 4) { P.copy(_a); Q.copy(_q); } else { P.lerp(_a, k); Q.slerp(_q, k); }
+      if (t.hitch !== undefined) t.hitch = null; // the host hitches hooks; here they just go where it says
+    });
+    if (performance.now() > (this.line.mineUntil || 0) && !!s.slope !== this.line.slope) this.line.setSlope(!!s.slope); // not straight after switching it here
+    const sh = this.shovel; sh.heap.visible = s.sv > 0.002;
+    if (sh.heap.visible) { sh.heap.material.color.setRGB(...MATERIALS[s.sm].color); const sc = 0.5 + 0.7 * Math.cbrt(s.sv / SHOVEL_CAP); sh.heap.scale.set(sc, sc * 0.6, sc * 1.1); }
+  }
+  /** Host: a client carries tool i to pose p (7 numbers), or puts it down there (drop). Refused if someone else has it. */
+  remoteMove(i, from, p, { drop = false, trigger = 0 } = {}) {
+    const t = this.all[i]; if (!t || t.holders.length || (t.remote && t.remote !== from)) return false;
+    if (!t.remote && !drop && t.hitch !== undefined) t.hitch = null; // a hook picked up comes off its machine
+    t.root.position.set(p[0], p[1], p[2]); t.root.quaternion.set(p[3], p[4], p[5], p[6]);
+    t.remoteTrigger = trigger;
+    if (drop) { t.remote = null; t.remoteTrigger = 0; t.hand = undefined; t.rest(); } else t.remote = from; // (hand undefined: not this player's let-go, so no buzz here)
+    return true;
+  }
+  /** Host: a client switched the line between level and sloped (the trigger with a stake in hand). */
+  remoteSlope(from, on) { if (this.stakes.some((t) => t.remote === from)) this.line.setSlope(!!on); }
+  /** Host: a player has gone; whatever they were carrying is put down where it is. */
+  dropAll(from) { for (const t of this.all) if (t.remote === from) { t.remote = null; t.remoteTrigger = 0; t.hand = undefined; t.rest(); } }
   /** Every drawn frame. */
-  update(dt) { this.line.update(dt); this.chain.draw(); }
+  update(dt) {
+    this.line.update(dt); this.chain.draw();
+    const cam = this.game.camera; cam.getWorldPosition(_a);
+    for (const tag of this.tags) { const r = tag.mesh.parent; tag.mesh.lookAt(_a.x, r.position.y + STAKE + 0.16, _a.z); } // face the viewer, upright
+    if ((this.tagT -= dt) > 0) return; this.tagT = 0.2;
+    const T = this.game.terrain, D = this.design();
+    this.stakes.forEach((st, i) => { const p = st.root.position, r = reading(T.heightAt(p.x, p.z), p.x, p.z, D); this.tags[i].set(r.text, r.colour); this.tags[i].reading = r; });
+  }
 }

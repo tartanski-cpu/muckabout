@@ -1,4 +1,6 @@
-// The river surface: one translucent grid mesh over the water cells, re-posed from the sim's 10 Hz snapshots.
+// The water surface: one translucent mesh over the tiles that have water (terrain/water.js), re-posed from the sim's
+// 10 Hz snapshots. Each wet tile is a (TILE+1)² grid of water-cell centres, reaching one cell into its neighbours so
+// tiles join without seams; all tiles share one mesh and one draw call, grown when more tiles are wet.
 // Ripples scroll along the local flow direction; no refraction.
 import * as THREE from 'three';
 
@@ -24,32 +26,41 @@ void main() {
 
 export class WaterMesh {
   constructor(terrain, env) {
-    this.terrain = terrain; this.mesh = null; this.env = env; this.time = 0;
+    this.terrain = terrain; this.mesh = null; this.env = env; this.time = 0; this.cap = 0; this.slots = [];
     terrain.onWater((w) => this.apply(w)); if (terrain.water) this.apply(terrain.water);
   }
-  _build(w) {
-    const g = new THREE.BufferGeometry(), n = w.nx * w.nz, idx = [];
-    this.pos = new Float32Array(n * 3); this.flow = new Float32Array(n * 2); this.depth = new Float32Array(n);
-    for (let j = 0; j < w.nz; j++) for (let i = 0; i < w.nx; i++) { const k = j * w.nx + i; this.pos[k * 3] = w.ox + (i + 0.5) * w.cell; this.pos[k * 3 + 2] = w.oz + (j + 0.5) * w.cell; }
-    for (let j = 0; j < w.nz - 1; j++) for (let i = 0; i < w.nx - 1; i++) { const a = j * w.nx + i; idx.push(a, a + w.nx, a + 1, a + 1, a + w.nx, a + w.nx + 1); }
+  _build(cap) {
+    const V = (this.T + 1) ** 2, g = new THREE.BufferGeometry(), idx = new Uint32Array(cap * this.T * this.T * 6); let o = 0;
+    for (let s = 0; s < cap; s++) for (let j = 0; j < this.T; j++) for (let i = 0; i < this.T; i++) {
+      const a = s * V + j * (this.T + 1) + i, b = a + this.T + 1; idx[o++] = a; idx[o++] = b; idx[o++] = a + 1; idx[o++] = a + 1; idx[o++] = b; idx[o++] = b + 1;
+    }
+    this.pos = new Float32Array(cap * V * 3); this.flow = new Float32Array(cap * V * 2); this.depth = new Float32Array(cap * V);
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('flow', new THREE.BufferAttribute(this.flow, 2).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('depth', new THREE.BufferAttribute(this.depth, 1).setUsage(THREE.DynamicDrawUsage));
-    g.setIndex(idx);
-    this.mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false,
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    if (!this.mat) this.mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false,
       uniforms: { uTime: { value: 0 }, uFogColor: { value: this.env.fogColor }, uFogNear: { value: this.env.fogNear }, uFogFar: { value: this.env.fogFar }, uSun: { value: this.env.sunDir } } });
-    this.mesh = new THREE.Mesh(g, this.mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2;
-    if (this.onReady) this.onReady(this.mesh);
+    if (this.mesh) { this.mesh.geometry.dispose(); this.mesh.geometry = g; }
+    else { this.mesh = new THREE.Mesh(g, this.mat); this.mesh.frustumCulled = false; this.mesh.renderOrder = 2; if (this.onReady) this.onReady(this.mesh); }
+    this.cap = cap;
   }
   apply(w) {
-    if (!this.mesh) this._build(w);
-    const { pos, flow, depth } = this, n = w.nx * w.nz;
-    for (let k = 0; k < n; k++) {
-      const d = w.depth[k]; depth[k] = d;
-      pos[k * 3 + 1] = w.bed[k] + (d > 0.025 ? d : -0.15); // dry cells tuck under the ground
-      flow[k * 2] = w.vx[k]; flow[k * 2 + 1] = w.vz[k];
-    }
+    this.T = w.tile; const tiles = [...w.wet], T = this.T, V = (T + 1) ** 2;
+    if (tiles.length > this.cap || !this.mesh) this._build(Math.max(16, Math.ceil(tiles.length * 1.5)));
+    const { pos, flow, depth } = this;
+    tiles.forEach((t, s) => {
+      const i0 = (t % w.tnx) * T, j0 = ((t / w.tnx) | 0) * T;
+      for (let jj = 0; jj <= T; jj++) for (let ii = 0; ii <= T; ii++) {
+        const i = Math.min(w.nx - 1, i0 + ii), j = Math.min(w.nz - 1, j0 + jj), c = j * w.nx + i, v = s * V + jj * (T + 1) + ii, d = w.depth[c];
+        pos[v * 3] = w.ox + (i + 0.5) * w.cell; pos[v * 3 + 2] = w.oz + (j + 0.5) * w.cell;
+        pos[v * 3 + 1] = w.bed[c] + (d > 0.025 ? d : -0.15); // dry cells tuck under the ground
+        depth[v] = d; flow[v * 2] = w.vx[c]; flow[v * 2 + 1] = w.vz[c];
+      }
+    });
+    this.mesh.geometry.setDrawRange(0, tiles.length * T * T * 6);
     const a = this.mesh.geometry.attributes; a.position.needsUpdate = true; a.flow.needsUpdate = true; a.depth.needsUpdate = true;
+    this.tiles = tiles.length;
   }
   update(dt) { this.time += dt; if (this.mat) this.mat.uniforms.uTime.value = this.time; }
 }

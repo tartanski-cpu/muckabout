@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { TerrainCore } from '../src/terrain/core.js';
 import { MAPS } from '../src/terrain/maps.js';
 import { attachWater } from '../src/terrain/water.js';
-import { MUD, GRAVEL } from '../src/terrain/materials.js';
+import { MUD, GRAVEL, CLAY } from '../src/terrain/materials.js';
 
 const river = () => { const core = new TerrainCore(MAPS.dirttown.cfg); MAPS.dirttown.build(core); const w = attachWater(core, MAPS.dirttown); return { core, w }; };
 const run = (core, n) => { for (let i = 0; i < n; i++) core.step(); };
@@ -45,4 +45,41 @@ describe('river', () => {
     expect(results.capped.drop).toBeLessThan(0.05);
     expect(results.mud.drift).toBeLessThan(1e-4); expect(results.capped.drift).toBeLessThan(1e-4);
   }, 180000);
+});
+
+describe('water anywhere: springs, ponds, and tiles that sleep', () => {
+  // a 40 m slope falling south into a hollow; a spring near the top
+  const slope = {
+    cfg: { nx: 160, nz: 160, cell: 0.25, ox: -20, oz: -20 },
+    springs: [{ x: 0, z: -15, rate: 0.5 }], waterWarmup: 0,
+    build(core) {
+      const { nx, nz, cell, ox, oz } = core.cfg;
+      for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+        const x = ox + i * cell, z = oz + j * cell, hollow = Math.max(0, 1 - Math.hypot(x, z - 10) / 7) * 2.5;
+        const g = 4 - (z + 20) * 0.08 - hollow + 0.02 * Math.sin(x * 0.7); // a gentle fall south, a hollow 2.5 m deep at (0, 10)
+        core.setColumn(j * nx + i, g - 3, [[CLAY, 3]]);
+      }
+    },
+  };
+  it('a spring runs downhill, wakes the tiles it reaches, and fills a hollow: none of its water lost', () => {
+    const core = new TerrainCore(slope.cfg); slope.build(core); const w = attachWater(core, slope);
+    expect(w.list.length).toBe(1); // only the spring's tile is awake
+    const T = 60 * 120; run(core, T);
+    const inHollow = w.d[at(w, 0, 10)], added = 0.5 * T / 60, held = w.volume();
+    process.stderr.write(`spring: ${w.list.length} tiles awake, ${held.toFixed(1)} of ${added.toFixed(1)} m³ held, ${inHollow.toFixed(2)} m deep in the hollow\n`);
+    expect(inHollow).toBeGreaterThan(0.3);                      // it has found its way down and is filling the hollow
+    expect(Math.abs(held - added) / added).toBeLessThan(0.01);  // every drop accounted for (none can leave this map)
+    expect(w.list.length).toBeGreaterThan(3);
+    for (const [x, z] of [[-18, -18], [18, -18]]) expect(w.active[w.tileOf(w.cellAt(x, z))]).toBe(0); // the uphill corners, which the water never reaches, stay asleep
+    expect(core.wet[core.cellAt(0, 10)]).toBe(1);
+  }, 60000);
+  it('a pond drained away goes to sleep, and its ground dries', () => {
+    const core = new TerrainCore(slope.cfg); slope.build(core);
+    const w = attachWater(core, { ...slope, springs: [], ponds: [{ x: 0, z: 10, r: 6, level: 0.5 }] });
+    const awake = w.list.length; expect(awake).toBeGreaterThan(0); expect(core.wet[core.cellAt(0, 10)]).toBe(1);
+    for (const t of [...w.list]) { const [i0, j0, i1, j1] = w._range(t); for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) w.d[j * w.nx + i] = 0; } // drained (as a culvert would)
+    run(core, 300);
+    expect(w.list.length).toBe(0);
+    expect(core.wet[core.cellAt(0, 10)]).toBe(0);
+  }, 60000);
 });

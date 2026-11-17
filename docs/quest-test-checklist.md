@@ -73,6 +73,29 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 36b. A (host): reload the page. The room number must be the same as before; B should say RECONNECTING and come back by itself within about 20 s. (A is back on its last save, a minute old at most.)
 36c. Switch headset B's wifi off for 10 s and on again. Same recovery expected. If it never comes back, tell me what B's dash and start page say.
 36d. Does B see A's digging as it happens, not only the big changes? (Small ground updates used to arrive unreadable over the internet link; fixed, but never seen on two headsets.)
+36e. A third player (another headset, or a PC with the mouse) joins the same room. Does everyone see both others, and can all three drive at once? Drop the third one's wifi: when it comes back, there should be one figure of it, not two.
+36g. As a client (B), drive a machine and work its boom: does it answer the lever at once now, and does it ever jump or slide back noticeably when the host corrects it (into a pile, against another machine)?
+36h. B picks up the shovel and digs: does A see the soil go, and the shovel in B's hand? Can A take it while B has it (should not)?
+36i. The start page in the Quest browser: is *Enter VR* lit, and does it go straight into VR? Is the graphics setting on *Quest*?
+36f. On a PC in the same game: point at the loader's levers, key and wheel with the mouse and drag them (up pushes forward). Does it feel workable, and is anything impossible to reach or pick?
+
+## 9. Survey and grade (chapter 1)
+
+42. In the yard, south of the machines, the site-office pad is drawn on the ground: red heap, blue hollow, green round them, yellow edge. Is it readable from the dozer's seat? Too bright, too faint?
+43. Grab the clipboard in any cab: the pad's job card. Does the share on grade move as you work?
+44. Level it with the dozer (lower the blade to the level, AUTO LEVEL on). How long does it take you, and what grade do you get when you drive off?
+45. Plant a grading stake on the heap: its tag should read CUT and a number. Can you read the tag from the seat?
+46. When it is signed off the site office appears. Does it look right, and do the machines stop against it?
+
+47. On the start page in the Quest browser: make a *New site…* called "Family". Is the name box usable with the Quest keyboard? Does the site you last played open next time?
+48. *Save to a file* in the Quest browser: where does the file go, and can you find it again? (Downloads in the Quest browser may be awkward: tell me what happens.)
+
+## 10. The valley and rock
+
+49. Open `?map=valley`. Walk or drive out of today's map in any direction: is there a visible seam at its edge? Does the backdrop beyond the valley's edges look like more country, or like a wall?
+50. Frame rate at the head of the valley looking south, and in the yard: tell me the numbers on the wrist HUD (`X`).
+51. The stream: can you see it running, and does it look like water or like a wet stripe?
+52. In the old quarry (west side, north of the yard): the dozer's blade should skid on the rock floor and take nothing. The **ripper lever** (right of the blade joystick, push to lower): can you reach it, and does ripping feel like hard work (the engine should labour)?
 
 ## Things I already suspect
 

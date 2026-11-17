@@ -182,3 +182,79 @@ describe('bog', () => {
     expect(h0 - core.heightAt(14, -14)).toBeLessThan(rut * 0.95);
   });
 });
+
+describe('saving only the worked ground', () => {
+  const fresh = () => { const c = new TerrainCore(MAPS.test.cfg); MAPS.test.build(c); c.collectDirty(); return c; };
+  const work = (c) => { for (let i = 0; i < 40; i++) c.deposit(3 + (i % 5) * 0.2, -4, SAND, 0.05); for (let k = 0; k < 120; k++) c.step([]); c.collectDirty(); };
+  it('a snapshot holds only the chunks changed since the map was built', () => {
+    const c = fresh(); expect(c.snapshot().ids.length).toBe(0);
+    work(c); const s = c.snapshot();
+    expect(s.ids.length).toBeGreaterThan(0); expect(s.ids.length).toBeLessThan(6);
+    expect(s.bed.length).toBe(s.ids.length * 32 * 32);
+  });
+  it('put back on a freshly built map, it gives the same ground and the same volume', () => {
+    const a = fresh(); work(a); const s = a.snapshot(), b = fresh();
+    expect(b.restore(s)).toBe(true);
+    let worst = 0; for (let i = 0; i < a.n; i++) worst = Math.max(worst, Math.abs(a.h[i] - b.h[i]));
+    expect(worst).toBeLessThan(1e-5); // (heights are recomputed from the layers: float rounding)
+    expect(b.audit().total).toBeCloseTo(a.audit().total, 6);
+    expect(b.snapshot().ids).toEqual(s.ids); // and saving again keeps the same chunks
+  });
+  it('put back on ground already worked, the map is rebuilt first so nothing of the other work is left', () => {
+    const a = fresh(); work(a); const s = a.snapshot(), b = fresh();
+    for (let i = 0; i < 30; i++) b.deposit(-6, 8, GRAVEL, 0.05); for (let k = 0; k < 60; k++) b.step([]); b.collectDirty();
+    expect(b.restore(s)).toBe(false); // without a way to rebuild it, it refuses
+    expect(b.restore(s, () => MAPS.test.build(b))).toBe(true);
+    expect(Math.abs(b.heightAt(-6, 8) - fresh().heightAt(-6, 8))).toBeLessThan(1e-6);
+    expect(Math.abs(b.heightAt(3.4, -4) - a.heightAt(3.4, -4))).toBeLessThan(1e-6);
+  });
+});
+
+describe('the valley', () => {
+  it('has today\'s map unchanged in its middle, joined without a step, and its features where the layout puts them', async () => {
+    const { FEATURES } = await import('../src/terrain/valley.js');
+    const v = new TerrainCore(MAPS.valley.cfg); MAPS.valley.build(v);
+    const d = new TerrainCore(MAPS.dirttown.cfg); MAPS.dirttown.build(d);
+    let worst = 0; for (let z = -60; z < 60; z += 0.25) for (let x = -60; x < 60; x += 0.25) worst = Math.max(worst, Math.abs(v.heightAt(x, z) - d.heightAt(x, z)));
+    expect(worst).toBeLessThan(1e-4);
+    let seam = 0; // the step across the square's edge is no worse than the slope either side of it
+    for (let t = -59; t < 59; t += 0.5) for (const [a, b] of [[[-60.25, t], [-60, t]], [[59.75, t], [60, t]], [[t, -60.25], [t, -60]], [[t, 59.75], [t, 60]]]) seam = Math.max(seam, Math.abs(v.heightAt(...a) - v.heightAt(...b)));
+    expect(seam).toBeLessThan(0.25);
+    expect(FEATURES.map((f) => f.name)).toEqual(expect.arrayContaining(['stream', 'road in', 'old quarry', 'old tip', 'silted pond', 'spoil heaps']));
+    expect(v.heightAt(0, -177)).toBeGreaterThan(25);           // the hills at the head
+    expect(v.topMat(v.cellAt(-84, -95))).toBe(6);                // the quarry floor is rock
+    expect(v.topMat(v.cellAt(90, -103))).toBe(MUD);              // the road in is a rutted mud track
+    // the stream's bed never runs uphill, from the spring to the river
+    let up = 0, prev = Infinity; const P = [[-50, -150], [-50, -136], [-62, -112], [-72, -96], [-72, -60], [-72, 0], [-72, 22]];
+    for (let k = 0; k < P.length - 1; k++) for (let t = 0; t < 1; t += 0.05) { const h = v.heightAt(P[k][0] + (P[k + 1][0] - P[k][0]) * t, P[k][1] + (P[k + 1][1] - P[k][1]) * t); up = Math.max(up, h - prev); prev = h; }
+    expect(up).toBeLessThan(0.05);
+  }, 60000);
+});
+
+describe('rock', () => {
+  const ROCKY = { cfg: { nx: 64, nz: 64, cell: 0.25, ox: -8, oz: -8 }, build(core) { for (let c = 0; c < 64 * 64; c++) core.setColumn(c, -3, [[6, 2], [CLAY, 0.4]]); } }; // 2 m of rock under 0.4 m of clay; ground at -0.6
+  const rect = (y, x0 = -1, x1 = 1, z0 = -1, z1 = 1) => [x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z0];
+  const make = () => { const c = new TerrainCore(ROCKY.cfg); ROCKY.build(c); return c; };
+  it('a bucket or blade takes only what lies on the rock, and meets it hard', () => {
+    const c = make(), v0 = c.audit().total, r = c.cut({ p0: rect(-1.4), p1: rect(-1.4), capacity: 99 });
+    const took = r.taken.reduce((a, b) => a + b, 0);
+    expect(Math.abs(c.heightAt(0, 0) - -1.0)).toBeLessThan(1e-3);   // down to the rock's top, not to the edge 0.4 m below it
+    expect(took).toBeCloseTo(0.4 * 81 * 0.0625, 3);                  // the clay over the 9 × 9 cells it covers
+    expect(r.resist).toBeGreaterThan(took * 20);                     // and it felt the rock
+    expect(Math.abs(c.audit().total + took - v0)).toBeLessThan(1e-6);
+  });
+  it('a ripper breaks rock into shot rock where it lies; then it digs', () => {
+    const c = make(), v0 = c.audit().total;
+    c.cut({ p0: rect(-1.4), p1: rect(-1.4), capacity: 99 });         // clear the clay off first
+    const after = c.audit().total;
+    const r = c.cut({ p0: rect(-1.35, -0.15, 0.15), p1: rect(-1.35, -0.15, 0.15), rip: true }); // a tooth 0.35 m into the rock
+    expect(r.taken.reduce((a, b) => a + b, 0)).toBe(0);                // it takes nothing
+    expect(c.topMat(c.cellAt(0, 0))).toBe(9);                          // shot rock where it went
+    expect(c.topMat(c.cellAt(0.8, 0))).toBe(6);                        // solid rock beside its line
+    expect(Math.abs(c.audit().total - after)).toBeLessThan(1e-6);     // nothing made or lost: the same volume, broken
+    const d = c.cut({ p0: rect(-1.6, -0.15, 0.15), p1: rect(-1.6, -0.15, 0.15), capacity: 99 });
+    expect(d.taken[9]).toBeGreaterThan(0.05);                          // a bucket takes the shot rock now
+    expect(Math.abs(c.heightAt(0, 0) - -1.35)).toBeLessThan(1e-3);     // down to where the tooth broke it, no deeper
+    void v0;
+  });
+});

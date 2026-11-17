@@ -2,28 +2,31 @@
 // run-length encoded. A client builds the same starting map locally, so a newcomer only needs the cells that
 // differ from that starting state. Pure functions over typed arrays (unit-tested, no DOM).
 //
-// Cell encoding: height in centimetres (Int16) + one info byte: material (3 bits) | disturbed << 3 | wet << 4.
+// Cell encoding: height in centimetres (Int16) + one info byte: material (4 bits) | disturbed << 4 | wet << 5.
+// (Three bits for the material lost bog, material 8: a worked bog cell reached a client as no material at all.)
 // Wire format (little-endian DataView), per message:
 //   u16 nChunks, then per chunk: u16 chunkId, u16 nRuns, then per run: u16 skip, u16 len, len × (i16 h, u8 info)
 import { CHUNK } from '../terrain/core.js';
 
 export const Q = 100; // quantisation steps per metre (1 cm)
-const packInfo = (info, k) => (info[k] & 7) | (info[k + 1] ? 8 : 0) | (info[k + 2] ? 16 : 0);
+const packInfo = (info, k) => (info[k] & 15) | (info[k + 1] ? 16 : 0) | (info[k + 2] ? 32 : 0);
 
 /** Keeps what the peers have been sent and produces deltas against it. */
 export class TerrainDeltaWriter {
-  /** @param {{nx:number,nz:number,h:Float32Array,info:Uint8Array}} mirror the host's terrain mirror */
-  constructor(mirror) {
+  /** @param {{nx:number,nz:number,h:Float32Array,info:Uint8Array}} mirror the host's terrain mirror
+   *  @param {{h:Float32Array,info:Uint8Array}} [base] the map as built (what a client builds); defaults to the mirror as it is now */
+  constructor(mirror, base = null) {
     this.m = mirror; const n = mirror.nx * mirror.nz;
     this.cnx = mirror.nx / CHUNK; this.cnz = mirror.nz / CHUNK;
     this.sentH = new Int16Array(n); this.sentI = new Uint8Array(n); this.baseH = new Int16Array(n); this.baseI = new Uint8Array(n);
     this.dirty = new Set();
-    this.snapshotBase();
+    this.snapshotBase(base);
   }
-  /** Record the current mirror as the shared starting state (what a client builds locally). */
-  snapshotBase() {
-    const { h, info } = this.m;
-    for (let c = 0; c < this.sentH.length; c++) { this.baseH[c] = this.sentH[c] = Math.round(h[c] * Q); this.baseI[c] = this.sentI[c] = packInfo(info, c * 4); }
+  /** Record the shared starting state (what a client builds locally): `base` if given (the map as built, before a
+   *  saved site was loaded over it), else the mirror as it is now. What peers have been sent starts as the mirror. */
+  snapshotBase(base = null) {
+    const { h, info } = this.m, b = base || this.m;
+    for (let c = 0; c < this.sentH.length; c++) { this.sentH[c] = Math.round(h[c] * Q); this.sentI[c] = packInfo(info, c * 4); this.baseH[c] = Math.round(b.h[c] * Q); this.baseI[c] = packInfo(b.info, c * 4); }
   }
   markChunks(chunks) { for (const c of chunks) this.dirty.add(c.id); }
 
@@ -77,7 +80,7 @@ export function applyTerrainDelta(mirror, bytes) {
       k += dv.getUint16(o, true); const len = dv.getUint16(o + 2, true); o += 4;
       for (let q = 0; q < len; q++, k++) {
         const c = (cj * CHUNK + ((k / CHUNK) | 0)) * nx + ci * CHUNK + (k % CHUNK), b = dv.getUint8(o + 2);
-        h[c] = dv.getInt16(o, true) / Q; info[c * 4] = b & 7; info[c * 4 + 1] = b & 8 ? 255 : 0; info[c * 4 + 2] = b & 16 ? 255 : 0; o += 3;
+        h[c] = dv.getInt16(o, true) / Q; info[c * 4] = b & 15; info[c * 4 + 1] = b & 16 ? 255 : 0; info[c * 4 + 2] = b & 32 ? 255 : 0; o += 3;
       }
     }
     // repack the whole chunk for the renderer's texture upload

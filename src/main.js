@@ -7,8 +7,11 @@ const status = document.getElementById('status');
 const join = q.get('join'), hosting = flag('host', false);
 
 (async () => {
-  const map = q.get('map') || (sceneName === 'stress' ? 'test' : 'dirttown');
-  const game = new Game({ map, worker: flag('worker', true), water: map === 'dirttown' && flag('water', true), seed: 1337, remote: !!join });
+  // the map: ?map=<name>, any capitalisation; a name this build does not have falls back to the main map, and says so
+  const { MAPS } = await import('./terrain/maps.js'), fallback = sceneName === 'stress' ? 'test' : 'dirttown', asked = (q.get('map') || '').trim().toLowerCase();
+  const map = !asked ? fallback : MAPS[asked] ? asked : fallback;
+  if (asked && !MAPS[asked]) setTimeout(() => { status.textContent = `There is no map called "${q.get('map')}" in this version (maps: ${Object.keys(MAPS).join(', ')}). Showing ${map}.`; }, 4000);
+  const game = new Game({ map, worker: flag('worker', true), water: (map === 'dirttown' || map === 'valley') && flag('water', true), seed: 1337, remote: !!join });
   await game.init();
   window.__game = game;
   if (sceneName === 'stress') {
@@ -25,17 +28,28 @@ const join = q.get('join'), hosting = flag('host', false);
     if (flag('stress', false)) game.scene_.setStress(true);
     // the saved site, if there is one (game/save.js): loaded now, then saved by itself as you work. ?new=1 starts afresh, ?save=0 switches it off
     if (!join && flag('save', true) && !flag('stress', false)) {
-      const { SaveGame } = await import('./game/save.js'), save = game.save = new SaveGame(game, game.scene_);
-      if (flag('new', false)) await save.forget(); else if (await save.load()) game.hud.note = 'SITE LOADED FROM YOUR LAST VISIT';
+      const { SaveGame } = await import('./game/save.js'), { siteName, siteRow } = await import('./ui/sites.js');
+      const save = game.save = new SaveGame(game, game.scene_, siteName(q)); // a valley each (ui/sites.js): ?site=<name>, else the last one played
+      if (flag('new', false)) await save.forget(); else if (await save.load()) game.hud.note = `SITE LOADED: ${save.name.toUpperCase()}`;
       save.auto();
       const when = document.getElementById('saveWhen'), show = () => { if (when) when.textContent = save.savedAt ? 'saved ' + new Date(save.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'not saved yet'; };
       save.onChange = show; show();
       document.getElementById('saveBtn')?.addEventListener('click', () => save.save());
-      document.getElementById('newBtn')?.addEventListener('click', async () => { if (!confirm('Start a new site? The saved one will be gone for good.')) return; await save.forget(); const u = new URL(location.href); u.searchParams.set('new', '1'); location.href = u.href; });
+      game.sites = await siteRow(game, save);
+      document.getElementById('newBtn')?.addEventListener('click', async () => { if (!confirm(`Start "${save.name}" again from the map as built? Its saved work will be gone for good.`)) return; await save.forget(); const u = new URL(location.href); u.searchParams.set('new', '1'); location.href = u.href; });
     }
     coop(game);
   }
   game.start();
+  { const { startPage } = await import('./ui/start.js'); game.menu = startPage(game, { q }); }
+  { // graphics tier (render/quality.js): drawing only, the simulation is the same at every setting
+    const { Quality, defaultQuality, QUALITY } = await import('./render/quality.js');
+    const quality = game.quality = new Quality(game), sel = document.getElementById('quality'), note = document.getElementById('gfxNote');
+    const say = () => { if (note) note.textContent = quality.q.shadow ? `sun shadows ${quality.q.shadow}², ±${quality.q.span} m` : 'for the headset: shade pools, no shadow maps'; };
+    quality.set(defaultQuality(q)); say();
+    if (sel) { sel.value = quality.name; sel.addEventListener('change', () => { quality.set(sel.value, true); say(); }); }
+    void QUALITY;
+  }
   status.textContent = `${game.terrain.mode} terrain · ${game.opts.map} map`;
   if (hosting || join) {
     const { makeTransport, newRoomCode } = await import('./net/transport.js'), { startHost, startClient } = await import('./net/session.js');
@@ -56,9 +70,9 @@ const join = q.get('join'), hosting = flag('host', false);
   }
 })().catch((e) => { status.textContent = 'failed to start: ' + e.message; console.error(e); });
 
-/** The co-op row in the help panel: host a room, or join one by its five-digit code. Both reload the page with the choice in the URL. */
+/** The co-op row and the extras on the start page. Host a room, or join one by its five-digit code: both reload the page with the choice in the URL. */
 function coop(game) {
-  const go = (params) => { const u = new URL(location.href); u.search = ''; for (const k in params) u.searchParams.set(k, params[k]); if (q.get('net')) u.searchParams.set('net', q.get('net')); location.href = u.toString(); };
+  const go = (params) => { const u = new URL(location.href); u.search = ''; for (const k in params) u.searchParams.set(k, params[k]); for (const k of ['net', 'map', 'site']) if (q.get(k)) u.searchParams.set(k, q.get(k)); location.href = u.toString(); }; // (the map and site come along: hosting from the valley stays in the valley)
   // Extras: the demo drivers run on a page of their own (?stress=1), which neither loads nor saves the site, so the
   // demo cannot spoil saved work; the physics switch is live.
   const demo = document.getElementById('demoBtn'), phys = document.getElementById('physBtn'), S = game.scene_, on = flag('stress', false);

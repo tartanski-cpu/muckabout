@@ -5,27 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Muck About</title>
 <style>
+  :root { --ink: #f3ead8; --gold: #ffd25a; --amber: #f0b21a; --panel: rgba(16,22,26,.9); --line: #3a4a50; --key: #2b3a40; --link: #9fd4ff; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #9fcbee; font-family: system-ui, sans-serif; }
   canvas { display: block; }
-  #help { position: fixed; left: 12px; top: 12px; background: rgba(16,22,26,.82); color: #f3ead8; padding: 12px 14px; border-radius: 10px;
-          font-size: 13px; line-height: 1.5; max-width: 360px; border-left: 4px solid #f0b21a; }
-  #help b { color: #ffd25a; } #help h1 { font-size: 16px; margin: 0 0 6px; letter-spacing: .04em; }
-  #help .k { display: inline-block; min-width: 1.4em; padding: 0 4px; border-radius: 4px; background: #2b3a40; text-align: center; font-family: monospace; }
-  #help a { color: #9fd4ff; } #toggle { cursor: pointer; float: right; opacity: .7; }
-  #site, #extras { margin-top: 8px; padding-top: 8px; border-top: 1px solid #3a4a50; } #site button, #extras button { font: inherit; padding: 2px 8px; border-radius: 6px; border: 1px solid #ffd25a; background: #2b3a40; color: #ffd25a; cursor: pointer; }
-  #coop { margin-top: 8px; padding-top: 8px; border-top: 1px solid #3a4a50; } #coop button, #coop input { font: inherit; padding: 2px 8px; border-radius: 6px; border: 1px solid #ffd25a; background: #2b3a40; color: #f3ead8; }
+  /* start page: what you see before playing, and again with Esc */
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,14,16,.55); z-index: 10; overflow: auto; padding: 16px; box-sizing: border-box; }
+  #start.hidden { display: none; }
+  #start .card { background: var(--panel); color: var(--ink); border-left: 5px solid var(--amber); border-radius: 12px; padding: 20px 22px; max-width: 600px; width: 100%; font-size: 14px; line-height: 1.5; max-height: 100%; overflow: auto; box-sizing: border-box; }
+  #start h1 { margin: 0; font-size: 26px; letter-spacing: .08em; color: var(--gold); }
+  #start .tag { margin: 2px 0 14px; opacity: .85; }
+  #start .go { display: flex; gap: 10px; flex-wrap: wrap; }
+  #start .go button { flex: 1 1 200px; font: 600 17px system-ui, sans-serif; padding: 12px 14px; border-radius: 10px; cursor: pointer; border: 2px solid var(--gold); }
+  #start #playBtn { background: var(--gold); color: #10161a; }
+  #start #vrBtn { background: var(--key); color: var(--gold); }
+  #start #vrBtn:disabled { opacity: .45; cursor: default; }
+  #vrNote { margin: 6px 0 0; font-size: 12px; opacity: .75; min-height: 1em; }
+  #start section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+  #start b { color: var(--gold); }
+  #start button, #start input, #start select { font: inherit; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--gold); background: var(--key); color: var(--ink); }
+  #start section button { cursor: pointer; }
+  #start .k { display: inline-block; min-width: 1.4em; padding: 0 4px; border-radius: 4px; background: var(--key); text-align: center; font-family: monospace; }
+  #start a { color: var(--link); }
+  #start details summary { cursor: pointer; color: var(--gold); font-weight: 600; }
+  #helpBody { margin-top: 6px; font-size: 13px; }
+  #gfxNote { font-size: 12px; opacity: .75; }
+  #site .row { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #site .filebtn { font: inherit; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--gold); background: var(--key); color: var(--ink); cursor: pointer; }
+  #siteNote { font-size: 12px; opacity: .8; min-height: 1em; margin-top: 4px; }
+  /* in play: one line in the corner */
+  #help { position: fixed; left: 12px; top: 12px; background: rgba(16,22,26,.7); color: var(--ink); padding: 4px 10px; border-radius: 8px; font-size: 12px; }
+  #help .k { display: inline-block; padding: 0 4px; border-radius: 4px; background: var(--key); font-family: monospace; }
   #status { position: fixed; left: 12px; bottom: 12px; color: #10161a; font: 12px monospace; background: rgba(255,255,255,.6); padding: 4px 8px; border-radius: 6px; }
 </style>
 </head>
 <body>
-<div id="help">
-  <span id="toggle" onclick="this.parentNode.style.display='none'">✕</span>
-  <h1>MUCK ABOUT</h1>
-  <div id="helpBody">Loading…</div>
-  <div id="site"><b>This site:</b> <span id="saveWhen">not saved yet</span> · <button id="saveBtn">Save now</button> <button id="newBtn">Start a new site</button></div>
-  <div id="extras"><b>Extras:</b> <button id="demoBtn">Watch the demo drivers</button> <button id="physBtn">Physics: custom</button></div>
-  <div id="coop"><b>Two players:</b> <button id="hostBtn">Host a game</button> or <input id="joinCode" size="5" maxlength="5" inputmode="numeric" placeholder="room"> <button id="joinBtn">Join</button> <span id="netStatus"></span></div>
+<div id="start">
+  <div class="card">
+    <h1>MUCK ABOUT</h1>
+    <div class="tag">Earthmoving on a hillside: four machines, ground that digs, a river to cross.</div>
+    <div class="go">
+      <button id="playBtn">Play on this computer</button>
+      <button id="vrBtn" disabled>Enter VR</button>
+    </div>
+    <div id="vrNote">Looking for a headset…</div>
+    <section id="coop"><b>Play together (up to 4):</b> <button id="hostBtn">Host a game</button> or <input id="joinCode" size="5" maxlength="5" inputmode="numeric" placeholder="room"> <button id="joinBtn">Join</button> <span id="netStatus"></span></section>
+    <section id="site"><b>Site:</b> <select id="siteSel" title="Each group keeps its own valley"></select> <span id="saveWhen">not saved yet</span>
+      <div class="row"><button id="saveBtn">Save now</button> <button id="newSiteBtn">New site…</button> <button id="exportBtn">Save to a file</button> <label class="filebtn">Open a file<input id="importFile" type="file" accept=".muck" hidden></label> <button id="newBtn">Start this site again</button> <button id="delBtn">Delete</button></div>
+      <div id="siteNote"></div></section>
+    <section id="gfx"><b>Graphics:</b> <select id="quality"><option value="quest">Quest (light)</option><option value="pc">PC (shadows, sharper)</option><option value="ultra">PC high</option></select> <span id="gfxNote"></span></section>
+    <section id="extras"><b>Extras:</b> <button id="demoBtn">Watch the demo drivers</button> <button id="physBtn">Physics: custom</button></section>
+    <section><details id="controls"><summary>Controls</summary><div id="helpBody">Loading…</div></details></section>
+  </div>
 </div>
+<div id="help"><span class="k">Esc</span> menu &amp; controls</div>
 <div id="status"></div>
 <script type="module" src="/src/main.js"></script>
 </body>

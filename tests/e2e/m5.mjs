@@ -74,7 +74,7 @@ try {
   await page.close();
 
   // --- stress scene: four machines, clod fountain, river
-  page = await open('?worker=0&stress=1');
+  page = await open('?worker=0&stress=1&quality=quest'); // the draw-call budget is the Quest's
   await page.waitForFunction(() => __game.play?.stress);
   await page.evaluate(() => { __game.paused = true; });
   const s0 = await page.evaluate(() => __game.audit());

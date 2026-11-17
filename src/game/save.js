@@ -1,13 +1,39 @@
 // Saving the site, so a session's work is still there next time.
 //
 // One save per map, kept in the browser's own storage (IndexedDB) on this device: the ground and the water as they
-// stand, every machine's position, hydraulics and load, the hopper, the checklist, the hand tools and where the
+// stand, every machine's position, hydraulics and load, the hopper, the checklist and the jobs, the hand tools and where the
 // player stood. It is written by itself every minute, when the page is hidden or closed, and when a VR session ends;
 // and loaded by itself at the start. "Start a new site" forgets it.
 //
 // Not saved: clods in the air are landed where they would fall; engines are off and park brakes on when you come back.
 // Co-op: only the host (or a solo player) saves; a client joins the host's site as it is.
+//
+// Named sites (docs/valley-layout.md: a valley per group): several sites per map, each under a name ("Family",
+// "Friends"). The first, DEFAULT_SITE, keeps the key saves had before names, so an existing site is still found.
+// A small `meta:` record per site (name, when) lets the start page list them without reading the ground.
+// A site goes to and from a file with game/siteFile.js.
 const DB = 'muckabout', STORE = 'saves', VERSION = 1;
+export const DEFAULT_SITE = 'My valley';
+const siteKey = (map, name) => (name === DEFAULT_SITE ? `site:${map}` : `site:${map}:${name}`);
+const metaKey = (map, name) => `meta:${map}:${name}`;
+
+/** The sites saved for a map, newest first: [{name, when}]. */
+export async function listSites(map) {
+  try {
+    const all = await idb('readonly', (st) => st.getAll(IDBKeyRange.bound(`meta:${map}:`, `meta:${map}:\uffff`)));
+    const names = new Set(all.map((m) => m.name));
+    if (!names.has(DEFAULT_SITE)) { const old = await idb('readonly', (st) => st.get(siteKey(map, DEFAULT_SITE))); if (old) all.push({ name: DEFAULT_SITE, when: old.when }); } // saved before names
+    return all.sort((a, b) => b.when - a.when);
+  } catch (e) { console.warn(e); return []; }
+}
+/** Put a site (from a file) into storage under a name, replacing any of that name. */
+export async function storeSite(map, name, site) {
+  if (!site || site.map !== map) throw new Error(site ? `that site is for the ${site.map} map` : 'empty site');
+  await idb('readwrite', (st) => st.put(site, siteKey(map, name)));
+  await idb('readwrite', (st) => st.put({ name, when: site.when || Date.now() }, metaKey(map, name)));
+}
+/** The stored site of that name, as saved (for a file). */
+export const readSite = (map, name) => idb('readonly', (st) => st.get(siteKey(map, name)));
 
 function db() {
   return new Promise((res, rej) => {
@@ -24,7 +50,7 @@ async function idb(mode, fn) {
 
 export class SaveGame {
   /** scene: the play scene (machines, tools, player, checklist). */
-  constructor(game, scene) { this.game = game; this.scene = scene; this.key = `site:${game.opts.map}`; this.savedAt = 0; this.busy = false; this.onChange = null; this.timer = 0; }
+  constructor(game, scene, name = DEFAULT_SITE) { this.game = game; this.scene = scene; this.name = name; this.map = game.opts.map; this.key = siteKey(this.map, name); this.savedAt = 0; this.busy = false; this.onChange = null; this.timer = 0; }
 
   /** Gather the whole site into one plain object of numbers and typed arrays. */
   async collect() {
@@ -38,6 +64,7 @@ export class SaveGame {
       tools: S.tools ? S.tools.all.map((t) => pose(t.root)) : [],
       slopedLine: !!S.tools?.line.slope,
       checklist: S.checklist ? S.checklist.items.map((i) => !!i.done) : [],
+      pad: S.padJob ? S.padJob.state() : null,
       player: [S.player.feet.x, S.player.feet.z, S.player.yaw],
     };
   }
@@ -64,6 +91,7 @@ export class SaveGame {
     if (S.tools) S.tools.all.forEach((t, i) => { const p = s.tools[i]; if (p) { t.root.position.fromArray(p); t.root.quaternion.fromArray(p, 3); if (t.hitch !== undefined) t.hitch = null; } });
     if (S.tools) S.tools.line.setSlope(!!s.slopedLine);
     if (S.checklist) S.checklist.items.forEach((it, i) => { it.done = !!s.checklist[i]; });
+    if (S.padJob && s.pad) S.padJob.restore(s.pad);
     S.player.place(s.player[0], s.player[1], s.player[2]);
     g.simTime = s.simTime || 0;
     this.savedAt = s.when;
@@ -72,7 +100,7 @@ export class SaveGame {
 
   async save() {
     if (this.busy || this.game.remote) return false; this.busy = true;
-    try { const s = await this.collect(); if (!s) return false; await idb('readwrite', (st) => st.put(s, this.key)); this.savedAt = s.when; this.onChange?.(); return true; }
+    try { const s = await this.collect(); if (!s) return false; await idb('readwrite', (st) => st.put(s, this.key)); await idb('readwrite', (st) => st.put({ name: this.name, when: s.when }, metaKey(this.map, this.name))); this.savedAt = s.when; this.onChange?.(); return true; }
     catch (e) { console.warn('save failed', e); return false; } finally { this.busy = false; }
   }
   async load() {
@@ -80,7 +108,7 @@ export class SaveGame {
     try { const s = await idb('readonly', (st) => st.get(this.key)); const ok = await this.apply(s); if (ok) this.onChange?.(); return ok; }
     catch (e) { console.warn('load failed', e); return false; }
   }
-  async forget() { try { await idb('readwrite', (st) => st.delete(this.key)); this.savedAt = 0; this.onChange?.(); } catch (e) { console.warn(e); } }
+  async forget() { try { await idb('readwrite', (st) => st.delete(this.key)); await idb('readwrite', (st) => st.delete(metaKey(this.map, this.name))); this.savedAt = 0; this.onChange?.(); } catch (e) { console.warn(e); } }
 
   /** Save by itself: every `every` seconds of play, and whenever the page is hidden or closed or a VR session ends. */
   auto(every = 60) {

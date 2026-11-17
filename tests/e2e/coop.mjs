@@ -12,7 +12,7 @@ const { open, check, done, browser } = await harness();
 try {
   const context = await browser.newContext();
   const host = await open('?host=1&net=bc&worker=0', { context });
-  await host.waitForFunction(() => __game.play?.net?.role === 'host', null, { timeout: 60000 });
+  await host.waitForFunction(() => __game.play?.net?.role === 'host', null, { timeout: 180000, polling: 500 });
   const code = await host.evaluate(() => __game.play.net.code);
   check(new URL(host.url()).searchParams.get('room') === code, `the host's address carries its room number (${code}), so a reload reopens the same room`);
   let client = await open(`?join=${code}&net=bc`, { context });
@@ -74,14 +74,14 @@ try {
   check(await dh() < 0.03, 'the rejoined client still sees what the host does to the ground');
 
   // 4 ---- the client's page reloads
-  await client.reload(); await client.waitForFunction(() => globalThis.__game && __game.ready !== false, null, { timeout: 60000 });
+  await client.reload(); await client.waitForFunction(() => globalThis.__game && __game.ready !== false, null, { timeout: 180000, polling: 500 });
   await until('the reloaded client to join', joined);
   await until('the host to have just that one', async () => { const h = await hostSees(); return h.peers.length === 1 && h.avatars === 1 && h.driver === null; });
   check(await dh() < 0.03, 'a reloaded client joins again, sees the site as it stands, and its old seat is free');
 
   // 5 ---- the host's page reloads: same room, and the client finds it again by itself
   await client.evaluate(() => { window.before = __game.terrain.heightAt(2.6, -30); });
-  await host.reload(); await host.waitForFunction(() => globalThis.__game?.play?.net?.role === 'host', null, { timeout: 60000 });
+  await host.reload(); await host.waitForFunction(() => globalThis.__game?.play?.net?.role === 'host', null, { timeout: 180000, polling: 500 }); // (polled on a timer: once a drawn frame is too slow under software GL)
   check(await host.evaluate(() => __game.play.net.code) === code, 'a reloaded host reopens the same room');
   await until('the client to find the host again', async () => (await joined()) && (await hostSees()).peers.length === 1, 90);
   const stale = await client.evaluate(() => [window.before, __game.terrain.heightAt(2.6, -30)]), fresh = await host.evaluate(() => __game.terrain.heightAt(2.6, -30));
