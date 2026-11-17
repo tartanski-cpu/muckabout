@@ -608,7 +608,7 @@ export class Machine {
       let g = terrain.heightAt(_c.x, _c.z);
       if (!w.side) g = Math.max(g, terrain.heightAt(_c.x + _f.x * reach, _c.z + _f.z * reach) - 0.12 * w.r, terrain.heightAt(_c.x - _f.x * reach, _c.z - _f.z * reach) - 0.12 * w.r);
       const x = g - (_c.y - this.sus.ext - w.r); // compression of the spring
-      if (x <= 0) { w.grounded = false; w.comp = -this.sus.ext; w.N = 0; continue; }
+      if (x <= 0) { w.grounded = false; w.comp = -this.sus.ext; w.N = 0; w.hold = null; continue; }
       _p.set(_c.x, g, _c.z);
       const v = rb.velocityAtPoint(_p);
       terrain.normalAt(_c.x, _c.z, _na); _n.set(_na[0], _na[1], _na[2]);
