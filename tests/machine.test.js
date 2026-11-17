@@ -211,9 +211,10 @@ describe('custom vehicle model (no rigid-body solver)', () => {
     expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-4);
   });
   it('switches model mid-drive without a jolt', async () => {
-    const r = await rig('loader', { x: 0, z: 11 }); r.step(120); // far enough back to stop short of the stockpile start(r.m); r.step(90);
+    const r = await rig('loader', { x: 0, z: 22 }); r.step(120); // far enough back to stop short of the stockpile
+    start(r.m); r.step(90);
     r.m.inp.shuttle = 1; r.m.inp.accel = 0.8; r.step(180);
-    const v = r.m.speed, p = r.m.position.clone();
+    const v = r.m.speed, p = r.m.position.clone(); expect(v).toBeGreaterThan(1); // under way
     r.m.setPhysics('custom'); r.step(1);
     expect(Math.abs(r.m.speed - v)).toBeLessThan(0.3); expect(r.m.position.distanceTo(p)).toBeLessThan(0.3);
     r.step(60); r.m.setPhysics('rapier'); r.step(90);

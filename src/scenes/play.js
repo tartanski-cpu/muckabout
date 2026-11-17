@@ -22,6 +22,7 @@ import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { PadJob, JobBoard } from '../game/jobs.js';
 import { startStress } from './stress.js';
 import { Rams } from '../render/rams.js';
+import { ParkedMachines } from '../render/parked.js';
 import { Particles } from '../render/particles.js';
 import { Effects } from '../game/effects.js';
 import { PAINT_U } from '../vehicles/machine.js';
@@ -293,6 +294,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; for (const r of m.rails || []) r.root.visible = true; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
   });
+  // machines nobody is using are drawn baked into a few meshes each (render/parked.js): checked last thing before drawing, so a machine that has moved is never drawn stale
+  const parked = game.parked = new ParkedMachines(scene, machines, () => (game.renderer.shadowMap.enabled ? 1 : 0));
+  game.beforeRender.push((fdt) => { for (const m of machines) m.root.updateMatrixWorld(); parked.update(fdt); });
 
   // ---- PC: the mouse works the controls under it (xr/mouseHand.js); anywhere else, dragging looks round
   let drag = false;

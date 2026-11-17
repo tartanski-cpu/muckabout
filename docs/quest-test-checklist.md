@@ -102,6 +102,8 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 53. The ripper lever has moved back (STICK ASSIST is now behind it): is it clear of the switches now?
 54. Push a road across the stream west of the yard (by the quarry) again: does the dozer get across without piling up or sticking? (Clay over rock was being turned into rock, and rock stopped a blade dead; both fixed.)
 55. Frame rate in the valley, in the yard and at the head of the valley: please read me the wrist HUD (`X`): the fps, and the "calls" and "tris" numbers. The Quest tier now draws less ground detail and fewer water triangles; if it still drops to 72, those numbers tell me whether it is the drawing or the simulation.
+56. Parked machines are now drawn baked: about a second after a machine stops with nobody using it, it is drawn in 4 draw calls instead of about 20 (four machines in view: some 107 calls became 50 on the desktop). Look at the machines in the yard: does anything look different on a parked one (colours, outlines, the glass, the handrails, a load in the bucket)? Walk up and grab a handrail: does it still light up? Get in and drive off: is there any flicker or a frame where the machine jumps? The "calls" number on the wrist HUD in the yard: what is it now?
+57. Parked machines no longer creep: they used to slide downhill a few millimetres a second on the yard's gentle slope with the brake on (10 cm a minute). Park on a slope and wait a minute: does it stay put? Does pulling away and stopping still feel the same (a braked wheel at a stop is now held by a stiff spring)?
 
 ## Things I already suspect
 

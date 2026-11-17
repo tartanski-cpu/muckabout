@@ -15,6 +15,7 @@ import { Powertrain } from './powertrain.js';
 import { clamp } from '../util/rng.js';
 
 const G = 9.81, ROCK_ID = 6;
+const HOLD_K = (2 * Math.PI * 3) ** 2; // standing grip: a braked wheel's share of the mass on a 3 Hz spring (0.3 mm of give on a 1 % slope)
 const TOOL_BITE = 0.6; // m a blade or bucket may stand below the ground its machine is on before the soil carries it
 const V = () => new THREE.Vector3();
 const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n = V(), _c = V(), _v = V(), _p = V(), _a = V(), _m4 = new THREE.Matrix4(), _m5 = new THREE.Matrix4();
@@ -317,6 +318,7 @@ export class Machine {
     const y = this.terrain.heightAt(x, z) + 0.15, q = yaw === null ? this.spawn.q : { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
     for (const b of this.bodyList) { b.rb.setTranslation({ x, y, z }, true); b.rb.setRotation(q, true); b.rb.setLinvel({ x: 0, y: 0, z: 0 }, true); b.rb.setAngvel({ x: 0, y: 0, z: 0 }, true); }
     for (const t of this.tools) { t.cut.reset(); t.has = false; }
+    for (const w of this.wheels) w.hold = null;
     this.sync(); this.poseNodes(); this.root.updateMatrixWorld(true); this.speed = 0;
     if (this.kin.custom) this._enterCustom();
   }
@@ -622,16 +624,28 @@ export class Machine {
       const matId = terrain.materialAt(_c.x, _c.z), mu = terrain.gripAt(_c.x, _c.z) * (w.side ? 1.35 : 1), soft = MATERIALS[matId].compaction; // grousers bite
       const kill = w.share / h * 0.5; // force that would stop this wheel's share of the mass in ~2 substeps
       let Fl, Fs = -vs * kill * (w.side ? 0.55 : 1);
+      // standing grip: a braked wheel at a stop is held where it stands by a stiff spring, not just slowed by the damping
+      // above (which alone lets a parked machine creep down any slope at the speed where it balances gravity: a few
+      // millimetres a second, 10 cm a minute on the yard's 0.5 %). Let go when the brake is or the wheel is dragged off.
+      let hold = 0;
+      const held = w.side ? !this.trackTarget || this.brake > 0.5 : this.brake > 0.3;
+      if (!held || (!w.hold && (Math.abs(vf) > 0.03 || Math.abs(vs) > 0.03))) w.hold = null;
+      else {
+        if (!w.hold) w.hold = { x: _c.x, z: _c.z };
+        const dx = _c.x - w.hold.x, dz = _c.z - w.hold.z;
+        if (dx * dx + dz * dz > 0.0064) w.hold = null; // dragged 8 cm: it is sliding, not standing
+        else { const ks = w.share * HOLD_K; hold = -ks * (dx * _f.x + dz * _f.z); Fs += -ks * (dx * _s.x + dz * _s.z); }
+      }
       if (w.side) { // track contact: hydrostatic drive holds a target speed
         const tv = this.trackTarget ? this.trackTarget[w.side] : 0, fmax = dr.maxForce * this.range.f / (this.wheels.length / 2);
         const free = this.tow && this.brake < 0.3 && (!this.trackTarget || Math.abs(this.trackTarget.L) + Math.abs(this.trackTarget.R) < 0.05);
         // towed with the levers at rest, the tracks run free against a little drag
-        Fl = free ? clamp(-vf * kill * 0.03, -fmax, fmax) : this.trackTarget && !(this.brake > 0.5) ? clamp((tv - vf) * kill * 0.6, -fmax, fmax) : clamp(-vf * kill, -fmax * 1.5, fmax * 1.5);
+        Fl = free ? clamp(-vf * kill * 0.03, -fmax, fmax) : this.trackTarget && !(this.brake > 0.5) ? clamp((tv - vf) * kill * 0.6, -fmax, fmax) : clamp(-vf * kill + hold, -fmax * 1.5, fmax * 1.5);
         w.spin += (this.trackTarget ? tv : vf) * h / w.r;
       } else {
         Fl = w.def.driven !== false ? perWheel : 0;
         const bmax = this.brake * dr.brake / this.wheels.length + N * (0.02 + 0.22 * soft); // brakes + rolling resistance (soft ground drags)
-        Fl += clamp(-vf * kill, -bmax, bmax);
+        Fl += clamp(-vf * kill + hold, -bmax, bmax);
         w.spin += vf * h / w.r;
       }
       const lim = mu * N, tot = Math.hypot(Fl, Fs);
