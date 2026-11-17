@@ -14,8 +14,9 @@ self.onmessage = (e) => {
     const results = core.step(m.cmds);
     const chunks = core.collectDirty();
     const ms = performance.now() - t0;
-    reply({ t: 'tick', n: m.n, results, chunks, water: core.water ? core.water.pack() : null,
-      stats: { ms, awake: core.awakeChunks, queue: core.qLen } }, chunks.flatMap((c) => [c.h.buffer, c.info.buffer]));
+    const water = core.water ? core.water.pack() : null;
+    reply({ t: 'tick', n: m.n, results, chunks, water,
+      stats: { ms, awake: core.awakeChunks, queue: core.qLen } }, chunks.flatMap((c) => [c.h.buffer, c.info.buffer]).concat(water ? [water.tiles.buffer, water.depth.buffer, water.vx.buffer, water.vz.buffer, water.cleared.buffer] : [])); // handed over, not copied
   } else if (m.t === 'audit') reply({ t: 'audit', id: m.id, audit: core.audit() });
   else if (m.t === 'save') reply({ t: 'save', id: m.id, state: core.snapshot() });
   else if (m.t === 'load') reply({ t: 'load', id: m.id, ok: core.restore(m.state, () => { MAPS[mapName].build(core); }) });

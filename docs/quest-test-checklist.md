@@ -97,6 +97,12 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 51. The stream: can you see it running, and does it look like water or like a wet stripe?
 52. In the old quarry (west side, north of the yard): the dozer's blade should skid on the rock floor and take nothing. The **ripper lever** (right of the blade joystick, push to lower): can you reach it, and does ripping feel like hard work (the engine should labour)?
 
+## 11. After the first valley session
+
+53. The ripper lever has moved back (STICK ASSIST is now behind it): is it clear of the switches now?
+54. Push a road across the stream west of the yard (by the quarry) again: does the dozer get across without piling up or sticking? (Clay over rock was being turned into rock, and rock stopped a blade dead; both fixed.)
+55. Frame rate in the valley, in the yard and at the head of the valley: please read me the wrist HUD (`X`): the fps, and the "calls" and "tris" numbers. The Quest tier now draws less ground detail and fewer water triangles; if it still drops to 72, those numbers tell me whether it is the drawing or the simulation.
+
 ## Things I already suspect
 
 - Control positions are guesses made without seeing them in VR.

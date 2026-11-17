@@ -10,9 +10,9 @@
 import * as THREE from 'three';
 
 export const QUALITY = {
-  quest: { label: 'Quest', ratio: 1, shadow: 0, span: 0, fog: 1 },
+  quest: { label: 'Quest', ratio: 1, shadow: 0, span: 0, fog: 1, lod: { full: 16, half: 34, block: 46, region: 86 } }, // ground detail pulled in: the valley shows far more ground than today's map
   pc: { label: 'PC', ratio: 1, shadow: 2048, span: 30, fog: 1.15 },
-  ultra: { label: 'PC high', ratio: 1.5, shadow: 4096, span: 45, fog: 1.35 },
+  ultra: { label: 'PC high', ratio: 1.5, shadow: 4096, span: 45, fog: 1.35, lod: { full: 30, half: 60, block: 72, region: 140 } },
 };
 const KEY = 'muckabout.quality';
 const isQuest = () => /OculusBrowser|Quest|Pico/i.test(navigator.userAgent);
@@ -47,6 +47,7 @@ export class Quality {
       if (!sun.target.parent) g.scene.add(sun.target);
     }
     u.uSMOn.value = 0; u.uSMTexel.value = 1 / Math.max(1, Q.shadow);
+    g.ground.lod = Q.lod || null; // how far out the ground is drawn in full detail (render/ground.js LOD)
     g.scene.fog.near = this.base.near * Q.fog; g.scene.fog.far = this.base.far * Q.fog;
     u.uFogNear.value = this.base.near * Q.fog; u.uFogFar.value = this.base.far * Q.fog;
     if (g.water?.mat) { g.water.mat.uniforms.uFogNear.value = u.uFogNear.value; g.water.mat.uniforms.uFogFar.value = u.uFogFar.value; }

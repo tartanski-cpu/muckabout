@@ -2,7 +2,8 @@
 // runs unchanged in a worker, inline on the main thread, and in node tests. See docs/terrain-design.md.
 import { MATERIALS, NMAT, ROCK, SHOT } from './materials.js';
 const RIP_BREAKOUT = 1; // a tooth breaks rock out to the sides as well as below it: 1 m less deep for each 1 m aside (45°)
-const RIP_EFFORT = 6; // resistance per m³ of rock broken by a ripper, against dig for soil (rock to a blade or bucket is `dig` 99)
+const RIP_EFFORT = 6;
+const ROCK_SCRAPE = 8; // resistance per m³ of rock an edge meets: very hard going, but the edge rides over it (at `dig` 99 it stopped a dozer dead) // resistance per m³ of rock broken by a ripper, against dig for soil (rock to a blade or bucket is `dig` 99)
 
 export const CHUNK = 32;
 const D2R = Math.PI / 180;
@@ -65,9 +66,13 @@ export class TerrainCore {
     if (n > 0 && this.lm[b + n - 1] === mat) this.lt[b + n - 1] += dh;
     else if (n > 0 && this.lt[b + n - 1] < 0.03) { this.lm[b + n - 1] = mat; this.lt[b + n - 1] += dh; } // absorb dustings
     else {
-      if (n === 3) { // merge the two bottom layers to make room
-        if (this.lt[b + 1] > this.lt[b]) this.lm[b] = this.lm[b + 1];
-        this.lt[b] += this.lt[b + 1]; this.lm[b + 1] = this.lm[b + 2]; this.lt[b + 1] = this.lt[b + 2]; n = 2;
+      if (n === 3) { // merge two layers to make room: the bottom two, unless the bottom is rock, which must never swallow
+        // the soil above it (it did: a blade's spoil dropped on clay over rock turned 1.2 m of clay into rock)
+        const q = MATERIALS[this.lm[b]].solid ? b + 1 : b;
+        if (this.lt[q + 1] > this.lt[q]) this.lm[q] = this.lm[q + 1];
+        this.lt[q] += this.lt[q + 1];
+        if (q === b) { this.lm[b + 1] = this.lm[b + 2]; this.lt[b + 1] = this.lt[b + 2]; }
+        n = 2;
       }
       this.lm[b + n] = mat; this.lt[b + n] = dh; n++;
     }
@@ -191,7 +196,7 @@ export class TerrainCore {
           resist += broke * area * RIP_EFFORT; this.dist[c] = 255; this.wake(c);
           continue;
         }
-        if (reach > soft) resist += (reach - soft) * area * MATERIALS[ROCK].dig; // scraping solid rock: it takes nothing, and the machine feels it
+        if (reach > soft) resist += Math.min(reach - soft, 0.1) * area * ROCK_SCRAPE; // scraping solid rock: it takes nothing, and the machine feels it
         if (soft <= 1e-4) continue;
         vol.fill(0);
         const got = this.removeTop(c, Math.min(reach, soft), vol); // only what lies on the rock

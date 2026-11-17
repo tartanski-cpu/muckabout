@@ -81,7 +81,7 @@ export class Water {
     for (const tile of tiles || [...this.list, ...this.cleared]) {
       const [i0, j0, i1, j1] = this._range(tile);
       for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
-        const w = d[j * nx + i] > 0.06 ? 1 : 0, t = j * k * cnx + i * k;
+        const t = j * k * cnx + i * k, dd = d[j * nx + i], w = dd > 0.15 ? 1 : dd < 0.08 ? 0 : core.wet[t]; // under real water (a river, a pond), with a margin: a stream or the film over a ford does not soak the ground, and its ripples no longer flick cells wet and dry, re-sending the ground every tick
         for (const c of [t, t + 1, t + cnx, t + cnx + 1]) if (core.wet[c] !== w) { core.wet[c] = w; core.chunkDirty[core.chunkOf(c)] = 1; core.wake(c); }
       }
     }
@@ -165,7 +165,7 @@ export class Water {
           if (!core.nl[t]) continue;
           const m = core.topMat(t), over = Math.min(sp, 4) - SCOUR[m]; if (over <= 0) continue; // slower than this material's scour speed
           const dh = MATERIALS[m].erosion * this.erodeK * over * dt;
-          if (dh < 1e-5) continue;
+          if (dh < 1e-4) continue; // wear too slight to matter: skipped, not worth re-sending the ground for (a stream on a clay bank wore at it every tick)
           vol.fill(0);
           const got = core.removeTop(t, dh, vol); if (got <= 0) continue;
           core.dist[t] = 255; core.wake(t);
@@ -181,17 +181,34 @@ export class Water {
   }
 
   /** For the main thread: the awake tiles' water, and the tiles put to sleep since last time. All of it with full. */
+  /** Only tiles that have changed since they were last sent (by 1 cm of depth or 15 cm/s of flow somewhere in them):
+   *  a river running steadily sends next to nothing. `full`: every awake tile, and start counting changes afresh. */
   pack(full = false) {
     if (!full && this.tick % 6 !== 1) return null;
-    const T2 = TILE * TILE, tiles = Int32Array.from(this.list), depth = new Float32Array(tiles.length * T2), vx = new Float32Array(tiles.length * T2), vz = new Float32Array(tiles.length * T2);
-    tiles.forEach((t, q) => { const [i0, j0, i1, j1] = this._range(t); for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) { const c = j * this.nx + i, o = q * T2 + (j - j0) * TILE + (i - i0); depth[o] = this.d[c]; vx[o] = this.vx[c]; vz[o] = this.vz[c]; } });
-    const out = { nx: this.nx, nz: this.nz, cell: this.cell, ox: this.ox, oz: this.oz, tile: TILE, full, tiles, depth, vx, vz, cleared: Int32Array.from(this.cleared) };
+    const T2 = TILE * TILE, nx = this.nx, d = this.d, vx = this.vx, vz = this.vz;
+    if (!this.sentD) { this.sentD = new Float32Array(this.n); this.sentU = new Float32Array(this.n); this.sentW = new Float32Array(this.n); }
+    const sd = this.sentD, su = this.sentU, sw = this.sentW, send = [];
+    for (const t of this.cleared) { const [i0, j0, i1, j1] = this._range(t); for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) { const c = j * nx + i; sd[c] = su[c] = sw[c] = 0; } }
+    for (const t of this.list) {
+      const [i0, j0, i1, j1] = this._range(t); let changed = full;
+      for (let j = j0; j < j1 && !changed; j++) for (let i = i0; i < i1; i++) { const c = j * nx + i; if (Math.abs(d[c] - sd[c]) > 0.01 || Math.abs(vx[c] - su[c]) > 0.15 || Math.abs(vz[c] - sw[c]) > 0.15) { changed = true; break; } }
+      if (changed) send.push(t);
+    }
+    const tiles = Int32Array.from(send), depth = new Float32Array(tiles.length * T2), ox = new Float32Array(tiles.length * T2), oz = new Float32Array(tiles.length * T2);
+    tiles.forEach((t, q) => { const [i0, j0, i1, j1] = this._range(t); for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) { const c = j * nx + i, o = q * T2 + (j - j0) * TILE + (i - i0); depth[o] = sd[c] = d[c]; ox[o] = su[c] = vx[c]; oz[o] = sw[c] = vz[c]; } });
+    const out = { nx, nz: this.nz, cell: this.cell, ox: this.ox, oz: this.oz, tile: TILE, full, tiles, depth, vx: ox, vz: oz, cleared: Int32Array.from(this.cleared) };
     this.cleared.length = 0;
     return out;
   }
+  /** The buffers of a pack, to hand over to another thread instead of copying them. */
+  static transfer(p) { return p ? [p.tiles.buffer, p.depth.buffer, p.vx.buffer, p.vz.buffer, p.cleared.buffer] : []; }
   pack0() { return this.pack(true); }
   /** Saved: the water in the awake tiles. */
-  save() { const p = this.pack(true); return { tiles: p.tiles, d: p.depth, washed: this.washed }; }
+  save() { // (not through pack: that would mark the water as sent to the main thread when it has not been)
+    const T2 = TILE * TILE, tiles = Int32Array.from(this.list), d = new Float32Array(tiles.length * T2);
+    tiles.forEach((t, q) => { const [i0, j0, i1, j1] = this._range(t); for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) d[q * T2 + (j - j0) * TILE + (i - i0)] = this.d[j * this.nx + i]; });
+    return { tiles, d, washed: this.washed };
+  }
   restore(s) {
     if (!s?.tiles) return false;
     for (const t of [...this.list]) if (!this.pinned[t]) { const [i0, j0, i1, j1] = this._range(t); for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) this.d[j * this.nx + i] = 0; }
@@ -230,6 +247,7 @@ export class WaterMirror {
     if (!tiles) one(0, 0, this.nx, this.nz); else for (const t of new Set(tiles)) one(...this._range(t));
   }
 }
+export const transferWater = Water.transfer;
 
 export function attachWater(core, map) {
   if (!map.river && !map.springs && !map.ponds && !map.streams) return null;
