@@ -67,7 +67,7 @@ export class TerrainClient {
   _saveId = 0;
 
   // ---- commands (applied on the next tick)
-  cut(id, p0, p1, capacity, ahead, heap) { this.cmds.push({ k: 'cut', id, p0: Array.from(p0), p1: Array.from(p1), capacity, ahead, heap }); }
+  cut(id, p0, p1, capacity, ahead, heap, rip = false) { this.cmds.push({ k: 'cut', id, p0: Array.from(p0), p1: Array.from(p1), capacity, ahead, heap, rip }); }
   deposit(x, z, m, v) { this.cmds.push({ k: 'deposit', x, z, m, v }); this.queuedDep += v; }
   compact(x, z, r, load) { this.cmds.push({ k: 'compact', x, z, r, load }); }
   command(cmd) { this.cmds.push(cmd); }

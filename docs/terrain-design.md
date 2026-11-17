@@ -95,3 +95,7 @@ Friction: a light damping tuned on the river, and Manning's (n = 0.035), which g
 ## Maps
 
 `src/terrain/maps.js`: a map is `cfg` (grid), placement data, and `build(core)`, which fills every column. Today's map is `dirtColumn(x, z, edge)`. The valley (`src/terrain/valley.js`) uses it unchanged inside today's square and builds the ground round it from named FEATURES: each adjusts the surface `g` and flags (bare, rock, surface material, silt, spoil, added material) only within its own area, then the column's layers are made from the flags. Watercourses are cut to a bed falling evenly along their line. Water sources (`springs`, `ponds`, `streams`) and `woods` (for the scenery) are map data.
+
+## Rock
+
+A material can be `solid` (rock): `cut` never takes it, only what lies on it (`softAbove`), and adds a heavy resistance for the rock the edge meets. With `cmd.rip` (a ripper tooth) `cut` instead breaks the rock it reaches into its `loosens` material (shot rock) where it lies: the column down to the tooth is taken off and put back, the rock part as shot rock and anything that lay on it on top, so volumes balance. The breakout widens with depth (`RIP_BREAKOUT`, 45°). Materials are sent to co-op clients in 4 bits (bog, material 8, used to arrive as nothing in 3).

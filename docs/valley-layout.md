@@ -68,7 +68,7 @@ The valley as built (`?map=valley`), desktop software rendering. These show how 
 1. **Water in more than one place.** Done: water anywhere on the map, stepped only where it is wet; springs and ponds from the map (`src/terrain/water.js`). A stream from a spring finds its own way down and fills a hollow, as the reservoir will fill behind the dam.
 2. **Named sites and site files** (above). Done: `src/ui/sites.js`, `src/game/siteFile.js`, `tests/e2e/sites.mjs`.
 3. **The scenery follows the map's size.** Done: the backdrop carries on outwards from every point of the map's edge at its own height, with trees along it and in the map's woods (`src/render/scenery.js`).
-4. **Rock:** the quarry needs a hard material that only breaks with ripping. `ROCK` exists as a material, but nothing digs it yet.
+4. **Rock.** Done: rock is solid to buckets and blades; the dozer has a ripper that breaks it into shot rock (`terrain/core.js` cut with `rip`, `machines/dozer.json`, `tests/e2e/rip.mjs`).
 5. **Maps built from named features.** Done: `src/terrain/valley.js`, ten features round today's map (`dirtColumn` in `maps.js`, unchanged); `?map=valley`. A watercourse is cut to a bed falling evenly from source to river, so it never runs uphill whatever it crosses.
 6. **The water warm-up:** about 5 s at start-up in the valley. Cache the settled water if it grows.
-7. **Rock that only breaks with ripping** (above, item 4), and then **making the valley the default map**, once it has been looked at on the headset.
+7. **Making the valley the default map**, once it has been looked at on the headset.

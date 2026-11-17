@@ -230,3 +230,31 @@ describe('the valley', () => {
     expect(up).toBeLessThan(0.05);
   }, 60000);
 });
+
+describe('rock', () => {
+  const ROCKY = { cfg: { nx: 64, nz: 64, cell: 0.25, ox: -8, oz: -8 }, build(core) { for (let c = 0; c < 64 * 64; c++) core.setColumn(c, -3, [[6, 2], [CLAY, 0.4]]); } }; // 2 m of rock under 0.4 m of clay; ground at -0.6
+  const rect = (y, x0 = -1, x1 = 1, z0 = -1, z1 = 1) => [x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z0];
+  const make = () => { const c = new TerrainCore(ROCKY.cfg); ROCKY.build(c); return c; };
+  it('a bucket or blade takes only what lies on the rock, and meets it hard', () => {
+    const c = make(), v0 = c.audit().total, r = c.cut({ p0: rect(-1.4), p1: rect(-1.4), capacity: 99 });
+    const took = r.taken.reduce((a, b) => a + b, 0);
+    expect(Math.abs(c.heightAt(0, 0) - -1.0)).toBeLessThan(1e-3);   // down to the rock's top, not to the edge 0.4 m below it
+    expect(took).toBeCloseTo(0.4 * 81 * 0.0625, 3);                  // the clay over the 9 × 9 cells it covers
+    expect(r.resist).toBeGreaterThan(took * 20);                     // and it felt the rock
+    expect(Math.abs(c.audit().total + took - v0)).toBeLessThan(1e-6);
+  });
+  it('a ripper breaks rock into shot rock where it lies; then it digs', () => {
+    const c = make(), v0 = c.audit().total;
+    c.cut({ p0: rect(-1.4), p1: rect(-1.4), capacity: 99 });         // clear the clay off first
+    const after = c.audit().total;
+    const r = c.cut({ p0: rect(-1.35, -0.15, 0.15), p1: rect(-1.35, -0.15, 0.15), rip: true }); // a tooth 0.35 m into the rock
+    expect(r.taken.reduce((a, b) => a + b, 0)).toBe(0);                // it takes nothing
+    expect(c.topMat(c.cellAt(0, 0))).toBe(9);                          // shot rock where it went
+    expect(c.topMat(c.cellAt(0.8, 0))).toBe(6);                        // solid rock beside its line
+    expect(Math.abs(c.audit().total - after)).toBeLessThan(1e-6);     // nothing made or lost: the same volume, broken
+    const d = c.cut({ p0: rect(-1.6, -0.15, 0.15), p1: rect(-1.6, -0.15, 0.15), capacity: 99 });
+    expect(d.taken[9]).toBeGreaterThan(0.05);                          // a bucket takes the shot rock now
+    expect(Math.abs(c.heightAt(0, 0) - -1.35)).toBeLessThan(1e-3);     // down to where the tooth broke it, no deeper
+    void v0;
+  });
+});

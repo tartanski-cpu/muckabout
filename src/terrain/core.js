@@ -1,6 +1,8 @@
 // Layered heightfield terrain: the authoritative sim. Pure data + maths (no DOM, no three.js) so it
 // runs unchanged in a worker, inline on the main thread, and in node tests. See docs/terrain-design.md.
-import { MATERIALS, NMAT, ROCK } from './materials.js';
+import { MATERIALS, NMAT, ROCK, SHOT } from './materials.js';
+const RIP_BREAKOUT = 1; // a tooth breaks rock out to the sides as well as below it: 1 m less deep for each 1 m aside (45°)
+const RIP_EFFORT = 6; // resistance per m³ of rock broken by a ripper, against dig for soil (rock to a blade or bucket is `dig` 99)
 
 export const CHUNK = 32;
 const D2R = Math.PI / 180;
@@ -56,6 +58,8 @@ export class TerrainCore {
     this.nl[c] = n; this._fixH(c);
     return dh - rem;
   }
+  /** Thickness of loose material on top of column c, down to the first solid layer (rock), or all of it. */
+  softAbove(c) { const b = c * 3; let s = 0; for (let k = this.nl[c] - 1; k >= 0; k--) { if (MATERIALS[this.lm[b + k]].solid) return s; s += this.lt[b + k]; } return s; }
   addTop(c, mat, dh) {
     const b = c * 3; let n = this.nl[c];
     if (n > 0 && this.lm[b + n - 1] === mat) this.lt[b + n - 1] += dh;
@@ -141,6 +145,8 @@ export class TerrainCore {
    * cmd.capacity: m³ the tool's container can still take. Excess is windrowed `ahead` metres beyond the lip, and, if
    * cmd.heap is given (a blade: it has no bucket to dig a face with), only up to that many metres above the edge;
    * beyond that it spills round the ends of the edge.
+   * Solid material (rock) is never taken: a bucket or blade cuts only what lies on it, and meets heavy resistance.
+   * cmd.rip (a ripper tooth): breaks the rock it sweeps into shot rock where it lies, and takes nothing.
    * Returns { taken: Float64Array(NMAT) m³, pushed, resist }.
    */
   cut(cmd) {
@@ -174,8 +180,21 @@ export class TerrainCore {
         if (a < 0 || a > 1 || b < 0 || b > 1) continue;
         const c = j * nx + i, yf = P[1] - (nxx * rx + nzz * rz) / nyy;
         if (this.h[c] <= yf + 1e-4) continue;
+        const soft = this.softAbove(c), reach = this.h[c] - yf - (cmd.rip ? Math.abs(a - 0.5) * Math.sqrt(wl) * RIP_BREAKOUT : 0); // (a ripper's floor is wide: the rock breaks less deep away from its line)
+        if (reach <= 1e-4) continue;
+        if (cmd.rip) { // a ripper: breaks the rock it reaches into shot rock, where it lies; takes nothing away
+          if (reach <= soft + 1e-4) continue;
+          vol.fill(0); this.removeTop(c, reach, vol);
+          let broke = 0; for (let m = 1; m < NMAT; m++) if (MATERIALS[m].solid && vol[m] > 0) { broke += vol[m]; vol[m] = 0; }
+          if (broke > 0) this.addTop(c, MATERIALS[ROCK].loosens || SHOT, broke);
+          for (let m = 1; m < NMAT; m++) if (vol[m] > 0) this.addTop(c, m, vol[m]); // what lay on the rock goes back on top
+          resist += broke * area * RIP_EFFORT; this.dist[c] = 255; this.wake(c);
+          continue;
+        }
+        if (reach > soft) resist += (reach - soft) * area * MATERIALS[ROCK].dig; // scraping solid rock: it takes nothing, and the machine feels it
+        if (soft <= 1e-4) continue;
         vol.fill(0);
-        const got = this.removeTop(c, this.h[c] - yf, vol);
+        const got = this.removeTop(c, Math.min(reach, soft), vol); // only what lies on the rock
         if (got <= 0) continue;
         this.dist[c] = 255; this.wake(c);
         for (let m = 1; m < NMAT; m++) {

@@ -12,7 +12,7 @@ import { MATERIALS, GRASS_COLOR, NMAT } from '../terrain/materials.js';
 
 // Per material: x = speckle (gravel grit), y = strata on steep cut faces (clay), z = ripples (sand)
 export const LOD = { full: 22, half: 44, block: 56, region: 104 };
-const DETAIL = [[0, 0, 0], [0.2, 0.3, 0], [0.15, 0.25, 0], [0.15, 1.0, 0], [0.1, 0.1, 1.0], [1.0, 0, 0], [0.5, 0.6, 0], [0.35, 0.45, 0], [0.1, 0.2, 0]];
+const DETAIL = [[0, 0, 0], [0.2, 0.3, 0], [0.15, 0.25, 0], [0.15, 1.0, 0], [0.1, 0.1, 1.0], [1.0, 0, 0], [0.5, 0.6, 0], [0.35, 0.45, 0], [0.1, 0.2, 0], [1.0, 0.15, 0]];
 
 const VERT = /* glsl */`
 uniform highp sampler2D uH; uniform highp sampler2D uInfo;

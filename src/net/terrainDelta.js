@@ -2,13 +2,14 @@
 // run-length encoded. A client builds the same starting map locally, so a newcomer only needs the cells that
 // differ from that starting state. Pure functions over typed arrays (unit-tested, no DOM).
 //
-// Cell encoding: height in centimetres (Int16) + one info byte: material (3 bits) | disturbed << 3 | wet << 4.
+// Cell encoding: height in centimetres (Int16) + one info byte: material (4 bits) | disturbed << 4 | wet << 5.
+// (Three bits for the material lost bog, material 8: a worked bog cell reached a client as no material at all.)
 // Wire format (little-endian DataView), per message:
 //   u16 nChunks, then per chunk: u16 chunkId, u16 nRuns, then per run: u16 skip, u16 len, len × (i16 h, u8 info)
 import { CHUNK } from '../terrain/core.js';
 
 export const Q = 100; // quantisation steps per metre (1 cm)
-const packInfo = (info, k) => (info[k] & 7) | (info[k + 1] ? 8 : 0) | (info[k + 2] ? 16 : 0);
+const packInfo = (info, k) => (info[k] & 15) | (info[k + 1] ? 16 : 0) | (info[k + 2] ? 32 : 0);
 
 /** Keeps what the peers have been sent and produces deltas against it. */
 export class TerrainDeltaWriter {
@@ -79,7 +80,7 @@ export function applyTerrainDelta(mirror, bytes) {
       k += dv.getUint16(o, true); const len = dv.getUint16(o + 2, true); o += 4;
       for (let q = 0; q < len; q++, k++) {
         const c = (cj * CHUNK + ((k / CHUNK) | 0)) * nx + ci * CHUNK + (k % CHUNK), b = dv.getUint8(o + 2);
-        h[c] = dv.getInt16(o, true) / Q; info[c * 4] = b & 7; info[c * 4 + 1] = b & 8 ? 255 : 0; info[c * 4 + 2] = b & 16 ? 255 : 0; o += 3;
+        h[c] = dv.getInt16(o, true) / Q; info[c * 4] = b & 15; info[c * 4 + 1] = b & 16 ? 255 : 0; info[c * 4 + 2] = b & 32 ? 255 : 0; o += 3;
       }
     }
     // repack the whole chunk for the renderer's texture upload

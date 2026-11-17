@@ -21,7 +21,7 @@ const N2 = 0.035 ** 2; // Manning's n² for a natural channel: friction that gro
 export const TILE = 16;                 // water cells per tile side (= 32 terrain cells, one chunk)
 const SLEEP = 120;                      // steps a tile must stay dry before it sleeps
 // flow speed (m/s) below which a material stays put: the natural river bed is stable, a mud bank is not
-const SCOUR = [9, 0.6, 0.35, 1.6, 1.0, 3.6, 9, 0.5];
+const SCOUR = [9, 0.6, 0.35, 1.6, 1.0, 3.6, 9, 0.5, 0.3, 3.0]; // per material: none, topsoil, mud, clay, sand, gravel, rock, spoil, bog, shot rock
 
 const lineDist = (pts, x, z) => { let best = 1e9; for (let k = 0; k < pts.length - 1; k++) { const [ax, az] = pts[k], [bx, bz] = pts[k + 1], dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz))); best = Math.min(best, Math.hypot(x - ax - dx * t, z - az - dz * t)); } return best; };
 

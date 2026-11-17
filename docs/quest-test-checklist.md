@@ -90,6 +90,13 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 47. On the start page in the Quest browser: make a *New site…* called "Family". Is the name box usable with the Quest keyboard? Does the site you last played open next time?
 48. *Save to a file* in the Quest browser: where does the file go, and can you find it again? (Downloads in the Quest browser may be awkward: tell me what happens.)
 
+## 10. The valley and rock
+
+49. Open `?map=valley`. Walk or drive out of today's map in any direction: is there a visible seam at its edge? Does the backdrop beyond the valley's edges look like more country, or like a wall?
+50. Frame rate at the head of the valley looking south, and in the yard: tell me the numbers on the wrist HUD (`X`).
+51. The stream: can you see it running, and does it look like water or like a wet stripe?
+52. In the old quarry (west side, north of the yard): the dozer's blade should skid on the rock floor and take nothing. The **ripper lever** (right of the blade joystick, push to lower): can you reach it, and does ripping feel like hard work (the engine should labour)?
+
 ## Things I already suspect
 
 - Control positions are guesses made without seeing them in VR.

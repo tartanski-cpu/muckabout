@@ -280,7 +280,7 @@ export class Machine {
     this.tools = [];
     for (const t of def.tools || []) {
       const nd = this.nodeList.find((n) => n.def.name === t.node);
-      this.tools.push({ def: t, cut: new CutTool(`${this.id}.${t.name}`, t.corners, t.ahead ?? 0.35, t.heap ?? (t.container ? 0 : 0.9)), node: this.nodes[t.node], body: nd.body, container: t.container ? this.containers[t.container] : null, rate: 0, prev: V(), vel: V(), has: false });
+      this.tools.push({ def: t, cut: new CutTool(`${this.id}.${t.name}`, t.corners, t.ahead ?? 0.35, t.heap ?? (t.container ? 0 : 0.9), !!t.rip), node: this.nodes[t.node], body: nd.body, container: t.container ? this.containers[t.container] : null, rate: 0, prev: V(), vel: V(), has: false });
     }
     // a bucket or blade must bite, not prop the machine up: its skid points only bear on ground that cannot be dug (bare rock)
     for (const c of this.contacts) c.tool = this.tools.some((t) => t.node === c.node);

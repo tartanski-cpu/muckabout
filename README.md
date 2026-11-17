@@ -58,7 +58,7 @@ Everything in the cab is physical: reach, squeeze the grip, move your hand. The 
 |---|---|
 | Wheel loader | steering wheel · loader joystick (back: raise, left: curl) · R/N/F shuttle · hand throttle · park brake · key |
 | Dumper | steering wheel · shuttle · hand throttle · tipper lever (back: raise) · park brake · key |
-| Bulldozer | two track levers (spring to neutral) · blade joystick (back: raise, sideways: tilt) · hand throttle · left trigger decelerator · key |
+| Bulldozer | two track levers (spring to neutral) · blade joystick (back: raise, sideways: tilt) · ripper lever (push: down) · hand throttle · left trigger decelerator · key |
 | Backhoe | front: wheel, shuttle, loader joystick · swivel-seat rocker → rear: two hoe joysticks (ISO: left = swing/dipper, right = boom/bucket), two stabiliser levers |
 
 The job is on the clipboard in every cab: cut a road down the terraces, build a crossing (mud for bulk, gravel on top; mud alone washes out), get the dumper and loader across, haul 20 m³ of sand back to the hopper.
@@ -168,6 +168,10 @@ From the rear seat the hoe is worked in the **SAE backhoe pattern** by default: 
 `src/game/handTools.js`: a shovel, two grading stakes with a level string line, and a tow chain, lying beside where you start. Grip to pick up. The shovel's blade is a small cutting edge like a bucket's: it takes soil from the ground and throws it off as clods, and its load is in the volume audit. The line runs level with the first stake's foot, with droppers coloured by how the ground stands against it. A hook let go at the end of a machine hitches there; a taut chain pulls on both machines (`Machine.tow`), and a hitched machine with its park brake off rolls free. In co-op there is one set, owned by the host: a player on a client carries a tool on their own screen and the host follows, digs with the shovel and hitches the hooks; a tool someone has cannot be taken (`tests/e2e/cooptools.mjs`).
 
 Machines are drawn smoothly between simulation steps (`Game._blendPoses`): the sim runs at 60 steps a second whatever the display rate.
+
+## Rock and the ripper
+
+Rock (the valley's old quarry, and 1.5 m under its west hill) is solid: a bucket or blade takes only what lies on it, and feels it hard. The dozer's **ripper** (a single shank on the back; lever beside the blade joystick, push to lower; `Z`/`E` on the desktop) breaks rock into **shot rock** where it lies, as deep as the tooth reaches and less deep out to the sides (it breaks out at about 45°), without taking anything away, so the volume audit holds. Shot rock then digs, carries and tips like coarse gravel. Rip a few passes side by side before bringing the loader in. `tests/e2e/rip.mjs`.
 
 ## The bog
 
