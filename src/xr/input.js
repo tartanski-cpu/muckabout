@@ -40,7 +40,7 @@ export class XRInput {
       if (f) {
         h.tracked = true; h.pos.copy(f.pos); if (f.parent) f.parent.localToWorld(h.pos); if (f.quat) h.quat.copy(f.quat); h.tip.copy(h.pos);
         h.hasRay = !!f.dir; if (f.dir) h.dir.copy(f.dir).normalize(); // fake hands only point when given a direction
-        grip = !!f.grip; trig = f.trigger || 0; if (f.stick) [sx, sy] = f.stick; a = !!f.primary; b = !!f.secondary;
+        grip = !!f.grip; trig = f.trigger || 0; if (f.stick) [sx, sy] = f.stick; sc = !!f.stickClick; a = !!f.primary; b = !!f.secondary;
       } else if (presenting) {
         const g = this.grips.find((x) => x.grip.userData.side === side);
         const gp = g?.grip.userData.src?.gamepad;

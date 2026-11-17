@@ -177,7 +177,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (lbTap) setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
     if (hit(0)) m.voice.horn();                                                                      // A: horn
     if (hit(11) && m.controls.swivel) m.controls.swivel.press(null);                                 // right stick click: turn the seat (backhoe)
-    if (hit(13)) m.reset();
+    if (hit(13)) m.upright();
     if (hit(12) && m.controls.range) setCtl(m, 'range', m.controls.range.value > 0.5 ? 0 : 1);                  // d-pad up: travel gear                                                                          // d-pad down: put it back on its wheels
   }
   const setCtl = (m, name, v) => { const c = m.controls[name]; if (c && !c.held && c.value !== v) c.set(v); };
@@ -283,8 +283,12 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     }
     if (player.machine && (dashTimer += fdt) > 0.25) { dashTimer = 0; drawDash(player.machine); }
     if (S.checklist && game.frame % 15 === 0) { S.checklist.update(fdt * 15); S.hopper.update(); S.padJob?.update(fdt * 15, { authority: !game.remote }); S.board.update(fdt * 15); }
-    if (left.stickPressed && !left.busy && !player.seated) S.setStress(!S.stress);
-    if (left.stickPressed && player.seated && !left.holding && !game.remote) { S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom'); left.pulse(0.6, 60); }
+    // Left stick held in for a second, seated: stand this machine back on its wheels where it is. (A click used to
+    // switch the physics model when seated and start the demo drivers on foot: far too easy to do by accident. Both
+    // are on the start page now.) A hold, not a click, because the stick is clicked by accident while pushing it.
+    const lsDown = !!left._prev?.stick && player.seated && !left.holding && !game.remote;
+    S.resetHold = lsDown ? (S.resetHold || 0) + fdt : 0;
+    if (lsDown && S.resetHold >= 1 && S.resetHold - fdt < 1) { player.machine.upright(); game.hud.note = 'MACHINE STOOD UPRIGHT'; left.pulse(0.9, 120); }
     // cab controls and their labels are many small draw calls: only draw them for machines within reach (handrails always: they are how you find the way in)
     if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; for (const r of m.rails || []) r.root.visible = true; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
@@ -317,7 +321,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     else if (m && e.code === 'KeyP') setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyT') setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));
     else if (m && e.code === 'KeyG') setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
-    else if (m && e.code === 'KeyR') m.reset();
+    else if (m && e.code === 'KeyR') { if (e.shiftKey) m.reset(); else m.upright(); }
     else if (m && e.code === 'KeyU' && m.controls.range) setCtl(m, 'range', m.controls.range.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyY' && m.controls.grade) setCtl(m, 'grade', m.controls.grade.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyH') m.voice.horn();
@@ -348,12 +352,12 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
     el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock and the left stick to switch physics · on foot, click the left stick for the stress test and the right stick to change the time of day.<br>`
+      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock, and hold the left stick in for a second to stand a rolled or stuck machine back on its wheels · on foot, click the right stick to change the time of day.<br>`
       + `<b>PC:</b> point at a lever, switch, key or the wheel and it lights up; drag it (up pushes forward), click a switch or button; on foot, click a handrail to climb in, or click a hand tool to carry it (look at the ground to put it there, walk to dig, right button throws, click to put down). Drag anywhere else to look round.<br>`
       + `<b>Keys:</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
-      + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} reset · ${K('X')} stress test · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
-      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ reset; on foot, sticks walk and look<br>`
-      + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Seated in VR, click the left stick to switch and compare.<br>`
+      + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} stand the machine upright (${K('Shift')}+${K('R')} back to where it started) · ${K('X')} demo drivers · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
+      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ stand the machine upright; on foot, sticks walk and look<br>`
+      + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Switch it under Extras on the start page (Esc).<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }
   const sp = map.spawn.player || [(map.spawn[kinds[0]] || [0, 0])[0] - 5, (map.spawn[kinds[0]] || [0, 0])[1] + 3, 0];

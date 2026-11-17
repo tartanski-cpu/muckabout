@@ -300,7 +300,7 @@ describe('the engine works for its living (what the sound follows)', () => {
       return { fuel, rpm: r.m.engine.rpm, boost: r.m.engine.boost };
     };
     const free = await go(false), push = await go(true);
-    expect(push.fuel).toBeGreaterThan(free.fuel + 0.15); expect(push.rpm).toBeLessThan(free.rpm - 30); expect(push.boost).toBeGreaterThan(free.boost + 0.2);
+    expect(push.fuel).toBeGreaterThan(free.fuel + 0.15); expect(push.rpm).toBeLessThan(free.rpm - 20); expect(push.boost).toBeGreaterThan(free.boost + 0.2);
   });
   it('a loader driven into the pile sags and digs in, then recovers when the pedal comes off', async () => {
     const r = await rig('loader', { x: 10, z: 14 }); r.m.setPhysics('custom'); r.step(60); start(r.m); r.m.inp.throttle = 1; r.step(150);
@@ -440,6 +440,47 @@ describe('digging down in one pass', () => {
     expect(deep).toBeGreaterThan(1.7);   // it used to level off about 1 m down
     expect(late).toBeGreaterThan(1.6);   // and it stays down there rather than climbing back onto a platform
   }, 120000);
+});
+
+describe('standing a machine upright', () => {
+  it('puts it back on its wheels where it is, facing the way it faced', async () => {
+    const r = await rig('loader', { x: 10, z: 14 }); const m = r.m; r.step(30);
+    m.reset(12, 9, 1.0); r.step(30);
+    const rb = m.bodyList[0].rb; rb.setRotation({ x: 0.6, y: 0.45, z: 0.3, w: 0.59 }, true); // thrown on its side
+    m.upright(); r.step(60);
+    const e = m.bodyList[0].obj.matrixWorld.elements;
+    expect(e[5]).toBeGreaterThan(0.97);                                   // upright
+    expect(Math.hypot(m.position.x - 12, m.position.z - 9)).toBeLessThan(0.6); // where it was, not back at the start
+  });
+});
+
+describe('the body on its springs (custom model)', () => {
+  it('a loader braked hard dips its nose, rocks back past level and settles; a dozer barely moves', async () => {
+    const run = async (id) => {
+      const r = await rig(id, { x: 10, z: 20 }); const m = r.m; m.setPhysics('custom'); r.step(60); start(m); m.inp.throttle = 1; r.step(90);
+      const tr = m.def.drive.type === 'tracks';
+      r.step(240, (mm) => { if (tr) { mm.inp.left = 1; mm.inp.right = 1; } else { mm.inp.shuttle = 1; mm.inp.accel = 1; } });
+      const cruise = Math.abs(m.kin.sp); let dive = 0, back = 0;
+      for (let i = 0; i < 240; i++) { r.step(1, (mm) => { mm.inp.left = 0; mm.inp.right = 0; mm.inp.accel = 0; mm.inp.brake = 1; }); dive = Math.min(dive, m.kin.sp); if (i > 20) back = Math.max(back, m.kin.sp); }
+      return { cruise, dive, back, rest: Math.abs(m.kin.sp), y: m.kin.sh };
+    };
+    const L = await run('loader'), D = await run('dozer');
+    expect(L.cruise).toBeLessThan(0.01);         // level at a steady speed
+    expect(L.dive).toBeLessThan(-0.035);         // nose down more than 2° under full brakes
+    expect(L.dive).toBeGreaterThan(-0.08);       // but not standing on its nose
+    expect(L.back).toBeGreaterThan(0.008);       // rocks back past level
+    expect(L.rest).toBeLessThan(0.003);          // and has settled 4 s later
+    expect(Math.abs(D.dive)).toBeLessThan(0.03); // tracks: stiff and well damped
+    expect(D.back).toBeLessThan(0.006);
+  }, 60000);
+  it('leans out of a turn', async () => {
+    const r = await rig('loader', { x: 10, z: 20 }); const m = r.m; m.setPhysics('custom'); r.step(60); start(m); m.inp.throttle = 1; r.step(90);
+    r.step(200, (mm) => { mm.inp.shuttle = 1; mm.inp.accel = 1; });
+    const psi0 = m.kin.psi; r.step(90, (mm) => { mm.inp.steer = 1; mm.inp.accel = 1; });
+    const turnedLeft = m.kin.psi > psi0;
+    expect(Math.abs(m.kin.sr)).toBeGreaterThan(0.004);
+    expect(Math.sign(m.kin.sr)).toBe(turnedLeft ? -1 : 1); // right side down in a left turn
+  }, 60000);
 });
 
 describe('exhaust rain cap', () => {

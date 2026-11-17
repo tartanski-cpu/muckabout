@@ -3,6 +3,7 @@
   "kind": "loader",
   "engine": {"cylinders": 6, "idleRpm": 800, "maxRpm": 2200},
   "drive": {"high": [1.4, 0.5], "type": "wheels", "maxForce": 108000, "power": 150000, "maxSpeed": [8, 5], "brake": 140000},
+  "sprung": {"hz": 1.3, "damp": 0.22, "pitch": 0.008, "roll": 0.008, "heave": 0.004},
   "bodies": [{"name": "rear", "mass": 11000, "size": [2.2, 1.6, 3.4], "com": [0, 1.1, 0.5], "colliders": [{"size": [2.3, 1.2, 3.6], "pos": [0, 1.3, 0.5]}, {"size": [1.7, 1.8, 1.7], "pos": [0, 2.95, -0.7]}]}, {"name": "front", "mass": 6500, "size": [2.2, 1.4, 2.9], "com": [0, 1.1, -3.0], "colliders": [{"size": [2.3, 1.1, 2.7], "pos": [0, 1.25, -2.9]}]}],
   "joints": [{"name": "artic", "a": "rear", "b": "front", "anchor": [0, 1.0, -1.5], "axis": [0, 1, 0], "min": -0.68, "max": 0.68, "rate": 0.9, "input": "steer"}],
   "wheels": [{"body": "rear", "pos": [-1.05, 0.75, 0], "r": 0.75, "w": 0.55}, {"body": "rear", "pos": [1.05, 0.75, 0], "r": 0.75, "w": 0.55}, {"body": "front", "pos": [-1.05, 0.75, -3.3], "r": 0.75, "w": 0.55}, {"body": "front", "pos": [1.05, 0.75, -3.3], "r": 0.75, "w": 0.55}],

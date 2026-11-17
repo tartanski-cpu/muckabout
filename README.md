@@ -41,7 +41,7 @@ Every machine can run on either of two models, and you can flip between them whi
 - **Custom** (the default): the proof of concept's hand-written approach, extended to all four machines. Speed and heading are integrated directly (articulated, front-steer or skid-steer), and the chassis rides a plane fitted through the ground under its wheels with a little suspension lag. Nothing bounces, tips over or fights a solver. Machines stop dead against each other rather than shoving.
 - **Rapier**: rigid bodies with spring suspension and tyre forces. Machines can pitch, roll over, push each other and get stuck.
 
-Switch: seated in VR, click the **left stick**; on desktop press `M`. The dash display shows which is active. `?physics=rapier` starts on Rapier. Hydraulics, digging, containers, sound and controls are identical in both.
+Switch: the **Physics** button under Extras on the start page; on desktop also `M`. The custom model carries its body on three damped springs (pitch, roll, heave; `sprung` in each machine's JSON), so it dips under braking, squats pulling away, leans out of turns and bounces over bumps as the rigid-body model does. The dash display shows which is active. `?physics=rapier` starts on Rapier. Hydraulics, digging, containers, sound and controls are identical in both.
 
 ## Playing
 
@@ -51,7 +51,7 @@ Everything in the cab is physical: reach, squeeze the grip, move your hand. The 
 
 - **Pedals:** feet aren't tracked, so while a hand is on any control its trigger is a pedal: right = accelerator, left = brake (decelerator on the dozer). There's a placard in each cab.
 - **To move off:** turn the key (grab it and twist clockwise, or grab and let go), poke the park brake off, push the shuttle lever to F, squeeze the right trigger.
-- **Buttons:** `Y` get out · `B` recentre seat · `A` horn · `X` perf HUD (left wrist) · right stick click (seated) horizon lock · left stick click (on foot) stress test.
+- **Buttons:** `Y` get out · `B` recentre seat · `A` horn · `X` perf HUD (left wrist) · right stick click (seated) horizon lock · left stick held in for a second (seated) stands a rolled or stuck machine back on its wheels where it is. The demo drivers (all four machines working by themselves) are under Extras on the start page; they run on a page of their own that neither loads nor saves your site.
 - **Stick assist** rocker on the dash (off by default) lets the thumbsticks drive.
 
 | Machine | Controls |

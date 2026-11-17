@@ -70,9 +70,14 @@ const join = q.get('join'), hosting = flag('host', false);
   }
 })().catch((e) => { status.textContent = 'failed to start: ' + e.message; console.error(e); });
 
-/** The co-op row on the start page: host a room, or join one by its five-digit code. Both reload the page with the choice in the URL. */
-function coop() {
-  const go = (params) => { const u = new URL(location.href); u.search = ''; for (const k in params) u.searchParams.set(k, params[k]); if (q.get('net')) u.searchParams.set('net', q.get('net')); location.href = u.toString(); };
+/** The co-op row and the extras on the start page. Host a room, or join one by its five-digit code: both reload the page with the choice in the URL. */
+function coop(game) {
+  const go = (params) => { const u = new URL(location.href); u.search = ''; for (const k in params) u.searchParams.set(k, params[k]); for (const k of ['net', 'map', 'site']) if (q.get(k)) u.searchParams.set(k, q.get(k)); location.href = u.toString(); }; // (the map and site come along: hosting from the valley stays in the valley)
+  // Extras: the demo drivers run on a page of their own (?stress=1), which neither loads nor saves the site, so the
+  // demo cannot spoil saved work; the physics switch is live.
+  const demo = document.getElementById('demoBtn'), phys = document.getElementById('physBtn'), S = game.scene_, on = flag('stress', false);
+  if (demo) { demo.textContent = on ? 'Stop the demo drivers' : 'Watch the demo drivers'; demo.addEventListener('click', () => go(on ? {} : { stress: 1 })); }
+  if (phys) { const say = () => { phys.textContent = `Physics: ${S.physics === 'rapier' ? 'Rapier' : 'custom'} (switch)`; }; say(); phys.style.display = game.remote ? 'none' : ''; phys.addEventListener('click', () => { S.setPhysics(S.physics === 'custom' ? 'rapier' : 'custom'); say(); }); }
   document.getElementById('hostBtn')?.addEventListener('click', () => go({ host: 1 }));
   document.getElementById('joinBtn')?.addEventListener('click', () => { const c = document.getElementById('joinCode').value.trim(); if (/^\d{5}$/.test(c)) go({ join: c }); else document.getElementById('netStatus').textContent = 'enter the 5-digit room number'; });
 }
