@@ -20,7 +20,7 @@ try {
 
   // host works the loader at the gravel stockpile for a while (scripted), in real time so the client can follow
   await host.evaluate(() => {
-    const g = __game, { Script, loaderCycle } = g.autopilot, L = g.machine('loader'); L.reset(6, -46, -Math.PI / 2);
+    const g = __game, { Script, loaderCycle } = g.autopilot, L = g.machine('loader'); g.machine('dumper').reset(4, -40, Math.PI); L.reset(6, -46, -Math.PI / 2); // the dumper parked clear: its brakes hold it, and a loader dropped onto its flank sits on it
     window.ls = new Script(L, loaderCycle({ from: [11, -46], dig: [20, -46], stage: [4, -46], target: g.play.hopper }), { loop: true });
     g.updaters.unshift((dt) => ls.step(dt));
   });
