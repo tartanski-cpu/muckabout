@@ -22,10 +22,12 @@ try {
   await host.evaluate(() => {
     const g = __game, { Script, loaderCycle } = g.autopilot, L = g.machine('loader'); g.machine('dumper').reset(4, -40, Math.PI); L.reset(6, -46, -Math.PI / 2); // the dumper parked clear: its brakes hold it, and a loader dropped onto its flank sits on it
     window.ls = new Script(L, loaderCycle({ from: [11, -46], dig: [20, -46], stage: [4, -46], target: g.play.hopper }), { loop: true });
-    g.updaters.unshift((dt) => ls.step(dt));
+    g.updaters.unshift((dt) => { if (window.lsOn !== false) ls.step(dt); });
   });
   // run the host sim fast (background tabs are throttled), letting the network loop flush in between
   for (let k = 0; k < 14; k++) { await host.evaluate(() => { __game.sim(120); }); await sync(500); }
+  // stop the loader where it is, so the comparison below is of where it stands, not of how far it moves in the client's interpolation delay
+  await host.evaluate(() => { const L = __game.machine('loader'); window.lsOn = false; L.override = { accel: 0, brake: 1, boom: 0, bucket: 0 }; __game.sim(120); });
   await sync(1500); await sync(1200); // short turns in the background: the host frees a seat whose player goes quiet
   const h = await host.evaluate(() => ({ pile: [16, 17, 18, 19, 20].map((x) => __game.terrain.heightAt(x, -46)), loader: __game.machine('loader').position.toArray(), boom: __game.machine('loader').fn.boom.pos, bucket: __game.machine('loader').payload(), peers: __game.play.net.peers.size }));
   const c = await client.evaluate(() => ({ pile: [16, 17, 18, 19, 20].map((x) => __game.terrain.heightAt(x, -46)), loader: __game.machine('loader').position.toArray(), boom: __game.machine('loader').fn.boom.pos, bucket: __game.machine('loader').payload(), base: __game.terrain.heightAt(16, -40) }));
