@@ -1,6 +1,7 @@
 # Soil round a dozer blade: what is wrong, how real soil behaves, and the plan
 
-Status: plan, not built. Measuring tools: `node tools/bladeprobe.mjs [flat|trench|pile]` (headless, numbers) and
+Status: built (November 2026), with the owner's three decisions taken as recommended (section 4). What was built,
+and where it differs from the plan: section 5. Not yet seen in a headset. Measuring tools: `node tools/bladeprobe.mjs [flat|trench|pile]` (headless, numbers) and
 `npm run build && node tools/bladeshots.mjs [tag]` (screenshots into `shots/`).
 
 ## 1. What happens now (measured, November 2026)
@@ -252,3 +253,57 @@ load, and the heap face stays the heap face. The granules then only need to know
   - Komatsu D39 slot dozing: https://www.youtube.com/watch?v=svJTH7x7OLs
   - D65PX side-of-cab view: https://www.youtube.com/watch?v=QHPPlo19P3o
   - Slot dozing explained: https://www.youtube.com/watch?v=O9cxaCyc31M
+
+## 5. What was built
+
+The owner took the three recommendations: a held-down blade fills and stalls (no dive), a full slot stalls (a little
+over the top only when far overfull), and smaller granules by material.
+
+**Terrain (`src/terrain/core.js`, `cut` and `_bladeFace`).** As planned (A1–A5), plus what the tests and the pad job
+showed was needed:
+
+- Cut soil goes into the two cells ahead of the face (60 / 40). Into one cell alone, the row the edge sweeps each time
+  it crosses a cell row stood up as a ridge for a moment and was spilled as if the blade were overfull.
+- The target is kept half a cell inside the blade's ends. Rounding put soil cut at the very ends just outside them,
+  where it was never swept again and stood up as mounds 0.3 m beyond the ends.
+- Under the blade, relaxation may fill a cell up to the edge (not at all, as first planned). Otherwise a hollow the blade
+  passes over was never filled, and the site-office pad fell from 95 % to 80 % on grade.
+- The strips just beyond the blade ends, out to 0.7 m ahead of the edge, take nothing from relaxation: the heap stays
+  in front until it is full (the research: all soil stays until capacity; spreading along a blade is slow). Without
+  this the heap leaked off the ends from the start and ran short before reaching hollows.
+- Surplus above the blade top moves a share a tick (`SPILL_RATE`) rather than all at once. A ridge of the blade's own
+  windrow higher than its top is not a slot wall; only ground still that high a metre out is.
+- Soil more than 0.4 m above the top topples over it to just behind the blade (`OVER_TOP`).
+
+**Machine (`src/vehicles/machine.js`).** Resistance is split: cutting alone (`cutRate`) slows forcing the edge deeper;
+all of it (`digRate`: cutting, dragging the load, the wedge ahead of the face) lugs the machine and loads the engine.
+Lumped together, the load stopped AUTO LEVEL being able to lower the blade. On the custom model the load also stalls the
+tracks once dragging it passes their grip (`SOIL_DRAG`). On Rapier the blade's force now grows with its load up to
+`maxForce` (240 kN) instead of jumping straight to a fixed 112 kN.
+
+**Granules and effects (`src/render/pushHeap.js`, `src/scenes/play.js`, `src/game/effects.js`).** As planned (C1–C5).
+Chunks thrown up and the cutting dust follow new ground being cut; a face standing near the blade's height breaks lumps
+off that roll back onto it, with a puff of dust when it rises quickly.
+
+**Measured (`node tools/bladeprobe.mjs`, test map, custom model, track levers at 0.8).**
+
+| | Before | After |
+|---|---|---|
+| Blade held right down | dives 2.5 m in 7 m; 96 % of the soil put 1.9 m past the blade ends; cones +2.4 m about 4 m from the centre line | fills in ~3 m, crawls, settles ~0.5 m down; windrows +0.2–0.5 m right at the ends (2.0 m from the centre line); stalls if held in its own slot |
+| Shallow 15 cm cut | (looked right) | heap fills to ~3.8 m³ (rated 3.9) before spilling; windrows +0.2–0.4 m at the ends; ~0.8–1.3 m/s |
+| Into a standing pile | granules up to 4.2 m ahead, faster than the blade; half the soil thrown 2.2 m sideways; hardly slows | granules within ~1–2 m (the wedge), none thrown; bogs from ~2.2 to ~0.2–0.3 m/s at the face |
+| Slot (walls above the blade) | — | nothing over the walls; carries ~1.6 × the open-ground load |
+| Site-office pad, two passes | 95.2 % on grade | 96.3 % on grade |
+| Terrain step, full blade | — | 0.18 ms mean (0.10 ms of it the blade) on the build machine |
+
+**Tests changed, and why.**
+- `digging down in one pass` (blade held down dives to 1.7 m) is replaced by `holding the blade right down`: it fills
+  within two machine lengths, crawls, does not dive, and its spill stays at the ends (decision 1).
+- `cuts a ramp through a terrace bank` also checks that the blade does not dig a hole at the foot of the ramp.
+- `dozer auto level` clears the lift input each step, as the game's controls do. AUTO LEVEL's own command left in it
+  read as the driver taking over. It also compares the lanes by their mean distance from the level set: a held blade
+  now carries its heap and digs itself a smooth ramp down, which the highest-to-lowest measure alone scored as flat.
+- `tests/e2e/grade.mjs` parks the other machines clear of the pad first. The first row clipped the parked backhoe in
+  the old version too (it was shoved 1.3 m); now it was shoved into the next rows.
+- New: `tests/blade.test.js` (virgin ground, slot, pile with the granules).
+

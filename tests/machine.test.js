@@ -146,6 +146,8 @@ describe('bulldozer', () => {
     expect(r.m.position.z).toBeLessThan(-36);      // and reversed back up it
     console.log('dozer ramp: bank', before.toFixed(0), '° →', steep().toFixed(0), '° in', passes, 'passes; dozer at z', r.m.position.z.toFixed(1), 'upright', r.m.bodyList[0].obj.matrixWorld.elements[5].toFixed(2));
     expect(steep()).toBeLessThan(40);
+    // where the blade comes off the slope onto the lower terrace it may bite into it a little, but not dig a hole there
+    let foot = 9; for (let z = -25.5; z < -22; z += 0.25) foot = Math.min(foot, t.heightAt(-12, z)); expect(foot).toBeGreaterThan(5.55);
     expect(r.m.bodyList[0].obj.matrixWorld.elements[5]).toBeGreaterThan(0.8);
     expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-4);
   }, 60000);
@@ -401,14 +403,19 @@ describe('dozer auto level', () => {
       const g0 = r.terrain.heightAt(15, 14);
       r.step(200, (m) => { const t = m.tools[0], e = t.node.matrixWorld.elements, c = t.def.corners[2], y = e[1] * c[0] + e[5] * c[1] + e[9] * c[2] + e[13]; m.inp.lift = y > g0 - 0.02 ? -0.4 : 0; }); // blade edge down to grade
       r.m.inp.lift = 0; r.m.inp.grade = auto ? 1 : 0;
-      r.step(1300, (m) => { m.inp.left = 0.5; m.inp.right = 0.5; });
-      let lo = 9, hi = -9; for (let z = 3; z <= 10; z += 0.25) for (const x of [14, 15, 16]) { const h = r.terrain.heightAt(x, z) - g0; lo = Math.min(lo, h); hi = Math.max(hi, h); }
-      return { rough: hi - lo, z: r.m.position.z, on: r.m.gradeOn };
+      // (the lift is cleared each step, as the game's controls do (play.js readControls): AUTO LEVEL's own command left in
+      // it would read as the driver taking over)
+      r.step(1300, (m) => { m.inp.left = 0.5; m.inp.right = 0.5; m.inp.lift = 0; });
+      let lo = 9, hi = -9, dev = 0, n = 0; for (let z = 3; z <= 10; z += 0.25) for (const x of [14, 15, 16]) { const h = r.terrain.heightAt(x, z) - g0; lo = Math.min(lo, h); hi = Math.max(hi, h); dev += Math.abs(h); n++; }
+      return { rough: hi - lo, dev: dev / n, z: r.m.position.z, on: r.m.gradeOn };
     };
     const hand = await lane(false), auto = await lane(true);
     expect(auto.on).toBe(true); expect(auto.z).toBeLessThan(4);
     expect(auto.rough).toBeLessThan(0.16);                    // within a hand's breadth of flat
-    expect(auto.rough).toBeLessThan(hand.rough * 0.6);        // and much flatter than a blade just held where it was
+    // and far closer to the level set than a blade just held where it was. (A held blade now carries its heap along and
+    // digs itself a smooth ramp down, which the highest-to-lowest measure alone scores as flat: so compare how far each
+    // lane ends up from the level, on average.)
+    expect(auto.dev).toBeLessThan(hand.dev * 0.6);
   });
 });
 
@@ -430,16 +437,27 @@ describe('digging down', () => {
   }, 120000);
 });
 
-describe('digging down in one pass', () => {
-  it('a dozer driven on with the blade right down keeps going down: its own spill does not fill the trench behind it', async () => {
-    const r = await rig('dozer', { x: 15, z: 22 }); const m = r.m; r.step(60); start(m); m.inp.throttle = 1; r.step(90);
-    const g0 = r.terrain.heightAt(15, 22); let deep = 0, late = 0;
-    for (let k = 0; k < 30; k++) {
+describe('holding the blade right down (docs/blade-soil.md)', () => {
+  it('fills the blade within a couple of machine lengths and slows to a crawl, instead of diving; the spill stays at the blade ends', async () => {
+    const r = await rig('dozer', { x: 15, z: 22 }); const m = r.m; m.setPhysics('custom'); r.step(60); start(m); m.inp.throttle = 1; r.step(90);
+    const g0 = r.terrain.heightAt(15, 22), v0 = await r.total(), z0 = m.position.z; let full = null, deep = 0, slow = 9;
+    for (let k = 0; k < 20; k++) {
       r.step(60, (mm) => { mm.inp.lift = -1; mm.inp.left = 0.8; mm.inp.right = 0.8; });
-      const d = g0 - m.position.y; deep = Math.max(deep, d); if (k >= 20) late = Math.max(late, d);
+      const t = m.tools[0]; if (full === null && t.load > 3) full = z0 - m.position.z;
+      deep = Math.max(deep, g0 - m.position.y); if (k >= 8) slow = Math.min(slow, m.speed);
     }
-    expect(deep).toBeGreaterThan(1.7);   // it used to level off about 1 m down
-    expect(late).toBeGreaterThan(1.6);   // and it stays down there rather than climbing back onto a platform
+    // across the cut behind it: find the cut's middle (the lowest ground), then the highest ground more than 2.8 m from it
+    let out = 0; for (let z = m.position.z + 4; z < z0 - 6; z += 0.5) {
+      let lo = 9, xc = 15; for (let x = 11; x <= 19; x += 0.25) { const h = r.terrain.heightAt(x, z); if (h < lo) { lo = h; xc = x; } }
+      let a = xc, b = xc; while (r.terrain.heightAt(a - 0.25, z) < lo + 0.05) a -= 0.25; while (r.terrain.heightAt(b + 0.25, z) < lo + 0.05) b += 0.25; xc = (a + b) / 2;
+      for (const dx of [-3.4, -3.0, 3.0, 3.4]) out = Math.max(out, r.terrain.heightAt(xc + dx, z) - g0);
+    }
+    console.log('blade held down: full after', full?.toFixed(1), 'm, deepest', deep.toFixed(2), 'm, crawl', slow.toFixed(2), 'm/s, ground 3.0–3.4 m from the middle of the cut', out.toFixed(2));
+    expect(full).not.toBeNull(); expect(full).toBeLessThan(10);   // a full blade (rated 0.8·W·H² ≈ 3.9 m³) within two machine lengths
+    expect(slow).toBeLessThan(0.8);                                // a full blade lugs the machine down to a crawl
+    expect(deep).toBeLessThan(1.2);                                // it used to dive 2.5 m to the rock in one go, carrying nothing
+    expect(out).toBeLessThan(0.35);                                // the windrows lie at the blade ends (1.7 m out), not a metre and more beyond them
+    expect(Math.abs(await r.total() - v0) / v0).toBeLessThan(1e-6);
   }, 120000);
 });
 

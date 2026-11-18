@@ -19,6 +19,13 @@ export class Effects {
     this.fx.emit({ x, y: y + 0.1, z, vx: (R() - 0.5) * 1.2, vy: 0.5 + R() * 0.8, vz: (R() - 0.5) * 1.2, life: 1.0 + R() * 0.8, s0: 0.15, s1: 0.7 + R() * 0.5, r: 0.4 + c[0] * 0.6, g: 0.38 + c[1] * 0.6, b: 0.35 + c[2] * 0.6, a: 0.35, grav: -0.15, drag: 1.6 });
   }
 
+  /** A puff of dust along a face a blade has just been driven into (play.js churn); hw: half its width, k 0..1: how hard. */
+  puff(x, y, z, hw, mat, k) {
+    if (this.game.fast) return;
+    const c = MATERIALS[mat || 1].color;
+    for (let i = 0, n = 2 + Math.round(5 * k); i < n; i++) this.fx.emit({ x: x + (R() * 2 - 1) * hw * 0.8, y: y + R() * 0.3, z: z + (R() * 2 - 1) * hw * 0.8, vx: (R() - 0.5) * 0.8, vy: 0.3 + R() * 0.6, vz: (R() - 0.5) * 0.8, life: 1.4 + R(), s0: 0.25, s1: 1.0 + R() * 0.8, r: 0.38 + c[0] * 0.6, g: 0.36 + c[1] * 0.6, b: 0.33 + c[2] * 0.6, a: 0.3 * (0.5 + k), grav: -0.12, drag: 1.4 });
+  }
+
   update(dt) {
     const fx = this.fx, T = this.game.terrain; if (this.game.fast) return;
     for (const m of this.machines) {
@@ -50,7 +57,7 @@ export class Effects {
       }
       // ---- where a tool is cutting
       for (const t of m.tools) {
-        const rate = m.puppet ? (m.net ? m.net.dig : 0) : Math.min(1, t.rate);
+        const rate = m.puppet ? (m.net ? m.net.dig : 0) : Math.min(1, t.cutRate ?? t.rate); // new ground being cut, not a heap shoved along
         if (rate < 0.04 || R() > dt * (6 + 30 * rate)) continue;
         t.node.getWorldPosition(_p); const c = dustColor(T, _p.x, _p.z), y = Math.max(_p.y, T.heightAt(_p.x, _p.z));
         fx.emit({ x: _p.x + (R() - 0.5) * 1.6, y: y + 0.1, z: _p.z + (R() - 0.5) * 1.6, vx: (R() - 0.5) * 1.2, vy: 0.4 + R(), vz: (R() - 0.5) * 1.2, life: 1.2 + R(), s0: 0.2, s1: 0.9 + R() * 0.8, r: c[0], g: c[1], b: c[2], a: 0.28, grav: -0.1, drag: 1.4 });

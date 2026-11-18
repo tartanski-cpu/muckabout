@@ -29,6 +29,9 @@ try {
     const step = (n, fn) => { for (let i = 0; i < n; i++) { fn(); sim1(); } };
     const x0 = d.x - d.w / 2 - 2.5, x1 = d.x + d.w / 2 + 2.5, rows = [], log = [];
     for (let z = d.z - d.d / 2 + 1.2; z <= d.z + d.d / 2 - 1.1; z += 1.2) rows.push(z);   // blade 3.4 m wide: rows 1.2 m apart overlap well
+    // the backhoe is parked beside the pad, close enough that the first row clipped it and shoved it a metre or more into
+    // the next rows (by how much varied from run to run): the job is the dozer's, so park the others well clear of it
+    for (const m of g.machines) if (m !== D) m.reset(m.position.x, m.position.z - 8, m.heading);
     D.reset(x0, rows[0], -Math.PI / 2);
     Object.assign(o, { key: 1, park: 0, throttle: 1 }); step(90, () => {}); log.push(`start at ${D.position.x.toFixed(1)},${D.position.z.toFixed(1)} running ${D.engine.running} edge ${(edge() - d.y).toFixed(2)}`);
     for (const pass of [0, 1]) for (const z of rows) {
