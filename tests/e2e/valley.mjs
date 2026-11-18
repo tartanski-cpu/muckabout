@@ -30,7 +30,7 @@ try {
     const g = __game, D = g.machine('dozer'), T = g.terrain, z = -80; g.paused = true;
     const rockAt = () => [-70, -72, -74, -76].filter((x) => T.materialAt(x, z) === 6).length;
     D.reset(-60, z, Math.PI / 2); g.sim(30); Object.assign(D.override, { key: 1, park: 0, throttle: 1 }); g.sim(90);
-    D.override.lift = -0.6; g.sim(60); D.override.lift = 0; D.override.left = D.override.right = 0.7; g.sim(60 * 16); D.override.left = D.override.right = 0;
+    D.override.lift = -0.6; g.sim(60); D.override.lift = 0; D.override.left = D.override.right = 0.7; g.sim(60 * 20); D.override.left = D.override.right = 0; // (it crawls for a few seconds with a full blade against the far bank, then climbs out: docs/blade-soil.md)
     return { x: D.position.x, up: D.bodyList[0].obj.matrixWorld.elements[5], rock: rockAt() };
   });
   check(cross.x < -80 && cross.up > 0.8 && cross.rock === 0, `a dozer pushes a road across the stream and out the far side (to x ${cross.x.toFixed(1)}), and no rock appears in the soil`);
