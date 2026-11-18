@@ -24,6 +24,16 @@ try {
   check(w.gully.every((d) => d > 0.005), `the gully carries a trickle across the road in (${w.gully.map((d) => (d * 100).toFixed(1)).join(', ')} cm)`);
   check(w.pond > 0.15 && w.river > 0.5, `the silted pond holds water (${w.pond.toFixed(2)} m) and the river runs (${w.river.toFixed(2)} m)`);
   check(w.tiles < w.of / 4, `water is worked only where it is: ${w.tiles} of ${w.of} patches`);
+  // a road pushed across the stream by the quarry: the dozer gets over, and no rock appears in the soil
+  // (a merge of layers once turned the clay over rock into rock, and the blade then stopped dead against it)
+  const cross = await page.evaluate(() => {
+    const g = __game, D = g.machine('dozer'), T = g.terrain, z = -80; g.paused = true;
+    const rockAt = () => [-70, -72, -74, -76].filter((x) => T.materialAt(x, z) === 6).length;
+    D.reset(-60, z, Math.PI / 2); g.sim(30); Object.assign(D.override, { key: 1, park: 0, throttle: 1 }); g.sim(90);
+    D.override.lift = -0.6; g.sim(60); D.override.lift = 0; D.override.left = D.override.right = 0.7; g.sim(60 * 16); D.override.left = D.override.right = 0;
+    return { x: D.position.x, up: D.bodyList[0].obj.matrixWorld.elements[5], rock: rockAt() };
+  });
+  check(cross.x < -80 && cross.up > 0.8 && cross.rock === 0, `a dozer pushes a road across the stream and out the far side (to x ${cross.x.toFixed(1)}), and no rock appears in the soil`);
   // budgets, at the Quest tier (the harness default), from the yard and from high over the south
   const views = [];
   for (const [from, to] of [[[0, 11, -52], [0, 8, -20]], [[0, 25, 30], [-40, 2, 85]], [[-20, 40, -60], [-50, 14, -150]]]) {

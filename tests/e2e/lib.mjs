@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 
 export async function harness() {
   mkdirSync('shots', { recursive: true });
-  const server = await preview({ preview: { port: 4179, strictPort: false }, logLevel: 'warn' });
+  const server = await preview({ preview: { port: 4179, strictPort: false }, build: { outDir: process.env.DIST || 'dist' }, logLevel: 'warn' }); // DIST: test another build while a run uses dist/
   const base = server.resolvedUrls.local[0];
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
   const failures = [];

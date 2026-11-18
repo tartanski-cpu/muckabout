@@ -54,6 +54,7 @@ export class Game {
     this.simTime = 0; this.acc = 0; this.paused = false; this.fast = false; this.frame = 0;
     this.updaters = [];      // fn(dt) run each fixed step, in order
     this.frameUpdaters = []; // fn(dt) run each rendered frame
+    this.beforeRender = [];  // fn(dt) run each frame once everything is posed and uploaded, just before drawing
     this.clock = new THREE.Clock();
     this.focus = new THREE.Vector3(); // what the desktop debug camera looks at
     this.THREE = THREE; // for scripted tests
@@ -140,6 +141,7 @@ export class Game {
     for (const c of this.containerMeshes) c.update();
     if (this.water) this.water.update(fdt);
     perf.end('upload');
+    for (const u of this.beforeRender) u(fdt); // last look at the posed scene (render/parked.js)
     perf.begin('render');
     this.renderer.render(this.scene, this.camera);
     perf.end('render');

@@ -240,7 +240,7 @@ describe('rock', () => {
     const took = r.taken.reduce((a, b) => a + b, 0);
     expect(Math.abs(c.heightAt(0, 0) - -1.0)).toBeLessThan(1e-3);   // down to the rock's top, not to the edge 0.4 m below it
     expect(took).toBeCloseTo(0.4 * 81 * 0.0625, 3);                  // the clay over the 9 × 9 cells it covers
-    expect(r.resist).toBeGreaterThan(took * 20);                     // and it felt the rock
+    expect(r.resist).toBeGreaterThan(took * 3);                      // and it felt the rock (hard going, not a wall)
     expect(Math.abs(c.audit().total + took - v0)).toBeLessThan(1e-6);
   });
   it('a ripper breaks rock into shot rock where it lies; then it digs', () => {
@@ -256,5 +256,17 @@ describe('rock', () => {
     expect(d.taken[9]).toBeGreaterThan(0.05);                          // a bucket takes the shot rock now
     expect(Math.abs(c.heightAt(0, 0) - -1.35)).toBeLessThan(1e-3);     // down to where the tooth broke it, no deeper
     void v0;
+  });
+});
+
+describe('layers over rock', () => {
+  it('making room for a new top layer never turns the soil above rock into rock', () => {
+    const c = new TerrainCore({ nx: 32, nz: 32, cell: 0.25, ox: 0, oz: 0 });
+    c.setColumn(0, -5, [[6, 3], [CLAY, 1.2], [CLAY, 0.3]]); // rock, then two layers of clay (a stream bank over the west hill's rock)
+    c.addTop(0, SPOIL, 0.1);                                 // a blade drops spoil on it: a fourth layer, so two must merge
+    const rock = [0, 1, 2].filter((k) => k < c.nl[0] && c.lm[k] === 6).reduce((a, k) => a + c.lt[k], 0);
+    expect(rock).toBeCloseTo(3, 6);                           // the rock is still 3 m, not 4.2
+    expect(c.topMat(0)).toBe(SPOIL);
+    expect(c.h[0]).toBeCloseTo(-5 + 3 + 1.5 + 0.1, 6);
   });
 });

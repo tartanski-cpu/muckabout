@@ -97,6 +97,16 @@ The game starts on the **custom** vehicle model (the proof of concept's style). 
 51. The stream: can you see it running, and does it look like water or like a wet stripe?
 52. In the old quarry (west side, north of the yard): the dozer's blade should skid on the rock floor and take nothing. The **ripper lever** (right of the blade joystick, push to lower): can you reach it, and does ripping feel like hard work (the engine should labour)?
 
+## 11. After the first valley session
+
+53. The ripper lever has moved back (STICK ASSIST is now behind it): is it clear of the switches now?
+54. Push a road across the stream west of the yard (by the quarry) again: does the dozer get across without piling up or sticking? (Clay over rock was being turned into rock, and rock stopped a blade dead; both fixed.)
+55. Frame rate in the valley, in the yard and at the head of the valley: please read me the wrist HUD (`X`): the fps, and the "calls" and "tris" numbers. The Quest tier now draws less ground detail and fewer water triangles; if it still drops to 72, those numbers tell me whether it is the drawing or the simulation.
+56. Parked machines are now drawn baked: about a second after a machine stops with nobody using it, it is drawn in 4 draw calls instead of about 20 (four machines in view: some 107 calls became 50 on the desktop). Look at the machines in the yard: does anything look different on a parked one (colours, outlines, the glass, the handrails, a load in the bucket)? Walk up and grab a handrail: does it still light up? Get in and drive off: is there any flicker or a frame where the machine jumps? The "calls" number on the wrist HUD in the yard: what is it now?
+57. Parked machines no longer creep: they used to slide downhill a few millimetres a second on the yard's gentle slope with the brake on (10 cm a minute). Park on a slope and wait a minute: does it stay put? Does pulling away and stopping still feel the same (a braked wheel at a stop is now held by a stiff spring)?
+58. Play sitting down (sofa or chair). Get out of a machine: are your eyes at standing height (about 1.65 m), not a metre off the ground? Then stand up for real and press **B** on foot: does it take your real height?
+59. On foot, **A** crouches (eyes about 0.75 m off the ground) and **A** again stands you back up. Can you reach the tow chain's hook and the stakes on the ground while crouched? Is the drop comfortable, or would a quick fade be better than the instant change? Is A the right button, or would pulling the right stick back suit better?
+
 ## Things I already suspect
 
 - Control positions are guesses made without seeing them in VR.

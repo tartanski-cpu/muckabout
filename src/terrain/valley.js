@@ -34,6 +34,7 @@ function course(c, P, from, to, half, bank, width) {
   const n = near(P, c.x, c.z, width); if (n.d >= width) return false;
   const bed = from + (to - from) * n.s / P.L, cap = bed + Math.max(0, n.d - half) * bank;
   if (c.g > cap) c.g = cap;
+  if (n.d < half + 0.4) c.lined = true; // its bed: a lining of gravel, as a stream's bed is, so steady flow does not wear it away
   return n.d < half + 1.5;
 }
 const top = (L) => L[L.length - 1];
@@ -42,7 +43,7 @@ const top = (L) => L[L.length - 1];
 const STREAM = path([[-50, -150], [-50, -136], [-62, -112], [-72, -96], [-72, -60], [-72, 0], [-72, 22]]);   // from the spring to the river
 const GULLY = path([[88, -128], [82, -104], [78, -82], [78, -40], [78, 0], [78, 24]]);                    // woodland run-off, across the road in
 const ROAD_IN = path([[96, -110], [84, -96], [74, -70], [64, -52], [60, -46]]);                           // the old track, from the east edge to the yard
-const QUARRY = { x0: -96, x1: -70, z0: -112, z1: -70, floor: 10.5 };
+const QUARRY = { x0: -96, x1: -80, z0: -112, z1: -70, floor: 10.5 }; // its east rim 8 m short of the stream: the stream and its banks are soil
 const TIP_MOUNDS = [[-84, 56, 7, 2.2], [-70, 64, 6, 1.6], [-50, 70, 5, 1.9], [-88, 78, 6, 1.4], [-46, 96, 7, 2.4], [-80, 102, 5, 1.2]];      // x, z, r, h
 const SPOIL_MOUNDS = [[70, 52, 8, 2.6], [86, 62, 7, 3.0], [52, 74, 9, 2.2], [74, 82, 8, 2.8], [90, 96, 6, 1.8], [58, 100, 7, 2.4], [44, 66, 5, 1.6]];
 const POND = { x: -66, z: 88, r: 9, depth: 1.4, silt: 0.6 };
@@ -65,7 +66,7 @@ export const FEATURES = [
       const r = Math.hypot(c.x + 84, c.z + 84); if (inside > 3 && r < 4) c.add = [GRAVEL, 1.6 * (1 - r / 4)]; // old blasted stone
     } } },
   { name: 'rock under the west hill', what: 'the hill the quarry worked: rock 1.5 m down',
-    apply(c) { if (c.x < -70 && c.z > -125 && c.z < -55) c.rockAt = 1.5; } },
+    apply(c) { if (c.x < -80 && c.z > -125 && c.z < -55) c.rockAt = 1.5; } },
   { name: 'old tip', what: 'south-west: mounds of rubble and spoil (3, 5)',
     apply(c) { for (const [x, z, r, h] of TIP_MOUNDS) { const d = Math.hypot(c.x - x, c.z - z); if (d < r) c.add = [GRAVEL, Math.max(c.add?.[1] || 0, h * (1 - (d / r) ** 2))]; } } },
   { name: 'silted pond', what: 'in the old tip: a hollow half full of silt, shallow water over it (3, 5)',
@@ -88,6 +89,7 @@ function valleyColumn(x, z) {
   let layers, depth = surface - bed;
   if (c.rock) layers = [[ROCK, depth]];                                       // the quarry: rock to the surface
   else if (chan > 0.97) layers = [[CLAY, depth - 0.3], [SAND, 0.3]];
+  else if (c.lined) layers = [[CLAY, depth - 0.3], [GRAVEL, 0.3]];
   else if (chan > 0 || onBank || c.bare) layers = [[CLAY, depth]];
   else if (dr < 12) layers = [[CLAY, depth - 1.2], [MUD, 1.2]];
   else layers = [[CLAY, depth - 0.3], [TOPSOIL, 0.3]];

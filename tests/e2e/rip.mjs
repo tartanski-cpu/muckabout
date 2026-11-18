@@ -9,14 +9,14 @@ try {
   await page.evaluate(() => { __game.paused = true; });
   const v0 = await page.evaluate(async () => (await __game.audit()).total);
   const mat = (x, z) => page.evaluate(([x, z]) => __game.terrain.materialAt(x, z), [x, z]);
-  check(await mat(-78, -98) === 6, 'the quarry floor is solid rock');
+  check(await mat(-83, -98) === 6, 'the quarry floor is solid rock');
 
   // the blade, pressed onto the rock and pushed across it
   const blade = await page.evaluate(() => {
-    const g = __game, D = g.machine('dozer'), T = g.terrain, h0 = T.heightAt(-78, -100);
-    D.reset(-78, -92, 0); g.sim(30); D.override = { key: 1, park: 0, throttle: 1 }; g.sim(90);
+    const g = __game, D = g.machine('dozer'), T = g.terrain, h0 = T.heightAt(-83, -100);
+    D.reset(-83, -92, 0); g.sim(30); D.override = { key: 1, park: 0, throttle: 1 }; g.sim(90);
     D.override.lift = -1; g.sim(120); D.override.lift = 0; D.override.left = D.override.right = 0.6; g.sim(360); D.override.left = D.override.right = 0; g.sim(30);
-    return { h0, h1: T.heightAt(-78, -100), z: D.position.z, mat: T.materialAt(-78, -100) };
+    return { h0, h1: T.heightAt(-83, -100), z: D.position.z, mat: T.materialAt(-83, -100) };
   });
   check(blade.mat === 6 && Math.abs(blade.h1 - blade.h0) < 0.02, `the blade takes nothing from the rock (floor ${blade.h0.toFixed(2)} → ${blade.h1.toFixed(2)} m)`);
 

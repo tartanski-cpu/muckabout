@@ -22,6 +22,7 @@ import { makeChecklist, Clipboard } from '../game/checklist.js';
 import { PadJob, JobBoard } from '../game/jobs.js';
 import { startStress } from './stress.js';
 import { Rams } from '../render/rams.js';
+import { ParkedMachines } from '../render/parked.js';
 import { Particles } from '../render/particles.js';
 import { Effects } from '../game/effects.js';
 import { PAINT_U } from '../vehicles/machine.js';
@@ -256,6 +257,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (right.secondaryPressed) player.recentre();
     if (right.stickPressed && player.seated && !right.holding) { player.horizonLock = player.horizonLock ? 0 : 0.8; game.hud.note = player.horizonLock ? 'HORIZON LOCK ON (right stick click)' : ''; right.pulse(0.5, 40); } // comfort: damp cab roll and pitch
     if (right.primaryPressed && player.machine) { bus.start(); player.machine.voice.horn(); }
+    if (right.primaryPressed && !player.machine && !right.holding) { const c = player.crouch(); game.hud.note = c ? 'CROUCHING (A to stand up)' : ''; right.pulse(0.4, 30); } // on foot: get down to the chain hooks and stakes
     player.noSeatTurn = !!player.machine && (player.machine.inp.assist > 0.5 || (player.machine.fn.swivel && player.machine.fn.swivel.pos > 1.5)); // the left stick is busy driving, or working the hoe
     player.update(fdt, input.hands);
     if (!game.fast) heap.update(fdt);
@@ -293,6 +295,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (game.frame % 20 === 0) { game.camera.getWorldPosition(_p); for (const m of machines) { const near = m.position.distanceToSquared(_p) < 64; for (const r of m.controlRoots) r.visible = near; for (const r of m.rails || []) r.root.visible = true; } }
     const f = player.machine ? player.machine.position : player.feet; game.focus.copy(f);
   });
+  // machines nobody is using are drawn baked into a few meshes each (render/parked.js): checked last thing before drawing, so a machine that has moved is never drawn stale
+  const parked = game.parked = new ParkedMachines(scene, machines, () => (game.renderer.shadowMap.enabled ? 1 : 0));
+  game.beforeRender.push((fdt) => { for (const m of machines) m.root.updateMatrixWorld(); parked.update(fdt); });
 
   // ---- PC: the mouse works the controls under it (xr/mouseHand.js); anywhere else, dragging looks round
   let drag = false;
@@ -303,7 +308,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   el.addEventListener('pointerleave', () => mouse.leave());
   el.addEventListener('wheel', (e) => { if (mouse.wheel(e)) e.preventDefault(); }, { passive: false });
   addEventListener('pointermove', (e) => { mouse.move(e); if (drag) { S.look.yaw -= e.movementX * 0.004; S.look.pitch = clamp(S.look.pitch - e.movementY * 0.004, -1.3, 1.3); } });
-  game.renderer.xr.addEventListener('sessionstart', () => { bus.start(); S.chase = false; if (game.camera.parent !== game.rig) game.rig.add(game.camera); setTimeout(() => player.recentre(), 500); });
+  game.renderer.xr.addEventListener('sessionstart', () => { bus.start(); S.chase = false; if (game.camera.parent !== game.rig) game.rig.add(game.camera); player.enteredVR(); setTimeout(() => player.recentre(), 500); });
   game.renderer.xr.addEventListener('sessionend', () => { inter.releaseAll(input.hands); game.camera.position.set(0, 0, 0); game.camera.rotation.set(0, 0, 0); });
   addEventListener('keyup', (e) => keys.delete(e.code));
   addEventListener('keydown', (e) => {
@@ -326,6 +331,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     else if (m && e.code === 'KeyY' && m.controls.grade) setCtl(m, 'grade', m.controls.grade.value > 0.5 ? 0 : 1);
     else if (m && e.code === 'KeyH') m.voice.horn();
     else if (m && e.code === 'KeyC') player.recentre();
+    else if (!m && e.code === 'KeyC') player.crouch();
     else if (m && e.code === 'KeyB' && m.controls.swivel) m.controls.swivel.press(null);
   });
   function desktopCamera() {
@@ -351,11 +357,11 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   function setHelp() {
     const el = document.getElementById('helpBody'); if (!el) return;
     const m = player.machine, K = (s) => `<span class="k">${s}</span>`;
-    el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Grab the yellow handrail to climb in. `
-      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn · ${K('X')} perf HUD · seated, click the right stick for horizon lock, and hold the left stick in for a second to stand a rolled or stuck machine back on its wheels · on foot, click the right stick to change the time of day.<br>`
+    el.innerHTML = `<b>Quest:</b> <i>Enter VR</i>. Squeeze a grip on thin air and pull to move yourself through the world (both hands: pull and twist to turn); or walk with the left stick, snap-turn with the right. Seated, push the left stick sideways to turn in the seat. Play sitting down if you like: on foot you stand at full height whatever your real height (B on foot measures it again). Grab the yellow handrail to climb in. `
+      + `All controls are physical: grip to take hold; point at a button from a distance and the blue laser lets the trigger press it. Triggers are the pedals while that hand is on a control (right go, left brake). Either thumbstick also works the bucket, blade or bed. ${K('Y')} get out · ${K('B')} recentre · ${K('A')} horn (on foot: crouch down / stand up) · ${K('X')} perf HUD · seated, click the right stick for horizon lock, and hold the left stick in for a second to stand a rolled or stuck machine back on its wheels · on foot, click the right stick to change the time of day.<br>`
       + `<b>PC:</b> point at a lever, switch, key or the wheel and it lights up; drag it (up pushes forward), click a switch or button; on foot, click a handrail to climb in, or click a hand tool to carry it (look at the ground to put it there, walk to dig, right button throws, click to put down). Drag anywhere else to look round.<br>`
       + `<b>Keys:</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
-      + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} stand the machine upright (${K('Shift')}+${K('R')} back to where it started) · ${K('X')} demo drivers · ${K('M')} switch physics · ${K('N')} time of day · drag to look<br>`
+      + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} stand the machine upright (${K('Shift')}+${K('R')} back to where it started) · ${K('X')} demo drivers · ${K('M')} switch physics · ${K('N')} time of day · on foot, ${K('C')} crouch · drag to look<br>`
       + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ stand the machine upright; on foot, sticks walk and look<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Switch it under Extras on the start page (Esc).<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;

@@ -9,6 +9,12 @@
 import * as THREE from 'three';
 import { stickOf } from './input.js';
 
+// Standing height on foot. A player sitting down in the real world (on a sofa, or on a chair to drive) would walk about
+// at sitting height, the ground a metre from their eyes: so on foot the rig is raised to put their eyes at standing
+// height, measured as they step out of a cab (or start on foot). Someone really standing keeps their own height.
+// Crouch (A on foot, C on a PC) brings the eyes down near the ground, for chains, stakes and anything else low down.
+export const EYE = { stand: 1.65, crouch: 0.75, seatedBelow: 1.35 }; // m above the ground; a head lower than seatedBelow is sitting
+
 const _v = new THREE.Vector3(), _f = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
 
 export class Player {
@@ -19,21 +25,33 @@ export class Player {
     this.comfort = new THREE.Group(); // sits between the seat and the rig; carries the horizon-lock counter-rotation
     this.walkSpeed = 1.4; this.runMult = 3.0; this.eyeDesktop = 1.65;
     this.anchors = { left: null, right: null }; this.twoHandAngle = 0; this.free = false; this.seatSnap = true;
+    this.lift = null; this.crouched = false; this.settle = 0; // on foot: metres the rig is raised (null: measure at the next tracked frame)
   }
   get seated() { return !!this.machine; }
 
   /** Head pose relative to the rig, yaw only. */
   _head(out) { _e.setFromQuaternion(this.camera.quaternion, 'YXZ'); out.yaw = _e.y; out.pos = this.camera.position; return out; }
 
+  /** On foot: how far to raise the rig so the eyes are at standing height (or crouching height), from where the head is now. */
+  _measure() {
+    const h = this.camera.position.y; if (!this.game.renderer.xr.isPresenting || h < 0.2 || this.settle > 0) return; // not tracking yet
+    this.lift = (this.crouched ? EYE.crouch : h < EYE.seatedBelow ? EYE.stand : h) - h;
+  }
+  /** Crouch down or stand back up (on foot). */
+  crouch(on = !this.crouched) { if (this.machine) return this.crouched; this.crouched = on; this.lift = null; this._measure(); return on; }
+  /** A new VR session: measure the standing height once the headset's pose has come through (the first frames carry the desktop camera's). */
+  enteredVR() { this.lift = null; this.settle = 10; }
+
   sit(machine) {
     if (this.machine) this.machine.driver = null;
+    this.crouched = false;
     this.machine = machine; machine.driver = 'local';
     machine.seat.add(this.comfort); this.comfort.add(this.rig);
     this.recentre();
   }
   /** Put the head exactly on the seat's eye point, looking forward. */
   recentre() {
-    if (!this.machine) return;
+    if (!this.machine) { this.lift = null; this._measure(); return; } // on foot: take standing height afresh
     const xr = this.game.renderer.xr.isPresenting, h = this._head({});
     if (!xr) { this.rig.position.set(0, 0, 0); this.rig.rotation.set(0, 0, 0); return; }
     this.rig.rotation.set(0, -h.yaw, 0);
@@ -47,6 +65,7 @@ export class Player {
     m.bodyList[0].obj.localToWorld(_v.set(-2.6, 0, -0.5)); if (pos) _v.copy(pos);
     this.feet.set(_v.x, this.game.terrain.heightAt(_v.x, _v.z), _v.z); this.yaw = m.heading;
     this.rig.position.copy(this.feet); this.rig.rotation.set(0, this.yaw, 0); this.free = false; this.anchors.left = this.anchors.right = null;
+    this.crouched = false; this.lift = null; this._measure(); // stepping out of the cab: standing height, though the player may still be sat down
   }
   place(x, z, yaw = 0) { this.free = false; this.feet.set(x, this.game.terrain.heightAt(x, z), z); this.yaw = yaw; this.rig.position.copy(this.feet); this.rig.rotation.set(0, yaw, 0); }
 
@@ -110,7 +129,10 @@ export class Player {
     const t = this.game.terrain, half = t.nx * t.cell / 2 - 2;
     this.feet.x = Math.min(t.ox + 2 * half + 0, Math.max(t.ox + 2, this.feet.x)); this.feet.z = Math.min(t.oz + 2 * half, Math.max(t.oz + 2, this.feet.z));
     const g = t.heightAt(this.feet.x, this.feet.z); if (this.free) this.feet.y = Math.max(g, this.feet.y); else this.feet.y += (g - this.feet.y) * Math.min(1, dt / 0.12);
-    this.rig.position.copy(this.feet); this.rig.rotation.set(0, this.yaw, 0);
-    if (!this.game.renderer.xr.isPresenting) this.camera.position.set(0, this.eyeDesktop, 0);
+    if (this.settle > 0) this.settle--;
+    if (this.lift === null) this._measure();
+    const xr = this.game.renderer.xr.isPresenting;
+    this.rig.position.copy(this.feet); this.rig.position.y += xr ? this.lift || 0 : 0; this.rig.rotation.set(0, this.yaw, 0);
+    if (!xr) this.camera.position.set(0, this.crouched ? EYE.crouch : this.eyeDesktop, 0);
   }
 }

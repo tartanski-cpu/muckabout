@@ -210,22 +210,22 @@ export class Ground {
   }
   /** Which meshes to draw, and how finely, for a viewer at camPos. */
   pickLod(camPos) {
-    const fog = this.material.uniforms.uFogFar.value + 10, near = (p) => Math.hypot(Math.max(p.x0 - camPos.x, 0, camPos.x - p.x1), Math.max(p.z0 - camPos.z, 0, camPos.z - p.z1));
+    const LOD_ = this.lod || LOD, fog = this.material.uniforms.uFogFar.value + 10, near = (p) => Math.hypot(Math.max(p.x0 - camPos.x, 0, camPos.x - p.x1), Math.max(p.z0 - camPos.z, 0, camPos.z - p.z1));
     const show = (p, on) => { p.mesh.visible = on; };
     let n = 0;
     for (const R of this.regions) {
       const dR = near(R);
       if (dR > fog) { show(R, false); for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
-      if (dR > LOD.region) { show(R, true); n++; for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
+      if (dR > LOD_.region) { show(R, true); n++; for (const B of R.blocks) { show(B, false); for (const t of B.tiles) show(t, false); } continue; }
       show(R, false);
       for (const B of R.blocks) {
         const dB = near(B);
         if (dB > fog) { show(B, false); for (const t of B.tiles) show(t, false); continue; }
-        if (dB > LOD.block) { show(B, true); n++; for (const t of B.tiles) show(t, false); continue; }
+        if (dB > LOD_.block) { show(B, true); n++; for (const t of B.tiles) show(t, false); continue; }
         show(B, false);
         for (const t of B.tiles) {
           const d = near(t); if (d > fog) { show(t, false); continue; }
-          const g = t.geos[d < LOD.full ? 0 : d < LOD.half ? 1 : 2]; if (t.mesh.geometry !== g) t.mesh.geometry = g;
+          const g = t.geos[d < LOD_.full ? 0 : d < LOD_.half ? 1 : 2]; if (t.mesh.geometry !== g) t.mesh.geometry = g;
           show(t, true); n++;
         }
       }
