@@ -14,9 +14,15 @@ const NET_DT = 1 / 20, now = () => performance.now() / 1000;
 const _h = { x: 0, y: 0, z: 0 }, _q = { x: 0, y: 0, z: 0, w: 1 };
 
 function localPose(game, S) {
-  const p = { h: null, l: null, r: null }, c = game.camera;
-  c.getWorldPosition(_v3(S)); c.getWorldQuaternion(_q4(S)); p.h = [...S._v.toArray(), ...S._q.toArray()];
-  for (const [k, side] of [['l', 'left'], ['r', 'right']]) { const h = S.input.hands[side]; if (h.tracked) p[k] = [...h.pos.toArray(), ...h.quat.toArray()]; }
+  const p = { h: null, l: null, r: null }, c = game.camera, m = S.player.machine, outside = !!m && !!(S.chase || S.overview) && !game.renderer.xr.isPresenting;
+  // seated with the camera outside the cab (the chase view on a PC or gamepad), the head is still in the seat: the avatar
+  // stays at the wheel, turned the way the player looks, instead of floating up to where the camera is
+  if (outside) {
+    m.seat.getWorldPosition(_v3(S)); m.seat.getWorldQuaternion(_q4(S));
+    S._q.multiply((S._qy ??= new (S.THREE.Quaternion)()).setFromAxisAngle({ x: 0, y: 1, z: 0 }, S.look?.yaw || 0));
+  } else { c.getWorldPosition(_v3(S)); c.getWorldQuaternion(_q4(S)); }
+  p.h = [...S._v.toArray(), ...S._q.toArray()];
+  for (const [k, side] of [['l', 'left'], ['r', 'right']]) { const h = S.input.hands[side]; if (h.tracked && !outside) p[k] = [...h.pos.toArray(), ...h.quat.toArray()]; }
   p.seat = S.player.machine ? S.player.machine.id : null;
   return p;
 }

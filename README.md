@@ -129,11 +129,11 @@ Key decisions:
 
 ## Gamepad (desktop)
 
-An Xbox-layout pad works on the desktop page (press a button once so the browser reports it): **Y** get in or out, d-pad left/right next machine, **Menu** ignition, **B** park brake, **RT** go, **LT** reverse, **X** brake, left stick steer (drives the dozer's tracks), right stick looks round (in chase view it orbits the machine), hold **LB** and the right stick works the bucket/blade/bed instead (from the backhoe's rear seat the left stick works the hoe too; right stick click turns the seat), **RB** / tap **LB** throttle up / down, **A** horn, **View** chase camera, d-pad down reset. On foot the sticks walk and look.
+An Xbox-layout pad works on the desktop page (press a button once so the browser reports it), laid out as in Farming Simulator (FS22/FS25 defaults): **RT** go, **LT** brake and then, at a stop, reverse; left stick steer (drives the dozer's tracks); right stick looks round (outside, it orbits the machine); right stick click switches between the cab and the outside view, d-pad up/down zoom out there; **X** get in or out; d-pad left/right previous/next machine; **Y** switch control group (the backhoe's seat: loader or hoe; from the rear seat the left stick works the hoe too); hold **LB** and the right stick works the bucket/blade/bed; tap **RB** / **LB** hand throttle up / down; **B** park brake; **A** horn; **LB**+**A** engine off/on. Pulling away starts the engine and takes the park brake off, as in Farming Simulator. Left stick click travel gear; hold **View** a second to stand the machine upright; **Menu** the menu. On foot the sticks walk and look, and **A** crouches.
 
 ## Gears and auto level
 
-Each machine has two gears (`drive.high = [speed factor, pull factor]` in its file; `TRAVEL GEAR` switch, `U` on the desktop, d-pad up on a gamepad). Low is the working gear. High is geared up for getting about: more top speed, about half the pull, and the converter locked up so more of the engine's power reaches the wheels at speed.
+Each machine has two gears (`drive.high = [speed factor, pull factor]` in its file; `TRAVEL GEAR` switch, `U` on the desktop, left stick click on a gamepad). Low is the working gear. High is geared up for getting about: more top speed, about half the pull, and the converter locked up so more of the engine's power reaches the wheels at speed.
 
 The dozer has `AUTO LEVEL` (`grade` in its file; `Y` on the desktop): the lift holds the blade's edge at the height it had when switched on, and the tilt keeps the edge level with the horizon. Moving the lift lever takes over and sets a new level.
 

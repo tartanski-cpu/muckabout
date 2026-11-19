@@ -93,6 +93,22 @@ try {
   await padSet([0, 0, 1, 0], {}); await frame(600);
   const lk1 = await page.evaluate(() => ({ yaw: P.look.yaw, tilt: m.fn.bucket.pos }));
   check(lk1.yaw < lk0.yaw - 0.3 && Math.abs(lk1.tilt - lk0.tilt) < 0.02, `gamepad: right stick alone looks round without moving the bucket (yaw ${lk0.yaw.toFixed(2)} → ${lk1.yaw.toFixed(2)})`);
+  // Farming Simulator's layout: LT against the way it rolls brakes first, then reverses; right stick click switches the
+  // camera; X gets out and back in. On open ground facing west.
+  await padSet([0, 0, 0, 0], {}); await page.evaluate(() => { m.reset(-30, -48, Math.PI / 2); }); await frame(300);
+  await padSet([0, 0, 0, 0], { 7: 1 }); await frame(2500);
+  const vRoll = await page.evaluate(() => m.speed);
+  await padSet([0, 0, 0, 0], { 6: 1 }); await frame(250);
+  const br = await page.evaluate(() => ({ brake: m.inp.brake, shuttle: m.inp.shuttle, v: m.speed }));
+  check(vRoll > 0.6 && br.brake > 0.5 && br.shuttle === 1, `gamepad: LT while rolling forward brakes (at ${vRoll.toFixed(1)} m/s; brake ${br.brake.toFixed(1)}, still in forward)`);
+  await page.waitForFunction(() => m.speed < -0.2, null, { timeout: 120000, polling: 100 });
+  check(true, 'gamepad: held at a stop, LT reverses');
+  await padSet([0, 0, 0, 0], {}); await frame(100); await padSet([0, 0, 0, 0], { 11: 1 }); await frame(100);
+  const ch = await page.evaluate(() => P.chase); await padSet([0, 0, 0, 0], {}); await frame(100); await padSet([0, 0, 0, 0], { 11: 1 }); await frame(100);
+  check(ch === true && await page.evaluate(() => P.chase === false), 'gamepad: right stick click switches between the cab and the outside view');
+  await padSet([0, 0, 0, 0], {}); await frame(100); await padSet([0, 0, 0, 0], { 2: 1 }); await frame(100);
+  const out = await page.evaluate(() => !P.player.machine); await padSet([0, 0, 0, 0], {}); await frame(100); await padSet([0, 0, 0, 0], { 2: 1 }); await frame(100);
+  check(out && await page.evaluate(() => P.player.machine === m), 'gamepad: X gets out, and in again');
   await page.evaluate(() => { P.pad.fake = null; }); await frame(1500);
 
   // seated: the left stick pushed sideways snap-turns the player in the seat and leaves the bucket alone
