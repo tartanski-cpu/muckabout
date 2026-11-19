@@ -157,7 +157,10 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const dz = (v = 0) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85), b = (i) => g.buttons[i]?.value ?? 0;
     const hit = (i) => { const d = b(i) > 0.5, was = pad.prev[i]; pad.prev[i] = d; return d && !was; };
     pad.l[0] = dz(g.axes[0]); pad.l[1] = -dz(g.axes[1]); pad.r[0] = dz(g.axes[2]); pad.r[1] = -dz(g.axes[3]);
-    pad.fwd = b(7) - b(6); pad.brake = b(2);
+    pad.fwd = b(7) - b(6); pad.brake = 0; // (LT brakes while rolling forward, then reverses: see assist)
+    // Farming Simulator's layout (FS22/FS25 defaults): RT go, LT brake / reverse, left stick steer, right stick look, right
+    // stick click switches camera, X in / out, Y switches control group, d-pad ◀ ▶ previous / next vehicle, ▲ ▼ zoom,
+    // Menu the menu, hold LB for the implement. The engine starts and the park brake comes off when you pull away.
     // seated, the right stick looks round (the chase camera orbits the machine); held with LB it works the implement instead
     const lb = b(4) > 0.5, now = performance.now();
     if (lb && !pad.lb) { pad.lbAt = now; pad.lbUsed = false; }
@@ -168,18 +171,27 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     const lbTap = !lb && pad.lb && !pad.lbUsed && now - pad.lbAt < 350; pad.lb = lb; // a short press with no looking is still throttle down
     if (pad.fwd || pad.l[0] || pad.l[1] || g.buttons.some((x) => x.value > 0.5)) bus.start();
     const m = player.machine, seat = (d) => { const i = (machines.indexOf(m) + d + machines.length) % machines.length; if (m) S.stand(); S.sit(machines[m ? i : 0]); };
-    if (hit(3)) { if (m) S.stand(); else { let best = machines[0], bd = 1e9; for (const o of machines) { const d = Math.hypot(o.position.x - player.feet.x, o.position.z - player.feet.z); if (d < bd) { bd = d; best = o; } } S.sit(best); } } // Y: in / out
-    if (hit(15)) seat(1); if (hit(14)) seat(-1);                                                     // d-pad left / right: next machine
-    if (hit(8)) S.chase = !S.chase;                                                                  // View: chase camera
-    if (!m) return;
-    if (hit(9)) setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);                                // Menu: ignition
+    if (hit(2)) { if (m) S.stand(); else { let best = machines[0], bd = 1e9; for (const o of machines) { const d = Math.hypot(o.position.x - player.feet.x, o.position.z - player.feet.z); if (d < bd) { bd = d; best = o; } } S.sit(best); } } // X: in / out
+    if (hit(15)) seat(1); if (hit(14)) seat(-1);                                                     // d-pad ◀ ▶: previous / next vehicle
+    if (hit(9)) { if (game.menu?.open) game.menu.hide(); else game.menu?.show(); }                   // Menu: the menu
+    // View held a second: stand the machine back on its wheels (a hold, so it is not done by accident)
+    const view = b(8) > 0.5; pad.viewHeld = view ? (pad.viewHeld || 0) + 1 / 60 : 0;
+    if (!m) { if (hit(0)) player.crouch(); return; }                                                 // on foot, A crouches
+    if (hit(11)) S.chase = !S.chase;                                                                 // right stick click: cab / outside camera
+    if (hit(12)) S.zoom = clamp((S.zoom || 1) / 1.25, 0.45, 2.5); if (hit(13)) S.zoom = clamp((S.zoom || 1) * 1.25, 0.45, 2.5); // d-pad ▲ ▼: zoom the outside camera
+    if (hit(3) && m.controls.swivel) m.controls.swivel.press(null);                                  // Y: switch control group (the backhoe's seat: loader or hoe)
+    if (lb && hit(0)) setCtl(m, 'key', m.controls.key.value > 0.5 ? 0 : 1);                         // LB + A: engine off / on
+    else if (hit(0)) m.voice.horn();                                                                 // A: horn
     if (hit(1)) setCtl(m, 'park', m.controls.park.value > 0.5 ? 0 : 1);                              // B: park brake
-    if (hit(5)) setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));                // RB / LB: throttle
+    if (hit(5)) setCtl(m, 'throttle', clamp(m.controls.throttle.value + 0.25, 0, 1));                // tap RB / LB: hand throttle up / down
     if (lbTap) setCtl(m, 'throttle', clamp(m.controls.throttle.value - 0.25, 0, 1));
-    if (hit(0)) m.voice.horn();                                                                      // A: horn
-    if (hit(11) && m.controls.swivel) m.controls.swivel.press(null);                                 // right stick click: turn the seat (backhoe)
-    if (hit(13)) m.upright();
-    if (hit(12) && m.controls.range) setCtl(m, 'range', m.controls.range.value > 0.5 ? 0 : 1);                  // d-pad up: travel gear                                                                          // d-pad down: put it back on its wheels
+    if (hit(10) && m.controls.range) setCtl(m, 'range', m.controls.range.value > 0.5 ? 0 : 1);       // left stick click: travel gear
+    if (pad.viewHeld >= 1 && pad.viewHeld - 1 / 60 < 1) { m.upright(); game.hud.note = 'MACHINE STOOD UPRIGHT'; }
+    if (pad.fwd) { // pulling away: the engine starts and the park brake comes off, as in Farming Simulator
+      if (m.controls.key.value < 0.5) setCtl(m, 'key', 1);
+      if (m.controls.park.value > 0.5 && !pad.parkHeld) setCtl(m, 'park', 0);
+    }
+    pad.parkHeld = b(1) > 0.5;
   }
   const setCtl = (m, name, v) => { const c = m.controls[name]; if (c && !c.held && c.value !== v) c.set(v); };
   const k = (c) => (keys.has(c) ? 1 : 0);
@@ -190,7 +202,9 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     let fwd = rear ? 0 : k('KeyW') - k('KeyS'), turn = rear ? 0 : k('KeyD') - k('KeyA');
     if (pad.on) { // gamepad: triggers go and reverse, left stick steers (and drives a tracked machine), right stick works the implement
       const tracks = m.def.drive.type === 'tracks', map = (rear ? m.def.sticksRear : m.def.sticks) || {};
-      if (!rear) { fwd += pad.fwd + (tracks ? pad.l[1] : 0); turn += pad.l[0]; }
+      let pf = pad.fwd; // LT (or RT) against the way it is rolling brakes first; at a stop it drives that way
+      if (!tracks && pf && (pf < 0 ? m.speed > 0.4 : m.speed < -0.4)) { pad.brake = Math.abs(pf); pf = 0; }
+      if (!rear) { fwd += pf + (tracks ? pad.l[1] : 0); turn += pad.l[0]; }
       for (const [key, st] of [['left', pad.l], ['right', pad.r]]) {
         const sm = map[key]; if (!sm || (key === 'left' && !rear)) continue;
         if (sm.x && st[0]) inp[sm.x[0]] = clamp((inp[sm.x[0]] || 0) + st[0] * sm.x[1], -1, 1);
@@ -341,7 +355,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
     if (m && S.chase) {
       if (cam.parent !== scene) scene.add(cam);
       const a = m.heading + S.look.yaw, p = m.position;
-      cam.position.set(p.x + Math.sin(a) * 11, p.y + 6 - S.look.pitch * 6, p.z + Math.cos(a) * 11);
+      const z = S.zoom || 1; cam.position.set(p.x + Math.sin(a) * 11 * z, p.y + (6 - S.look.pitch * 6) * z, p.z + Math.cos(a) * 11 * z);
       _f.set(0, 0, -2).applyQuaternion(m.bodyList[0].obj.quaternion); cam.lookAt(p.x + _f.x, p.y + 1.5, p.z + _f.z);
       return;
     }
@@ -362,7 +376,7 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
       + `<b>PC:</b> point at a lever, switch, key or the wheel and it lights up; drag it (up pushes forward), click a switch or button; on foot, click a handrail to climb in, or click a hand tool to carry it (look at the ground to put it there, walk to dig, right button throws, click to put down). Drag anywhere else to look round.<br>`
       + `<b>Keys:</b> ${K('1')}–${K('4')} take a seat · ${K('Q')} get out · ${K('Enter')} ignition · ${K('P')} park brake · ${K('W')}${K('A')}${K('S')}${K('D')} drive · ${K('Space')} brake · `
       + `${K('T')}/${K('G')} throttle · ${K('U')} travel gear · ${K('Y')} dozer auto level · ${K('V')} chase view · ${K('R')} stand the machine upright (${K('Shift')}+${K('R')} back to where it started) · ${K('X')} demo drivers · ${K('M')} switch physics · ${K('N')} time of day · on foot, ${K('C')} crouch · drag to look<br>`
-      + `<b>Gamepad (Xbox):</b> ${K('Y')} get in / out · d-pad ◀ ▶ next machine · ${K('Menu')} ignition · ${K('B')} park brake · ${K('RT')} go · ${K('LT')} reverse · ${K('X')} brake · left stick steer (tracks: drive) · right stick look round (orbits in chase view) · hold ${K('LB')} + right stick bucket, blade or bed · ${K('RB')}/tap ${K('LB')} throttle · ${K('A')} horn · ${K('View')} chase view · d-pad ▲ travel gear · d-pad ▼ stand the machine upright; on foot, sticks walk and look<br>`
+      + `<b>Gamepad (Xbox), laid out as in Farming Simulator:</b> ${K('RT')} go · ${K('LT')} brake, then reverse · left stick steer (tracks: drive) · right stick look round · right stick click: cab / outside view · d-pad ▲ ▼ zoom · ${K('X')} get in / out · d-pad ◀ ▶ previous / next machine · ${K('Y')} switch control group (backhoe: loader or hoe) · hold ${K('LB')} + right stick bucket, blade or bed · tap ${K('RB')} / ${K('LB')} hand throttle · ${K('B')} park brake · ${K('A')} horn · ${K('LB')}+${K('A')} engine on / off (it starts by itself when you pull away) · left stick click travel gear · hold ${K('View')} to stand the machine upright · ${K('Menu')} menu; on foot, sticks walk and look, ${K('A')} crouch<br>`
       + `<b>Physics: ${S.physics === 'custom' ? 'custom (hand-written vehicle model)' : 'Rapier (rigid bodies)'}.</b> Switch it under Extras on the start page (Esc).<br>`
       + (m ? `<b>${m.name}:</b> ${(m.def.keyHelp || '')}` : 'On foot.') + ` · <a href="poc.html">original POC</a>`;
   }

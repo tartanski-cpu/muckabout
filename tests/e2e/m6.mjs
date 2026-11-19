@@ -61,6 +61,12 @@ try {
   await sync(1000);
   const av = await Promise.all([host.evaluate(() => [...__game.play.net.avatars.values()].map((a) => a.root.visible)), client.evaluate(() => [...__game.play.net.avatars.values()].map((a) => a.root.visible))]);
   check(av[0].length === 1 && av[0][0] && av[1].length === 1 && av[1][0], 'each player sees the avatar of the other');
+  // the client looks at its dumper from outside (third person): its avatar stays in the seat, not up where the camera is
+  await client.evaluate(() => { __game.play.chase = true; }); await sync(1000); await sync(600);
+  const chase = await host.evaluate(() => { const g = __game, V = g.THREE.Vector3, a = [...g.play.net.avatars.values()][0], h = a.head.getWorldPosition(new V()), s = g.machine('dumper').seat.getWorldPosition(new V()); return h.distanceTo(s); });
+  const camUp = await client.evaluate(() => __game.camera.getWorldPosition(new __game.THREE.Vector3()).distanceTo(__game.machine('dumper').seat.getWorldPosition(new __game.THREE.Vector3())));
+  check(chase < 0.4 && camUp > 5, `in the outside view the client's avatar stays in the seat (${chase.toFixed(2)} m from it; the camera is ${camUp.toFixed(1)} m away)`);
+  await client.evaluate(() => { __game.play.chase = false; });
   await client.evaluate(() => { __game.play.stand(); __game.play.overview = { from: [28, 14, -30], to: [10, 8, -46] }; }); await sync(800);
   await client.screenshot({ path: 'shots/m6_client.png' });
   // leaving frees the seat
