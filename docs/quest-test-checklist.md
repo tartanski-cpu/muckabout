@@ -226,6 +226,7 @@ What changed is in `docs/blade-soil.md`. None of it has been seen in a headset.
 - **Granules:** smaller now (mostly 5–8 cm, a few lumps to 15), smaller for sand and gravel, bigger for clay. Better than the chunky look, or too fine to read from the seat?
 - **Engine and sound:** the engine should labour harder with a full blade and hardest against a pile, through the same engine model as before. Is the note right?
 - **Grading the site-office pad** should still take two passes with AUTO LEVEL.
+- **Stones and clods on the ground** (the scattered lumps on worked soil, heaps and gravel, not the moving granules) are about a third as many on soil and half as many on gravel, for texture rather than a carpet. Too sparse now, or about right? (The ground near you costs a third to a half the triangles it did: 162k → 51k at the valley's spoil heaps.)
 
 ## Left stick click (changed)
 

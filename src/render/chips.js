@@ -22,7 +22,9 @@ export { lumpy };
 export class Chips {
   constructor(terrain) {
     this.t = terrain; this.cnx = Math.ceil(terrain.nx / CHUNK); this.cnz = Math.ceil(terrain.nz / CHUNK);
-    const shard = lumpy(new THREE.TetrahedronGeometry(0.075, 0), 0.35, 3), clump = lumpy(new THREE.DodecahedronGeometry(0.07, 0), 0.3, 5);
+    // (a clump is a knocked-about icosahedron, 20 triangles: as round a clod as the 36-triangle dodecahedron it replaced; an
+    // 8-triangle octahedron was cheaper still but read as little pyramids)
+    const shard = lumpy(new THREE.TetrahedronGeometry(0.075, 0), 0.35, 3), clump = lumpy(new THREE.IcosahedronGeometry(0.07, 0), 0.3, 5);
     // a grass tuft: three thin blades fanned out, each a tapering strip (far better than a cone, same cost)
     const blades = []; for (let b = 0; b < 3; b++) { const a = b * 2.1 + 0.3, lean = 0.05 + b * 0.03, w = 0.022, h = 0.2 + b * 0.05, c = Math.cos(a), s = Math.sin(a);
       blades.push(-w * c, 0, -w * s, w * c, 0, w * s, lean * -s, h, lean * c); }
@@ -41,10 +43,11 @@ export class Chips {
     for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) {
       const gi = ci * CHUNK + i, gj = cj * CHUNK + j, c = gj * t.nx + gi, m = t.info[c * 4]; if (!m) continue;
       const worked = t.info[c * 4 + 1] > 0, r = hash2(gi, gj, m);
-      let type = MATERIALS[m].chip, dens = type === 1 ? 0.7 : 0.22, col = MATERIALS[m].color, big = 1;
+      // A sprinkling for texture, not a carpet (per 0.25 m cell: 0.3 is about 5 a square metre)
+      let type = MATERIALS[m].chip, dens = type === 1 ? 0.3 : 0.07, col = MATERIALS[m].color, big = 1;
       if (m === TOPSOIL && !worked) { dens = 0.42; col = GRASS_COLOR; if (r > 0.415) { type = 1; col = STONE; big = 1.6; } } // grass, with the odd stone
-      else if (m === TOPSOIL) { type = 2; dens = 0.2; }
-      else if (worked && type === 2) dens = 0.34;                 // freshly worked soil is cloddy
+      else if (m === TOPSOIL) { type = 2; dens = 0.06; }
+      else if (worked && type === 2) dens = 0.1;                  // freshly worked soil is a little cloddier
       else if (m === 4) { type = 1; dens = 0.05; col = STONE; }   // a few pebbles on sand
       if (!type || r > dens) continue;
       const a = hash2(gi, gj, 7), b = hash2(gi, gj, 13), k = 0.7 + 0.5 * a;
