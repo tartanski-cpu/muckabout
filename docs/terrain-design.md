@@ -46,6 +46,8 @@ worker → main  {t:'tick', n, results:[...], chunks:[{id, h:Float32Array, info:
   sub-steps of half a cell (no tunnelling), removes everything above the floor, gives up to
   `capacity` m³ to the caller (per material) and windrows the rest ahead of the lip. Returns taken
   volumes and a resistance figure (Σ volume × dig resistance).
+  A blade (`heap`: its height above the edge) pushes against its face instead and is a wall for relaxation while it
+  is there; see "Blades" below.
 - `deposit`: clod landings, bilinear into 4 samples.
 - `compact`: tyre/track footprints; soft materials rut, the lost volume is booked as `compacted`.
 
@@ -99,3 +101,29 @@ Friction: a light damping tuned on the river, and Manning's (n = 0.035), which g
 ## Rock
 
 A material can be `solid` (rock): `cut` never takes it, only what lies on it (`softAbove`), and adds a heavy resistance for the rock the edge meets. With `cmd.rip` (a ripper tooth) `cut` instead breaks the rock it reaches into its `loosens` material (shot rock) where it lies: the column down to the tooth is taken off and put back, the rock part as shot rock and anything that lay on it on top, so volumes balance. The breakout widens with depth (`RIP_BREAKOUT`, 45°). Materials are sent to co-op clients in 4 bits (bog, material 8, used to arrive as nothing in 3).
+
+## Blades
+
+`cut` with `heap` (the dozer: `machines/dozer.json`, `tools[].heap` = 1.15 m, the blade's top above its edge). Why and
+the sources: `docs/blade-soil.md`.
+
+- What it cuts goes into the two cells just ahead of its face (60 / 40), at the same place across the blade. Sweeping
+  those again next step is what pushes the heap; nothing is thrown.
+- For the step, every cell under the blade takes soil from relaxation only up to the edge's height (`wallT`, `wallY`):
+  the heap cannot run back through the blade, but a hollow it passes over fills to the edge, which is how it grades.
+  The strips just beyond each end, from the back of the blade to 0.7 m ahead of it, take none at all, so the heap stays
+  in front until it is full.
+- Soil against the face higher than the blade's top runs along the face and off the nearer end, a share a tick
+  (`SPILL_RATE`), into the cells beside the end, where relaxation lays it out as a windrow. Ground beside the end that
+  stands above the blade's top a metre out is a slot's wall: nothing goes off that end. Soil more than `OVER_TOP` above
+  the top topples over it and lands just behind the blade.
+- The result also has `fresh` (soil cut from below the blade's own heap: `pushT`/`pushB` mark cells its heap has
+  reached and the ground under it), `load` (m³ in the heap ahead, out to 1.6 × height), `face` (mean height against the
+  face), `spill`, `over`, and `dig` (resistance from cutting alone). `resist` adds dragging the load and the wedge
+  pushed ahead of the face (∝ face²), as a force while the edge moves.
+- The machine (`Machine.post`, `pre`): `digRate` (all of it) lugs the machine and loads the engine; `cutRate` (cutting
+  alone) is what slows forcing the edge deeper. On the custom model the load also stalls the tracks once dragging it
+  passes their grip (`SOIL_DRAG`); on Rapier the blade's force grows with `digRate` up to its `maxForce`.
+- `tools/bladeprobe.mjs` prints all of this for a shallow cut, a blade held down, and a standing pile;
+  `tests/blade.test.js` holds the figures.
+

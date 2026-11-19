@@ -16,6 +16,7 @@ import { clamp } from '../util/rng.js';
 
 const G = 9.81, ROCK_ID = 6;
 const HOLD_K = (2 * Math.PI * 3) ** 2; // standing grip: a braked wheel's share of the mass on a 3 Hz spring (0.3 mm of give on a 1 % slope)
+const SOIL_DRAG = 0.55 * 1600 * 9.81; // N per m³ of heap a blade drags along (docs/blade-soil.md)
 const TOOL_BITE = 0.6; // m a blade or bucket may stand below the ground its machine is on before the soil carries it
 const V = () => new THREE.Vector3();
 const _t = V(), _q = new THREE.Quaternion(), _up = V(), _f = V(), _s = V(), _n = V(), _c = V(), _v = V(), _p = V(), _a = V(), _m4 = new THREE.Matrix4(), _m5 = new THREE.Matrix4();
@@ -300,7 +301,7 @@ export class Machine {
     this.range = { v: 1, f: 1, high: false }; this.gradeOn = false; this.gradeY = 0;
     this.tow = null; // {fx, fz (N, world), px, py, pz (world point), body}: set each step by a taut tow chain
     this.pt = new Powertrain({ ...def.engine, power: def.drive.power }); this.shaft = 0; this.hyd = { p: 0, q: 0 };
-    this.digRate = 0; this.spillRate = 0; this.bump = 0; this.speed = 0; this.tick = 0; this.events = [];
+    this.digRate = 0; this.cutRate = 0; this.spillRate = 0; this.bump = 0; this.speed = 0; this.tick = 0; this.events = [];
     this.driver = null; // who is in the seat (multiplayer / AI)
     // ---- geometry for the custom (non-Rapier) vehicle model
     const meanZ = (ws) => ws.reduce((a, w) => a + w.pos.z, 0) / Math.max(1, ws.length);
@@ -371,7 +372,12 @@ export class Machine {
       const tgt = free ? { L: k.vl * 0.98, R: k.vr * 0.98 } : this.trackTarget && !(this.brake > 0.5) ? this.trackTarget : { L: 0, R: 0 }, amax = Math.min(3, grip);
       const bogged = 1 - 0.6 * clamp((soft - 0.5) / 0.7, 0, 1); // tracks keep going in deep mud where wheels stop, but only at a crawl
       // a loaded blade lugs the machine down: the deeper the cut and the bigger the heap ahead, the slower it crawls
-      const lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / ((dr.digLug ?? 16) * this.range.f), 1.5)) : 1;
+      let lug = toolMoving > 0.05 || this.digRate > 1 ? 1 / (1 + Math.pow(this.digRate / ((dr.digLug ?? 16) * this.range.f), 1.5)) : 1;
+      // The heap a blade carries has to be dragged over the ground (soil on soil, μ ≈ 0.55, about 1600 kg/m³): once that
+      // passes half what the tracks can grip they start to slip, and at their full grip the machine stops however hard it
+      // is driven. A full blade (≈ 4 m³) is a fifth of a dozer's grip; three or four blades' worth held in a slot stalls it.
+      let carried = 0; for (const t of this.tools) if (t.load) carried += t.load;
+      if (carried > 0) lug *= clamp((grip - carried * SOIL_DRAG / this.mass) / (0.5 * grip), 0, 1);
       k.vl += clamp(tgt.L * lug * bogged - k.vl, -amax * dt, amax * dt); k.vr += clamp(tgt.R * lug * bogged - k.vr, -amax * dt, amax * dt);
       const push = toolMoving > 0.05 ? dig : 0, hold = dr.maxForce / this.mass; // the blade's load and the hill can overpower the tracks
       for (const side of ['vl', 'vr']) { let v = k[side]; v = oppose(v, Math.max(0, push - hold * 0.35)); if (Math.abs(slope) > grip) v += (slope - Math.sign(slope) * grip) * dt; k[side] = v; }
@@ -523,12 +529,12 @@ export class Machine {
           pr = !L.dir || cmd * L.dir > 0 ? L.self + (0.92 - L.self) * fill : 0.12;
           if (L.carries && this.digRate > 0) pr += Math.min(0.3, this.digRate * 0.1);      // crowding into the pile
         }
-        if (f.loadSlows && cmd * f.loadSlows > 0) pr += Math.min(0.5, this.digRate * 0.25); // forcing the edge into the ground
+        if (f.loadSlows && cmd * f.loadSlows > 0) pr += Math.min(0.5, this.cutRate * 0.25); // forcing the edge into the ground
         if ((cmd < 0 && f.pos <= f.min + span) || (cmd > 0 && f.pos >= f.max - span)) pr = 1; // against the stop: everything goes over the relief valve
         hq += a; hw += a * Math.min(1, pr);
       }
       let rate = f.manual ? f.rate : f.rate * flow; // a seat swivels by hand; everything else needs oil flow
-      if (f.loadSlows && cmd * f.loadSlows > 0) rate /= 1 + this.digRate * 1.5; // forcing the tool into the ground is slower
+      if (f.loadSlows && cmd * f.loadSlows > 0) rate /= 1 + this.cutRate * 1.5; // forcing the tool into the ground is slower (cutting, not the load it pushes)
       f.pos = clamp(f.pos + cmd * rate * dt, f.min, f.max);
     }
     for (const ff of this.feelFns) { ff.cmd = e.running ? ff.src.cmd : 0; ff.pos = ff.src.pos; }
@@ -683,7 +689,9 @@ export class Machine {
     for (const t of this.tools) {
       if (t.rate <= 1e-4) continue;
       const sp = Math.hypot(t.vel.x, t.vel.z); if (sp < 0.05) continue;
-      const F = Math.min(t.rate * this.mass * 2.2, t.def.maxForce ?? this.mass * 7);
+      // (a blade's resistance grows with the load it carries and the face it presses (terrain/core.js): graded up to its
+      // maxForce, so a light cut, a full blade and a pile feel different; a bucket's is all or nothing, as tuned)
+      const F = Math.min(t.rate * this.mass * (t.def.heap ? 0.45 : 2.2), t.def.maxForce ?? this.mass * 7);
       t.body.rb.addForce({ x: -t.vel.x / sp * F, y: 0, z: -t.vel.z / sp * F }, true);
     }
     // soft fence at the edge of the map
@@ -709,7 +717,7 @@ export class Machine {
     this.root.updateMatrixWorld(true);
     for (const w of this.wheels) { w.mesh.position.y = w.pos.y + (this.kin.custom ? -(this.kin.sh - w.pos.z * this.kin.sp + w.pos.x * this.kin.sr) : w.grounded ? w.comp : -this.sus.ext); w.mesh.rotation.set(-w.spin, w.steer, 0, 'YXZ'); }
     // tools: cut what the edge swept, feed the container, remember resistance
-    let dig = 0;
+    let dig = 0, cut = 0;
     for (const t of this.tools) {
       const c = t.container, m = t.node.matrixWorld;
       // a container only takes soil while it is the right way up
@@ -718,19 +726,23 @@ export class Machine {
       t.node.getWorldPosition(_p);
       if (t.has) t.vel.copy(_p).sub(t.prev).divideScalar(dt); t.prev.copy(_p); t.has = true;
       const res = t.cut.step(m.elements, this.terrain, cap, true);
-      let moved = 0, resist = 0;
+      let moved = 0, resist = 0, cutting = 0;
       if (res) {
         for (let k = 1; k < NMAT; k++) if (res.taken[k] > 0) { if (c) c.field.add(k, res.taken[k]); moved += res.taken[k]; }
-        moved += res.pushed; resist = res.resist;
+        moved += res.pushed; resist = res.resist; cutting = res.dig ?? res.resist;
+        if (res.load !== undefined) { t.load = res.load; t.face = res.face; t.faceL = res.faceL; t.faceR = res.faceR; t.fresh = res.fresh; } // a blade: what it carries (docs/blade-soil.md)
+      } else if (t.load) { // no word this step: lifted clear (nothing is cut, so nothing comes back), or the worker is behind: let it fade
+        t.load *= 0.9; t.face *= 0.9; t.faceL *= 0.9; t.faceR *= 0.9; t.fresh = 0; if (t.load < 0.01) t.load = t.face = t.faceL = t.faceR = 0;
       }
       t.rate += (resist / dt - t.rate) * 0.3; t.moved = moved; dig += t.rate;
+      t.cutRate = (t.cutRate || 0) + (cutting / dt - (t.cutRate || 0)) * 0.3; cut += t.cutRate; // cutting alone: what resists forcing the edge deeper
       if (res && res.pushed > 0.002) { // material shoved ahead of the edge: tell the scene, which throws up tumbling chunks there
         const L = t.def.corners, e = m.elements, lx = (L[2][0] + L[3][0]) / 2, ly = L[2][1], lz = (L[2][2] + L[3][2]) / 2, hw = Math.abs(L[3][0] - L[2][0]) / 2;
         this.events.push({ type: 'churn', tool: t, x: e[0] * lx + e[4] * ly + e[8] * lz + e[12], y: e[1] * lx + e[5] * ly + e[9] * lz + e[13], z: e[2] * lx + e[6] * ly + e[10] * lz + e[14],
-          ax: e[0], az: e[2], hw, vx: t.vel.x, vz: t.vel.z, vol: res.pushed, full: !!c && c.field.free() < 0.05 });
+          ax: e[0], az: e[2], hw, vx: t.vel.x, vz: t.vel.z, vol: res.pushed, fresh: res.fresh ?? res.pushed, face: res.face ?? 0, top: t.def.heap ?? 0, full: !!c && c.field.free() < 0.05 });
       }
     }
-    this.digRate = dig;
+    this.digRate = dig; this.cutRate = cut;
     let spill = 0; for (const r of this.rigs) spill += r.spillRate; this.spillRate = spill;
     if (this.trackRuns.length) { for (const run of this.trackRuns) { const w = this.wheels.find((x) => x.side === run.side); run.s += (w ? w.vf : this.speed) * dt; } this._poseTracks(); }
     // ruts
