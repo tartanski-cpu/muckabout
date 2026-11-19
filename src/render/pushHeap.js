@@ -14,6 +14,9 @@ import { MATERIALS } from '../terrain/materials.js';
 import { lumpy } from './chips.js';
 
 const PER_TOOL = 2600, TOOLS = 3, SETTLE = 2.4, G = 9.8, R = 0.05;
+const HEAP_REACH = 1.6; // × blade height: the farthest a blade's heap reaches ahead of it (as in terrain/core.js)
+// granule size by material: sand and gravel run small and round, clay and its spoil come off in bigger lumps
+const SIZE = { 3: 1.2, 4: 0.7, 5: 0.75, 7: 1.15, 9: 1.1 };
 const _o = new THREE.Object3D(), _l = new THREE.Vector3(), _r = new THREE.Vector3(), _b = new THREE.Vector3();
 const rnd = Math.random;
 
@@ -64,8 +67,9 @@ export class PushHeap {
       const pushing = s.kick > -0.05 && (bs > 0.06 || s.fresh); // soil is being cut and the edge is travelling
       s.act = Math.max(0, Math.min(1, s.act + (pushing ? dt / 0.35 : -dt / SETTLE)));
       if (s.act <= 0) { this.states.delete(tool); continue; }
-      // the terrain heaps the soil a little ahead of the cutting edge: that, not the edge, is the face the granules lie against
-      const off = (tool.def.ahead ?? 0.35) * 0.75, fl = T.heightAt(cx - fx * 0.3, cz - fz * 0.3); cx += fx * off; cz += fz * off;
+      // a blade (def.heap) pushes its soil against its own face; a bucket heaps it a little ahead of its edge, and that, not
+      // the edge, is the face the granules lie against
+      const blade = tool.def.heap > 0, off = blade ? 0 : (tool.def.ahead ?? 0.35) * 0.75, fl = T.heightAt(cx - fx * 0.3, cz - fz * 0.3); cx += fx * off; cz += fz * off;
       const hw = w / 2, floor = fl, top = Math.max(floor + 1.3, T.heightAt(cx + fx * 0.4, cz + fz * 0.4) + 0.7), // the blade stands above the heap against it
          count = Math.min(PER_TOOL, Math.round(PER_TOOL * (hw + 0.3) / 2));
       const P = s.p, grow = Math.sqrt(s.act), sink = (1 - s.act) * 0.14, fric = Math.exp(-8 * dt);
@@ -78,8 +82,17 @@ export class PushHeap {
       // heap: soil that has been moved (the terrain marks ground it has disturbed) and stands above the floor the edge is cutting.
       // Untouched ground beside a trench is higher than the trench's floor too, but it is not heap.
       const info = T.info, heap = (hx, hz) => T.heightAt(hx, hz) - floor > 0.07 && (!info || info[T.cellAt(hx, hz) * 4 + 1] > 60);
-      // how far ahead of the face the heap reaches, down its middle
-      let reach = 0.6; for (let a = 0.3; a < 3.4; a += 0.3) if (heap(cx + fx * a, cz + fz * a)) reach = a + 0.3;
+      // How far ahead of the face the heap the blade is moving reaches, down its middle. Only that heap moves: it ends where
+      // the ground is back down to the floor, or where it has been falling away from the blade and starts to rise again (the
+      // foot of a pile standing beyond it), and never more than HEAP_REACH × the blade's height. Soil standing beyond it is
+      // ground, not heap: a blade driven into a standing pile moves the wedge in front of it, not the whole pile.
+      const Hb = blade ? tool.def.heap : 1.2;
+      let reach = 0.6, prev = 1e9, fell = false;
+      for (let a = 0.15; a <= HEAP_REACH * Hb + 1e-6; a += 0.2) {
+        const hh = T.heightAt(cx + fx * a, cz + fz * a) - floor; if (hh < 0.07) break;
+        if (hh < prev - 0.02) fell = true; else if (fell && hh > prev + 0.04) break;
+        prev = hh; reach = a + 0.2;
+      }
       const drag = 1 - Math.exp(-7 * dt);
       for (let i = 0; i < count; i++) {
         const k = i * 10;
@@ -87,6 +100,8 @@ export class PushHeap {
         let d = (x - cx) * fx + (z - cz) * fz, u = (x - cx) * ax + (z - cz) * az;
         const behind = d < -0.3 && Math.abs(u) < hw;
         const old = P[k + 4] > 3 + 3 * ((i * 17) % 13) / 12; // each is turned under after a few seconds and comes up somewhere else: bare patches fill
+        const gone = P[k + 9] && (d > reach + 0.8 || Math.abs(u) > hw + 1.6); // left beyond the moving heap: it is ground now
+        if (gone) P[k + 9] = 0;
         const lost = !P[k + 9] || behind || old || d > 5 || d < -4 || Math.abs(u) > hw + 3 || P[k + 8] > 0.4;
         if (lost) {
           if (feed <= 0) { if (!P[k + 9]) continue; }
@@ -96,25 +111,26 @@ export class PushHeap {
             feed--;
             if (rnd() < 0.33) { u = (rnd() * 2 - 1) * hw; d = 0.06 + rnd() * 0.3; }
             else {
-              u = (rnd() * 2 - 1) * (hw + 1.2); d = -0.6 + rnd() * (reach + 1.0);
+              u = (rnd() * 2 - 1) * (hw + 0.9); d = Math.abs(u) < hw ? 0.06 + rnd() * reach : -0.8 + rnd() * 1.4; // the heap, or the windrows at the ends
               if (d < 0.06 && Math.abs(u) < hw) d = 0.06 + rnd() * 0.3;
               if (!heap(cx + ax * u + fx * d, cz + az * u + fz * d)) { feed++; continue; }
             }
             P[k + 4] = 0;
             x = cx + ax * u + fx * d; z = cz + az * u + fz * d; vx = bvx; vz = bvz;
             const q = rnd();
-            P[k + 6] = rnd() * 6.3; P[k + 7] = 0.55 + 1.35 * q * q * q; P[k + 8] = 0; P[k + 9] = 1;
+            P[k + 6] = rnd() * 6.3; P[k + 7] = (0.45 + 0.95 * q * q * q) * (SIZE[T.materialAt(x, z)] || 1); P[k + 8] = 0; P[k + 9] = 1; // mostly 5–8 cm, a few lumps up to 15
           }
         }
         // the soil's flow here
         const e = Math.min(1.4, Math.abs(u) / hw), inside = e < 1;
         let carry = 0, squeeze = 0;
         if (bs > 0.02 && d > -0.2) {
-          // on the heap the surface rolls: it wells up at the face and runs forward over the top and down the front faster
-          // than the blade is travelling, comes to rest at the toe, and is overrun and taken up again
+          // on the heap the surface rolls: it wells up at the face and runs forward over the top and down the front a little
+          // faster than the blade is travelling (the heap itself moves with the blade), comes to rest at the toe, and is
+          // overrun and taken up again
           const len = reach * (inside ? 1 - 0.45 * e * e : 0.3), t = Math.max(0, d) / len;
           // (each at its own pace, so they spread over the whole face; one that reaches the toe is rolled under and goes round again)
-          carry = (t < 1 ? 1.1 + 0.4 * ((i * 11) % 9) / 8 : Math.exp(-(t - 1) * len / 0.2)) * (inside ? 1 : Math.max(0, 1 - (e - 1) * 4));
+          carry = (t < 1 ? 1.0 + 0.25 * ((i * 11) % 9) / 8 : Math.exp(-(t - 1) * len / 0.2)) * (inside ? 1 : Math.max(0, 1 - (e - 1) * 4));
           if (pushing && inside && t >= 1) P[k + 8] = 1;
           squeeze = inside ? Math.sign(u) * (0.15 + 0.75 * e * e) * Math.exp(-d / 0.7) : 0;
         }

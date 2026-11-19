@@ -250,14 +250,26 @@ export async function setup(game, { kinds = Object.keys(DEFS) } = {}) {
   };
   // Material being shoved along ahead of a blade or a full bucket: a bed of granules riding the heap (render/pushHeap.js), and a few chunks thrown up along the cutting edge.
   // They carry no volume (the soil itself is already heaped on the ground ahead); they are there so you can see it move.
+  // Chunks come off new ground being cut, not off a heap that is only being shoved along again (docs/blade-soil.md). A
+  // blade pressed into a face standing near its own height (a pile) breaks lumps off it that roll back down onto the
+  // blade, with a puff of dust: soil driven into is not thrown forward.
+  const tall = new WeakMap();
   function churn(ev) {
     if (game.fast) return;
-    const n = Math.min(3, Math.ceil(ev.vol / 0.006)), r = Math.random, sp = Math.hypot(ev.vx, ev.vz) || 1, m = terrain.materialAt(ev.x + ev.vx / sp * 0.5, ev.z + ev.vz / sp * 0.5) || 1;
+    const r = Math.random, sp = Math.hypot(ev.vx, ev.vz) || 1, fx = ev.vx / sp, fz = ev.vz / sp, m = terrain.materialAt(ev.x + fx * 0.5, ev.z + fz * 0.5) || 1;
+    const n = Math.min(3, Math.ceil(ev.fresh / 0.006));
     for (let k = 0; k < n; k++) {
       const a = (r() * 2 - 1) * ev.hw, lift = ev.full ? 2.2 : 1.4;
-      game.clods.spawn(ev.x + ev.ax * a + ev.vx / sp * 0.25, ev.y + 0.15 + r() * 0.35, ev.z + ev.az * a + ev.vz / sp * 0.25,
+      game.clods.spawn(ev.x + ev.ax * a + fx * 0.25, ev.y + 0.15 + r() * 0.35, ev.z + ev.az * a + fz * 0.25,
         ev.vx * 1.15 + (r() - 0.5) * 1.2, lift + r() * 1.6, ev.vz * 1.15 + (r() - 0.5) * 1.2, m, 0);
     }
+    if (!(ev.top > 0)) return;
+    const was = tall.get(ev.tool) ?? ev.face, jump = Math.max(0, ev.face - was); tall.set(ev.tool, ev.face);
+    if (ev.face > ev.top * 0.8 && r() < 0.18 + jump * 3) { // lumps off the face above the blade, rolling back toward it
+      const a = (r() * 2 - 1) * ev.hw * 0.8, y = ev.y + ev.face + 0.1;
+      game.clods.spawn(ev.x + ev.ax * a + fx * (0.5 + r() * 0.4), y, ev.z + ev.az * a + fz * (0.5 + r() * 0.4), ev.vx * 0.9 - fx * (0.5 + r() * 0.6), 0.3 + r() * 0.5, ev.vz * 0.9 - fz * (0.5 + r() * 0.6), m, 0);
+    }
+    if (jump > 0.08) S.fx.puff(ev.x + fx * 0.6, ev.y + Math.min(ev.face, ev.top), ev.z + fz * 0.6, ev.hw, m, Math.min(1, jump * 4)); // the face hit: a puff of dust off it
   }
 
   // ---- per frame: hands, interaction, player, camera, audio, HUD

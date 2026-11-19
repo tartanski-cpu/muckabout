@@ -214,9 +214,19 @@ They lie on the ground beside where you start (shovel, two stakes, a chain with 
 - The choice is saved with the site.
 
 
-## Dozer digging down (changed again)
+## Soil round the dozer blade (new: replaces "Dozer digging down")
 
-- Blade right down, drive on in one go: it should keep going down into a trench (to the rock, about 2.5 m on the test ground) instead of levelling off on a platform about 1 m down. The soil the blade cannot hold is now left as a berm about 1.6 m back from the trench edge, not on its lip. Does the berm look right, and does the bow wave still stay below eye level?
+What changed is in `docs/blade-soil.md`. None of it has been seen in a headset.
+
+- **Virgin flat ground, a shallow cut (AUTO LEVEL helps):** the heap now builds right against the blade, not 0.7 m out in front, and nothing comes off the ends until it is about as high as the blade (around 2 machine lengths). Then low windrows (20–40 cm) should run off both ends, right beside them. Does the bow wave still look as good as it did? The granules now sit closer to the blade too.
+- **Digging deeper, blade held right down:** it no longer dives to the rock in one go. The blade fills, the machine slows to a crawl and, if you hold it there, stalls with the tracks slipping. Lift a little and it moves on, dropping some of its load. Windrows should hug the blade ends, not stand as tall cones a couple of metres out. Does the slowing and stalling feel right, or too soon?
+- **A slot:** cut a few passes in the same line so the windrows build into walls. The load should stay in front of the blade instead of spilling, and the machine should carry more before it slows. Push it out of the end of the slot.
+- **Driving into an existing pile** (a heap you have already pushed up, or the spoil heaps in the valley): with the blade at ground level the machine should bog right down at the pile face, not drive on at speed. The granules should stay in a band against the blade, with a few lumps rolling down the pile face onto it and a puff of dust as it hits. Nothing should be flung out across the pile. With the blade raised, the pile now drifts under it and you climb onto it: that is how a stockpile is ridden up, and is meant.
+- **Overfull:** soil standing well above the blade top now topples over it and lands between the blade and the tracks. Is that visible from the seat? Does the machine riding up onto it feel right?
+- **Granules:** smaller now (mostly 5–8 cm, a few lumps to 15), smaller for sand and gravel, bigger for clay. Better than the chunky look, or too fine to read from the seat?
+- **Engine and sound:** the engine should labour harder with a full blade and hardest against a pile, through the same engine model as before. Is the note right?
+- **Grading the site-office pad** should still take two passes with AUTO LEVEL.
+- **Stones and clods on the ground** (the scattered lumps on worked soil, heaps and gravel, not the moving granules) are about a third as many on soil and half as many on gravel, for texture rather than a carpet. Too sparse now, or about right? (The ground near you costs a third to a half the triangles it did: 162k → 51k at the valley's spoil heaps.)
 
 ## Left stick click (changed)
 
