@@ -94,8 +94,8 @@ try {
   const lk1 = await page.evaluate(() => ({ yaw: P.look.yaw, tilt: m.fn.bucket.pos }));
   check(lk1.yaw < lk0.yaw - 0.3 && Math.abs(lk1.tilt - lk0.tilt) < 0.02, `gamepad: right stick alone looks round without moving the bucket (yaw ${lk0.yaw.toFixed(2)} → ${lk1.yaw.toFixed(2)})`);
   // Farming Simulator's layout: LT against the way it rolls brakes first, then reverses; right stick click switches the
-  // camera; X gets out and back in. On open ground facing west.
-  await padSet([0, 0, 0, 0], {}); await page.evaluate(() => { m.reset(-30, -48, Math.PI / 2); }); await frame(300);
+  // camera; X gets out and back in.
+  await padSet([0, 0, 0, 0], {}); await page.evaluate(() => { m.reset(16, 16, Math.PI / 2); }); await frame(300); // the test map's clear north edge, facing west
   await padSet([0, 0, 0, 0], { 7: 1 }); await frame(2500);
   const vRoll = await page.evaluate(() => m.speed);
   await padSet([0, 0, 0, 0], { 6: 1 }); await frame(250);
